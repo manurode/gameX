@@ -25,7 +25,12 @@ func _input(event: InputEvent) -> void:
 
 func _handle_mouse_button(event: InputEventMouseButton) -> void:
 	if event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
-		_move_selected_units(_screen_to_world(event.position))
+		var world_point := _screen_to_world(event.position)
+		var target_unit := _pick_attackable_unit_at(world_point)
+		if target_unit != null:
+			_attack_selected_units(target_unit)
+		else:
+			_move_selected_units(world_point)
 		get_viewport().set_input_as_handled()
 		return
 
@@ -70,6 +75,19 @@ func _move_selected_units(world_point: Vector2) -> void:
 		if is_instance_valid(unit):
 			unit.move_to(world_point)
 
+
+func _attack_selected_units(target: Unit) -> void:
+	for unit in selected_units:
+		if is_instance_valid(unit):
+			unit.attack_target_unit(target)
+
+
+func remove_unit_from_selection(unit: Unit) -> void:
+	if selected_units.has(unit):
+		if is_instance_valid(unit):
+			unit.deselect()
+		selected_units.erase(unit)
+
 func _select_unit_at(world_point: Vector2, add_to_selection: bool) -> void:
 	var picked_unit := _pick_unit_at(world_point)
 
@@ -102,6 +120,23 @@ func _select_units_in_box(world_rect: Rect2, add_to_selection: bool = false) -> 
 			selected_units.append(unit)
 
 func _pick_unit_at(world_point: Vector2) -> Unit:
+	var unit := _pick_unit_in_group(world_point, "selectable_units")
+	if unit != null and unit.is_in_group("selectable_units"):
+		return unit
+	return null
+
+
+func _pick_attackable_unit_at(world_point: Vector2) -> Unit:
+	var unit := _pick_unit_in_group(world_point, "units")
+	if unit == null:
+		return null
+	for selected in selected_units:
+		if selected == unit:
+			return null
+	return unit
+
+
+func _pick_unit_in_group(world_point: Vector2, group_name: StringName) -> Unit:
 	var space_state := get_viewport().world_2d.direct_space_state
 	var params := PhysicsPointQueryParameters2D.new()
 	params.position = world_point
@@ -111,12 +146,12 @@ func _pick_unit_at(world_point: Vector2) -> Unit:
 
 	for result in space_state.intersect_point(params, 16):
 		var collider: Object = result.collider
-		if collider is Unit and (collider as Unit).is_in_group("selectable_units"):
+		if collider is Unit and (collider as Unit).is_in_group(group_name):
 			return collider as Unit
 
 	var best_unit: Unit = null
 	var best_depth: float = INF
-	for node in get_tree().get_nodes_in_group("selectable_units"):
+	for node in get_tree().get_nodes_in_group(group_name):
 		if node is Unit and (node as Unit).contains_world_point(world_point):
 			var unit := node as Unit
 			var depth := unit.global_position.y

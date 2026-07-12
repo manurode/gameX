@@ -1,6 +1,7 @@
-[gd_scene load_steps=5 format=3 uid="uid://cunit001"]
+[gd_scene load_steps=6 format=3 uid="uid://cunit001"]
 
 [ext_resource type="Script" path="res://scripts/units/unit.gd" id="1_unit"]
+[ext_resource type="Script" path="res://scripts/units/unit_health_bar.gd" id="2_health_bar"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_unit"]
 size = Vector2(48, 72)
@@ -55,3 +56,7 @@ visible = false
 width = 2.0
 default_color = Color(1, 0.92, 0.45, 0.5)
 antialiased = true
+
+[node name="HealthBar" type="Node2D" parent="."]
+visible = false
+script = ExtResource("2_health_bar")
