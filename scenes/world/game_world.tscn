@@ -1,17 +1,24 @@
-[gd_scene load_steps=7 format=3 uid="uid://cworld001"]
+[gd_scene load_steps=10 format=3 uid="uid://cworld001"]
 
 [ext_resource type="Script" path="res://scripts/camera/rts_camera.gd" id="1_camera"]
 [ext_resource type="Script" path="res://scripts/world/terrain_map.gd" id="2_terrain"]
 [ext_resource type="TileSet" path="res://assets/tilesets/tiny_battle/tiny_battle_tileset.tres" id="3_tileset"]
 [ext_resource type="PackedScene" uid="uid://cunit001" path="res://scenes/units/unit.tscn" id="4_unit"]
-[ext_resource type="Texture2D" path="res://assets/sprites/units/blue_infantry.png" id="6_infantry"]
-[ext_resource type="Texture2D" path="res://assets/sprites/units/blue_truck.png" id="7_truck"]
+[ext_resource type="Texture2D" path="res://assets/sprites/units/blue_infantry.png" id="5_infantry"]
+[ext_resource type="Texture2D" path="res://assets/sprites/units/blue_truck.png" id="6_truck"]
+[ext_resource type="Texture2D" path="res://assets/sprites/units/blue_plane.png" id="7_plane"]
+[ext_resource type="Texture2D" path="res://assets/sprites/units/orange_tank.png" id="8_orange_tank"]
+[ext_resource type="Script" path="res://scripts/input/selection_manager.gd" id="9_selection"]
+[ext_resource type="Script" path="res://scripts/world/navigation_setup.gd" id="10_navigation"]
 
 [node name="GameWorld" type="Node2D"]
 
 [node name="Camera2D" type="Camera2D" parent="."]
 position = Vector2(240, 136)
 script = ExtResource("1_camera")
+
+[node name="NavigationRegion2D" type="NavigationRegion2D" parent="."]
+script = ExtResource("10_navigation")
 
 [node name="Terrain" type="Node2D" parent="."]
 
@@ -27,12 +34,19 @@ position = Vector2(40, 40)
 
 [node name="Unit2" parent="Units" instance=ExtResource("4_unit")]
 position = Vector2(72, 56)
-
-[node name="Sprite2D" parent="Units/Unit2" index="0"]
-texture = ExtResource("6_infantry")
+unit_texture = ExtResource("5_infantry")
 
 [node name="Unit3" parent="Units" instance=ExtResource("4_unit")]
 position = Vector2(56, 184)
+unit_texture = ExtResource("6_truck")
 
-[node name="Sprite2D" parent="Units/Unit3" index="0"]
-texture = ExtResource("7_truck")
+[node name="Unit4" parent="Units" instance=ExtResource("4_unit")]
+position = Vector2(120, 96)
+unit_texture = ExtResource("7_plane")
+
+[node name="Unit5" parent="Units" instance=ExtResource("4_unit")]
+position = Vector2(200, 160)
+unit_texture = ExtResource("8_orange_tank")
+
+[node name="SelectionManager" type="Node" parent="."]
+script = ExtResource("9_selection")
