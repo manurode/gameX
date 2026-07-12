@@ -158,7 +158,13 @@ func _setup_navigation_agent() -> void:
 	navigation_agent.target_desired_distance = 6.0
 	navigation_agent.max_speed = move_speed
 	navigation_agent.avoidance_enabled = false
+	reset_navigation()
+
+
+func reset_navigation() -> void:
 	navigation_agent.target_position = global_position
+	velocity = Vector2.ZERO
+	_unit_state = UnitState.IDLE
 
 
 func select() -> void:
@@ -330,6 +336,12 @@ func _physics_process(delta: float) -> void:
 	if navigation_agent.is_navigation_finished():
 		velocity = Vector2.ZERO
 		_unit_state = UnitState.IDLE
+		_play_idle()
+		_update_terrain_feedback(delta)
+		return
+
+	if _unit_state != UnitState.MOVING:
+		velocity = Vector2.ZERO
 		_play_idle()
 		_update_terrain_feedback(delta)
 		return

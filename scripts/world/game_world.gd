@@ -27,5 +27,7 @@ func on_ground_ready(ground: TinyTilesMap) -> void:
 	var idx := 0
 	for unit in units.get_children():
 		if unit is Unit and idx < spawn_points.size():
-			(unit as Unit).global_position = spawn_points[idx] + Vector2(idx * 14.0, 0.0)
+			var spawned_unit := unit as Unit
+			spawned_unit.global_position = spawn_points[idx] + Vector2(idx * 14.0, 0.0)
+			spawned_unit.reset_navigation()
 			idx += 1
