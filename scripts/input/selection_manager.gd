@@ -26,9 +26,9 @@ func _ready() -> void:
 
 
 func _input(event: InputEvent) -> void:
-	if _is_build_mode_active() and event is InputEventMouseButton:
+	if _is_placement_mode_active() and event is InputEventMouseButton:
 		var mouse_event := event as InputEventMouseButton
-		if mouse_event.button_index == MOUSE_BUTTON_LEFT:
+		if mouse_event.button_index == MOUSE_BUTTON_LEFT or mouse_event.button_index == MOUSE_BUTTON_RIGHT:
 			return
 	if event is InputEventMouseButton:
 		_handle_mouse_button(event as InputEventMouseButton)
@@ -320,3 +320,12 @@ func _hide_selection_box() -> void:
 func _is_build_mode_active() -> bool:
 	var build_manager := get_parent().get_node_or_null("BuildManager")
 	return build_manager != null and build_manager.build_mode_active
+
+
+func _is_spawn_mode_active() -> bool:
+	var spawn_manager := get_parent().get_node_or_null("UnitSpawnManager")
+	return spawn_manager != null and spawn_manager.spawn_mode_active
+
+
+func _is_placement_mode_active() -> bool:
+	return _is_build_mode_active() or _is_spawn_mode_active()

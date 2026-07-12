@@ -56,6 +56,15 @@ theme_override_constants/shadow_offset_x = 1
 theme_override_constants/shadow_offset_y = 1
 text = "Construcción: 1 Casa  2 Casa grande  3 Molino  4 Establo  5 Torre  6 Muralla  7 Castillo  8 Castillo grande"
 
+[node name="SpawnLabel" type="Label" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.7, 0.85, 1, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.6)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+text = "Spawn: F1 Caballero  |  F2 Arquero  |  F3 Constructor"
+
 [node name="HelpLabel" type="Label" parent="MarginContainer/VBoxContainer"]
 layout_mode = 2
 mouse_filter = 2
@@ -63,7 +72,7 @@ theme_override_colors/font_color = Color(0.9, 0.9, 0.9, 1)
 theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.6)
 theme_override_constants/shadow_offset_x = 1
 theme_override_constants/shadow_offset_y = 1
-text = "WASD: cámara  |  Click der. edificio vacío: entrar  |  Click der. edificio ocupado: atacar  |  Shift+click der.: asediar  |  E: salir  |  U: mejorar armas  |  1-8: construir"
+text = "WASD: cámara  |  Click der. edificio vacío: entrar  |  Click der. edificio ocupado: atacar  |  Shift+click der.: asediar  |  E: salir  |  U: mejorar armas  |  1-8: construir  |  F1-F3: spawn unidades"
 
 [node name="SelectionBox" type="Panel" parent="."]
 visible = false

@@ -92,6 +92,10 @@ func _start_build_mode(type_id: String) -> void:
 	build_mode_changed.emit(true, type_id)
 
 
+func cancel_build_mode() -> void:
+	_cancel_build_mode()
+
+
 func _cancel_build_mode() -> void:
 	build_mode_active = false
 	_ghost_sprite.visible = false

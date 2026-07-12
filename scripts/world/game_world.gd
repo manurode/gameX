@@ -9,6 +9,7 @@ extends Node2D
 @onready var buildings: Node2D = $Buildings
 @onready var selection_manager: Node = $SelectionManager
 @onready var build_manager: Node = $BuildManager
+@onready var unit_spawn_manager: Node = $UnitSpawnManager
 @onready var resource_manager: ResourceManager = $ResourceManager
 
 const BUILDING_SCENE: PackedScene = preload("res://scenes/buildings/building.tscn")
@@ -45,11 +46,24 @@ func on_ground_ready(ground: TinyTilesMap) -> void:
 	_spawn_initial_buildings(ground)
 	rebuild_navigation()
 	build_manager.setup(ground, buildings, resource_manager, selection_manager)
+	unit_spawn_manager.setup(ground, units, build_manager)
+	build_manager.build_mode_changed.connect(_on_build_mode_changed)
+	unit_spawn_manager.spawn_mode_changed.connect(_on_spawn_mode_changed)
 	selection_manager.setup(buildings, resource_manager)
 
 	var hud := get_node_or_null("/root/Main/HUD")
 	if hud != null and hud.has_method("setup"):
-		hud.call("setup", resource_manager, build_manager)
+		hud.call("setup", resource_manager, build_manager, unit_spawn_manager)
+
+
+func _on_build_mode_changed(active: bool, _type_id: String) -> void:
+	if active and unit_spawn_manager.has_method("cancel_spawn_mode"):
+		unit_spawn_manager.call("cancel_spawn_mode")
+
+
+func _on_spawn_mode_changed(active: bool, _type_id: String) -> void:
+	if active and build_manager.has_method("cancel_build_mode"):
+		build_manager.call("cancel_build_mode")
 
 
 func rebuild_navigation() -> void:
