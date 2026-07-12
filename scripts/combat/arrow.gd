@@ -24,7 +24,7 @@ func _physics_process(delta: float) -> void:
 	global_position += motion
 	_lifetime += delta
 
-	if not _has_hit and target != null and is_instance_valid(target) and target.hp > 0:
+	if not _has_hit and target != null and is_instance_valid(target) and target.hp > 0 and not target._is_dying:
 		if global_position.distance_to(target.get_sprite_center()) <= 18.0:
 			_hit_unit(target)
 
@@ -49,7 +49,7 @@ func _on_body_entered(body: Node2D) -> void:
 		return
 
 	var unit := body as Unit
-	if unit == shooter or unit.hp <= 0:
+	if unit == shooter or unit.hp <= 0 or unit._is_dying:
 		return
 
 	_hit_unit(unit)

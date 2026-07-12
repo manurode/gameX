@@ -1,0 +1,7 @@
+[gd_scene format=3 uid="uid://canimatedvfx"]
+
+[ext_resource type="Script" path="res://scripts/combat/animated_vfx.gd" id="1_vfx"]
+
+[node name="AnimatedVfx" type="AnimatedSprite2D"]
+texture_filter = 1
+script = ExtResource("1_vfx")

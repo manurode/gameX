@@ -146,14 +146,16 @@ func _pick_unit_in_group(world_point: Vector2, group_name: StringName) -> Unit:
 
 	for result in space_state.intersect_point(params, 16):
 		var collider: Object = result.collider
-		if collider is Unit and (collider as Unit).is_in_group(group_name):
+		if collider is Unit and (collider as Unit).is_in_group(group_name) and not (collider as Unit)._is_dying:
 			return collider as Unit
 
 	var best_unit: Unit = null
 	var best_depth: float = INF
 	for node in get_tree().get_nodes_in_group(group_name):
-		if node is Unit and (node as Unit).contains_world_point(world_point):
+		if node is Unit:
 			var unit := node as Unit
+			if unit._is_dying or not unit.contains_world_point(world_point):
+				continue
 			var depth := unit.global_position.y
 			if depth < best_depth:
 				best_depth = depth

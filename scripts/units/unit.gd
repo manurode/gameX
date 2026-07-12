@@ -2,7 +2,7 @@ class_name Unit
 extends CharacterBody2D
 
 enum CombatStyle { MELEE, RANGED }
-enum UnitState { IDLE, MOVING, CHASING, ATTACKING }
+enum UnitState { IDLE, MOVING, CHASING, ATTACKING, DYING }
 
 signal health_changed(current_hp: int, max_hp: int)
 signal died
@@ -10,6 +10,9 @@ signal died
 const HEALTH_BAR_VISIBLE_MS := 3000
 const MELEE_DAMAGE_FRAME := 5
 const RANGED_DAMAGE_FRAME := 6
+const DEATH_LINGER_SECONDS := 2.8
+const HIT_FLASH_DURATION := 0.14
+const DEATH_FRAME_COUNT := 3
 
 @export var move_speed: float = 95.0
 @export var max_hp: int = 100
@@ -19,6 +22,8 @@ const RANGED_DAMAGE_FRAME := 6
 @export var walk_down_sheet: Texture2D
 @export var attack_up_sheet: Texture2D
 @export var attack_down_sheet: Texture2D
+@export var death_up_sheet: Texture2D
+@export var death_down_sheet: Texture2D
 @export var sprite_offset := Vector2(0.0, -36.0)
 @export var combat_style: CombatStyle = CombatStyle.MELEE
 @export var can_attack: bool = true
@@ -39,6 +44,9 @@ var _attack_cooldown_remaining: float = 0.0
 var _is_attack_animating: bool = false
 var _damage_dealt_this_swing: bool = false
 var _last_damage_time: int = 0
+var _is_dying: bool = false
+var _last_facing_direction := Vector2.DOWN
+var _hit_flash_tween: Tween
 
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var navigation_agent: NavigationAgent2D = $NavigationAgent2D
@@ -81,7 +89,15 @@ func _setup_sprite_frames() -> void:
 		walk_up_sheet,
 		walk_down_sheet,
 		attack_up_sheet,
-		attack_down_sheet
+		attack_down_sheet,
+		death_up_sheet,
+		death_down_sheet,
+		80,
+		6.0,
+		10.0,
+		12.0,
+		7.0,
+		DEATH_FRAME_COUNT if death_up_sheet != null or death_down_sheet != null else -1
 	)
 	if frames.get_animation_names().is_empty():
 		return
@@ -180,7 +196,7 @@ func move_to(target: Vector2) -> void:
 
 
 func attack_target_unit(target: Unit) -> void:
-	if not can_attack or target == self or not is_instance_valid(target) or target.hp <= 0:
+	if not can_attack or target == self or not is_instance_valid(target) or target.hp <= 0 or target._is_dying:
 		move_to(target.global_position if is_instance_valid(target) else global_position)
 		return
 
@@ -189,25 +205,100 @@ func attack_target_unit(target: Unit) -> void:
 	_is_attack_animating = false
 
 
-func take_damage(amount: int, _attacker: Unit = null) -> void:
-	if hp <= 0:
+func take_damage(amount: int, attacker: Unit = null) -> void:
+	if _is_dying or hp <= 0:
 		return
 
 	hp = maxi(0, hp - amount)
 	_last_damage_time = Time.get_ticks_msec()
 	health_changed.emit(hp, max_hp)
+	_play_hit_reaction(attacker)
 
 	if hp <= 0:
 		_die()
 
 
+func _play_hit_reaction(attacker: Unit = null) -> void:
+	_flash_hit()
+
+	var world := get_parent().get_parent()
+	var effect_position := get_sprite_center()
+	if attacker != null and is_instance_valid(attacker) and attacker.combat_style == CombatStyle.RANGED:
+		CombatEffects.spawn_ranged_impact(world, effect_position)
+	else:
+		CombatEffects.spawn_melee_impact(world, effect_position)
+
+
+func _flash_hit() -> void:
+	if _hit_flash_tween != null and _hit_flash_tween.is_valid():
+		_hit_flash_tween.kill()
+
+	animated_sprite.modulate = Color(1.6, 0.45, 0.45)
+	_hit_flash_tween = create_tween()
+	_hit_flash_tween.tween_property(animated_sprite, "modulate", Color.WHITE, HIT_FLASH_DURATION)
+
+
 func _die() -> void:
+	if _is_dying:
+		return
+
+	_is_dying = true
 	attack_target = null
-	_unit_state = UnitState.IDLE
+	_unit_state = UnitState.DYING
+	_is_attack_animating = false
+	velocity = Vector2.ZERO
 	deselect()
 	died.emit()
 	_remove_from_selection()
+	remove_from_group("selectable_units")
+	set_collision_layer_value(2, false)
+	navigation_agent.target_position = global_position
+
+	_play_death_sequence()
+
+
+func _play_death_sequence() -> void:
+	var world := get_parent().get_parent()
+	CombatEffects.spawn_death_burst(world, get_sprite_center())
+	_play_death_animation()
+
+	await get_tree().create_timer(DEATH_LINGER_SECONDS).timeout
+
+	var fade_tween := create_tween()
+	fade_tween.set_parallel(true)
+	fade_tween.tween_property(animated_sprite, "modulate:a", 0.0, 0.65)
+	fade_tween.tween_property(shadow_sprite, "modulate:a", 0.0, 0.65)
+	await fade_tween.finished
 	queue_free()
+
+
+func _play_death_animation() -> void:
+	var animation_name := _get_death_animation_name()
+	if animated_sprite.sprite_frames.has_animation(animation_name):
+		animated_sprite.play(animation_name)
+		return
+
+	_play_procedural_death_fall()
+
+
+func _get_death_animation_name() -> StringName:
+	if _last_facing_direction.y < -0.15 and animated_sprite.sprite_frames.has_animation(&"death_up"):
+		return &"death_up"
+	if animated_sprite.sprite_frames.has_animation(&"death_down"):
+		return &"death_down"
+	if animated_sprite.sprite_frames.has_animation(&"death_up"):
+		return &"death_up"
+	return &"death_down"
+
+
+func _play_procedural_death_fall() -> void:
+	var fall_tween := create_tween()
+	fall_tween.set_parallel(true)
+	fall_tween.tween_property(animated_sprite, "rotation_degrees", 90.0, 0.5)\
+		.set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
+	fall_tween.tween_property(animated_sprite, "position:y", sprite_offset.y + 20.0, 0.5)\
+		.set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
+	fall_tween.tween_property(animated_sprite, "modulate", Color(0.7, 0.7, 0.7, 0.9), 0.5)
 
 
 func _remove_from_selection() -> void:
@@ -217,12 +308,12 @@ func _remove_from_selection() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	if hp <= 0:
+	if _is_dying or hp <= 0:
 		return
 
 	_attack_cooldown_remaining = maxf(0.0, _attack_cooldown_remaining - delta)
 
-	if attack_target != null and (not is_instance_valid(attack_target) or attack_target.hp <= 0):
+	if attack_target != null and (not is_instance_valid(attack_target) or attack_target.hp <= 0 or attack_target._is_dying):
 		attack_target = null
 		_unit_state = UnitState.IDLE
 		_is_attack_animating = false
@@ -343,6 +434,7 @@ func _direction_to_target() -> Vector2:
 
 
 func _play_attack_animation(direction: Vector2) -> void:
+	_last_facing_direction = direction
 	var animation_name := &"attack_down"
 	if direction.y < -0.15:
 		animation_name = &"attack_up"
@@ -370,7 +462,7 @@ func _on_animation_frame_changed() -> void:
 
 
 func _deal_attack() -> void:
-	if attack_target == null or not is_instance_valid(attack_target) or attack_target.hp <= 0:
+	if attack_target == null or not is_instance_valid(attack_target) or attack_target.hp <= 0 or attack_target._is_dying:
 		return
 
 	match combat_style:
@@ -403,6 +495,10 @@ func _spawn_arrow() -> void:
 
 
 func _on_animation_finished() -> void:
+	if _is_dying:
+		_freeze_death_pose()
+		return
+
 	if not _is_attack_animating:
 		return
 
@@ -410,11 +506,21 @@ func _on_animation_finished() -> void:
 	_attack_cooldown_remaining = attack_cooldown
 	_play_idle()
 
-	if attack_target != null and is_instance_valid(attack_target) and attack_target.hp > 0:
+	if attack_target != null and is_instance_valid(attack_target) and attack_target.hp > 0 and not attack_target._is_dying:
 		_unit_state = UnitState.CHASING
 	else:
 		attack_target = null
 		_unit_state = UnitState.IDLE
+
+
+func _freeze_death_pose() -> void:
+	var animation_name := animated_sprite.animation
+	if not animated_sprite.sprite_frames.has_animation(animation_name):
+		return
+
+	var last_frame := animated_sprite.sprite_frames.get_frame_count(animation_name) - 1
+	animated_sprite.stop()
+	animated_sprite.frame = last_frame
 
 
 func _play_idle() -> void:
@@ -425,6 +531,7 @@ func _play_idle() -> void:
 
 
 func _play_walk_animation(direction: Vector2) -> void:
+	_last_facing_direction = direction
 	var animation_name := &"walk_down"
 	if direction.y < -0.15:
 		animation_name = &"walk_up"
