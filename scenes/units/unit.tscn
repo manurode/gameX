@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://scripts/units/unit.gd" id="1_unit"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_unit"]
-size = Vector2(20, 20)
+size = Vector2(48, 72)
 
 [sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_dust"]
 direction = Vector3(0, -1, 0)
@@ -31,7 +31,9 @@ script = ExtResource("1_unit")
 
 [node name="Shadow" type="Sprite2D" parent="."]
 z_index = -1
+y_sort_enabled = false
 texture_filter = 0
+modulate = Color(0, 0, 0, 0.4)
 
 [node name="DustParticles" type="GPUParticles2D" parent="."]
 z_index = 1
@@ -48,6 +50,7 @@ sprite_frames = SubResource("SpriteFrames_empty")
 animation = &"idle"
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, -36)
 shape = SubResource("RectangleShape2D_unit")
 
 [node name="NavigationAgent2D" type="NavigationAgent2D" parent="."]
@@ -56,4 +59,5 @@ shape = SubResource("RectangleShape2D_unit")
 z_index = 3
 visible = false
 color = Color(1, 1, 0.3, 0.85)
-polygon = PackedVector2Array(-16, -18, 16, -18, 16, 8, -16, 8)
+position = Vector2(0, -36)
+polygon = PackedVector2Array(-40, -40, 40, -40, 40, 40, -40, 40)

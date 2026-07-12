@@ -144,26 +144,36 @@ func is_water_at(world_pos: Vector2) -> bool:
 	return get_cell_source_id(get_cell_at_world(world_pos)) == GroundTile.WATER
 
 
-func press_grass_at(world_pos: Vector2, duration: float = 0.35) -> void:
+func press_grass_at(world_pos: Vector2) -> void:
 	var cell := get_cell_at_world(world_pos)
 	if get_cell_source_id(cell) == GroundTile.WATER:
 		return
+
 	if cell in _pressed_cells:
+		_pressed_cells[cell]["refs"] += 1
 		return
 
 	var original_source := get_cell_source_id(cell)
-	set_cell(cell, GroundTile.GRASS_D, Vector2i.ZERO)
-	_pressed_cells[cell] = original_source
+	if original_source == GroundTile.GRASS_D:
+		_pressed_cells[cell] = {"source": original_source, "refs": 1}
+		return
 
-	var timer := get_tree().create_timer(duration)
-	var captured_cell := cell
-	timer.timeout.connect(func() -> void:
-		if not is_instance_valid(self):
-			return
-		if captured_cell in _pressed_cells:
-			set_cell(captured_cell, _pressed_cells[captured_cell], Vector2i.ZERO)
-			_pressed_cells.erase(captured_cell)
-	)
+	set_cell(cell, GroundTile.GRASS_D, Vector2i.ZERO)
+	_pressed_cells[cell] = {"source": original_source, "refs": 1}
+
+
+func release_grass_at_cell(cell: Vector2i) -> void:
+	if cell not in _pressed_cells:
+		return
+
+	_pressed_cells[cell]["refs"] -= 1
+	if _pressed_cells[cell]["refs"] > 0:
+		return
+
+	var original_source: int = _pressed_cells[cell]["source"]
+	_pressed_cells.erase(cell)
+	if original_source != GroundTile.GRASS_D:
+		set_cell(cell, original_source, Vector2i.ZERO)
 
 
 func get_water_cells() -> Array[Vector2i]:

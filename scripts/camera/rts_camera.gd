@@ -37,19 +37,11 @@ func _process(delta: float) -> void:
 
 
 func _handle_keyboard_pan(delta: float) -> void:
-	var direction := Vector2.ZERO
+	var direction := Input.get_vector("camera_pan_left", "camera_pan_right", "camera_pan_up", "camera_pan_down")
+	if direction == Vector2.ZERO:
+		return
 
-	if Input.is_physical_key_pressed(KEY_W):
-		direction.y -= 1.0
-	if Input.is_physical_key_pressed(KEY_S):
-		direction.y += 1.0
-	if Input.is_physical_key_pressed(KEY_A):
-		direction.x -= 1.0
-	if Input.is_physical_key_pressed(KEY_D):
-		direction.x += 1.0
-
-	if direction != Vector2.ZERO:
-		position += direction.normalized() * PAN_SPEED * delta / zoom.x
+	position += direction.normalized() * PAN_SPEED * delta / zoom.x
 
 
 func _handle_edge_pan(delta: float) -> void:
@@ -79,16 +71,12 @@ func _clamp_to_map() -> void:
 
 	var min_x := map_bounds.position.x + half_view.x
 	var max_x := map_bounds.end.x - half_view.x
-	if min_x > max_x:
-		position.x = map_bounds.get_center().x
-	else:
+	if min_x <= max_x:
 		position.x = clampf(position.x, min_x, max_x)
 
 	var min_y := map_bounds.position.y + half_view.y
 	var max_y := map_bounds.end.y - half_view.y
-	if min_y > max_y:
-		position.y = map_bounds.get_center().y
-	else:
+	if min_y <= max_y:
 		position.y = clampf(position.y, min_y, max_y)
 
 

@@ -12,6 +12,11 @@ var _drag_started: bool = false
 
 @onready var selection_box: Control = get_node_or_null("/root/Main/HUD/SelectionBox")
 
+
+func _ready() -> void:
+	if selection_box == null:
+		selection_box = get_node_or_null("/root/Main/HUD/SelectionBox")
+
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		_handle_mouse_button(event as InputEventMouseButton)
@@ -109,7 +114,17 @@ func _pick_unit_at(world_point: Vector2) -> Unit:
 		if collider is Unit and (collider as Unit).is_in_group("selectable_units"):
 			return collider as Unit
 
-	return null
+	var best_unit: Unit = null
+	var best_depth: float = INF
+	for node in get_tree().get_nodes_in_group("selectable_units"):
+		if node is Unit and (node as Unit).contains_world_point(world_point):
+			var unit := node as Unit
+			var depth := unit.global_position.y
+			if depth < best_depth:
+				best_depth = depth
+				best_unit = unit
+
+	return best_unit
 
 func _pick_units_in_rect(world_rect: Rect2) -> Array[Unit]:
 	var picked: Array[Unit] = []
