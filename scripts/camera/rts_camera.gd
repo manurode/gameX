@@ -1,12 +1,14 @@
 extends Camera2D
 
-const MIN_ZOOM := 0.5
-const MAX_ZOOM := 2.0
+const MIN_ZOOM := 1.0
+const MAX_ZOOM := 3.0
 const PAN_SPEED := 500.0
 const ZOOM_STEP := 0.1
+const START_ZOOM := 2.0
 
 func _ready() -> void:
-	position = Vector2(640, 360)
+	position = Vector2(240, 136)
+	zoom = Vector2(START_ZOOM, START_ZOOM)
 
 func _process(delta: float) -> void:
 	_handle_pan(delta)

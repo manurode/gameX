@@ -14,6 +14,9 @@ mono_crash.*.json
 Thumbs.db
 desktop.ini
 
+# Asset downloads (temp)
+assets/_downloads/
+
 # IDE
 .vscode/
 *.swp

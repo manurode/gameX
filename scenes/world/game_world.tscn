@@ -1,73 +1,38 @@
-[gd_scene load_steps=3 format=3 uid="uid://cworld001"]
+[gd_scene load_steps=7 format=3 uid="uid://cworld001"]
 
 [ext_resource type="Script" path="res://scripts/camera/rts_camera.gd" id="1_camera"]
-[ext_resource type="PackedScene" uid="uid://cunit001" path="res://scenes/units/unit.tscn" id="2_unit"]
+[ext_resource type="Script" path="res://scripts/world/terrain_map.gd" id="2_terrain"]
+[ext_resource type="TileSet" path="res://assets/tilesets/tiny_battle/tiny_battle_tileset.tres" id="3_tileset"]
+[ext_resource type="PackedScene" uid="uid://cunit001" path="res://scenes/units/unit.tscn" id="4_unit"]
+[ext_resource type="Texture2D" path="res://assets/sprites/units/blue_infantry.png" id="6_infantry"]
+[ext_resource type="Texture2D" path="res://assets/sprites/units/blue_truck.png" id="7_truck"]
 
 [node name="GameWorld" type="Node2D"]
 
 [node name="Camera2D" type="Camera2D" parent="."]
-position = Vector2(640, 360)
+position = Vector2(240, 136)
 script = ExtResource("1_camera")
 
 [node name="Terrain" type="Node2D" parent="."]
 
-[node name="GrassBackground" type="Polygon2D" parent="Terrain"]
-color = Color(0.298039, 0.486275, 0.235294, 1)
-polygon = PackedVector2Array(0, 0, 1280, 0, 1280, 720, 0, 720)
-
-[node name="Grid" type="Node2D" parent="Terrain"]
-
-[node name="HLine1" type="Line2D" parent="Terrain/Grid"]
-points = PackedVector2Array(0, 180, 1280, 180)
-width = 1.0
-default_color = Color(0.25, 0.42, 0.2, 0.5)
-
-[node name="HLine2" type="Line2D" parent="Terrain/Grid"]
-points = PackedVector2Array(0, 360, 1280, 360)
-width = 1.0
-default_color = Color(0.25, 0.42, 0.2, 0.5)
-
-[node name="HLine3" type="Line2D" parent="Terrain/Grid"]
-points = PackedVector2Array(0, 540, 1280, 540)
-width = 1.0
-default_color = Color(0.25, 0.42, 0.2, 0.5)
-
-[node name="VLine1" type="Line2D" parent="Terrain/Grid"]
-points = PackedVector2Array(320, 0, 320, 720)
-width = 1.0
-default_color = Color(0.25, 0.42, 0.2, 0.5)
-
-[node name="VLine2" type="Line2D" parent="Terrain/Grid"]
-points = PackedVector2Array(640, 0, 640, 720)
-width = 1.0
-default_color = Color(0.25, 0.42, 0.2, 0.5)
-
-[node name="VLine3" type="Line2D" parent="Terrain/Grid"]
-points = PackedVector2Array(960, 0, 960, 720)
-width = 1.0
-default_color = Color(0.25, 0.42, 0.2, 0.5)
-
-[node name="WaterPatch" type="Polygon2D" parent="Terrain"]
-color = Color(0.2, 0.45, 0.7, 1)
-polygon = PackedVector2Array(900, 500, 1100, 480, 1150, 620, 880, 650)
-
-[node name="PathPatch" type="Polygon2D" parent="Terrain"]
-color = Color(0.55, 0.42, 0.28, 1)
-polygon = PackedVector2Array(100, 360, 1180, 360, 1180, 400, 100, 400)
-
-[node name="BasePlaceholder" type="Polygon2D" parent="Terrain"]
-color = Color(0.6, 0.5, 0.35, 1)
-polygon = PackedVector2Array(80, 80, 200, 80, 200, 180, 80, 180)
+[node name="TileMapLayer" type="TileMapLayer" parent="Terrain"]
+tile_set = ExtResource("3_tileset")
+script = ExtResource("2_terrain")
 
 [node name="Units" type="Node2D" parent="."]
+y_sort_enabled = true
 
-[node name="Unit1" parent="Units" instance=ExtResource("2_unit")]
-position = Vector2(400, 300)
+[node name="Unit1" parent="Units" instance=ExtResource("4_unit")]
+position = Vector2(40, 40)
 
-[node name="Unit2" parent="Units" instance=ExtResource("2_unit")]
-position = Vector2(500, 350)
+[node name="Unit2" parent="Units" instance=ExtResource("4_unit")]
+position = Vector2(72, 56)
 
-[node name="Unit3" parent="Units" instance=ExtResource("2_unit")]
-position = Vector2(600, 280)
+[node name="Sprite2D" parent="Units/Unit2" index="0"]
+texture = ExtResource("6_infantry")
 
-[node name="Buildings" type="Node2D" parent="."]
+[node name="Unit3" parent="Units" instance=ExtResource("4_unit")]
+position = Vector2(56, 184)
+
+[node name="Sprite2D" parent="Units/Unit3" index="0"]
+texture = ExtResource("7_truck")
