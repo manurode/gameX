@@ -14,11 +14,10 @@ var is_selected: bool = false
 
 var _ground_layer: TinyTilesMap
 var _was_on_water := false
-var _last_grass_cell := Vector2i(999999, 999999)
 
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var navigation_agent: NavigationAgent2D = $NavigationAgent2D
-@onready var selection_indicator: Polygon2D = $SelectionIndicator
+@onready var selection_indicator: Line2D = $SelectionIndicator
 @onready var shadow_sprite: Sprite2D = $Shadow
 @onready var dust_particles: GPUParticles2D = $DustParticles
 
@@ -29,6 +28,8 @@ func _ready() -> void:
 	add_to_group("units")
 	_setup_sprite_frames()
 	_setup_shadow()
+	_setup_dust()
+	_setup_selection_indicator()
 	animated_sprite.offset = sprite_offset
 	await get_tree().physics_frame
 	_setup_navigation_agent()
@@ -51,18 +52,51 @@ func _setup_sprite_frames() -> void:
 
 
 func _setup_shadow() -> void:
-	var image := Image.create(64, 24, false, Image.FORMAT_RGBA8)
-	for y in 24:
-		for x in 64:
-			var dx := (x - 32.0) / 32.0
-			var dy := (y - 12.0) / 12.0
+	var image := Image.create(48, 16, false, Image.FORMAT_RGBA8)
+	image.fill(Color(0, 0, 0, 0))
+	for y in 16:
+		for x in 48:
+			var dx := (x - 24.0) / 24.0
+			var dy := (y - 8.0) / 8.0
 			var dist := dx * dx + dy * dy
 			if dist <= 1.0:
-				image.set_pixel(x, y, Color(0.0, 0.0, 0.0, 0.35 * (1.0 - dist)))
+				var alpha := 0.3 * (1.0 - dist) * (1.0 - dist)
+				image.set_pixel(x, y, Color(0.0, 0.0, 0.0, alpha))
 	var texture := ImageTexture.create_from_image(image)
 	shadow_sprite.texture = texture
 	shadow_sprite.position = Vector2.ZERO
 	shadow_sprite.y_sort_enabled = false
+	shadow_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	shadow_sprite.modulate = Color(1, 1, 1, 1)
+
+
+func _setup_dust() -> void:
+	var size := 8
+	var image := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	image.fill(Color(0, 0, 0, 0))
+	var center := (size - 1) * 0.5
+	for y in size:
+		for x in size:
+			var dist := Vector2(x - center, y - center).length() / center
+			if dist <= 1.0:
+				image.set_pixel(x, y, Color(1.0, 1.0, 1.0, (1.0 - dist) * 0.9))
+	dust_particles.texture = ImageTexture.create_from_image(image)
+	dust_particles.position = Vector2(0, -2)
+	dust_particles.y_sort_enabled = false
+
+
+func _setup_selection_indicator() -> void:
+	var points := PackedVector2Array()
+	const SEGMENTS := 48
+	const RADIUS_X := 26.0
+	const RADIUS_Y := 11.0
+	for i in SEGMENTS + 1:
+		var angle := float(i) / float(SEGMENTS) * TAU
+		points.append(Vector2(cos(angle) * RADIUS_X, sin(angle) * RADIUS_Y))
+	selection_indicator.points = points
+	selection_indicator.closed = true
+	selection_indicator.position = Vector2.ZERO
+	selection_indicator.y_sort_enabled = false
 
 
 func _setup_navigation_agent() -> void:
@@ -106,7 +140,6 @@ func move_to(target: Vector2) -> void:
 func _physics_process(delta: float) -> void:
 	if navigation_agent.is_navigation_finished():
 		velocity = Vector2.ZERO
-		_set_dust(false)
 		_play_idle()
 		_update_terrain_feedback(delta)
 		return
@@ -116,13 +149,11 @@ func _physics_process(delta: float) -> void:
 
 	if direction == Vector2.ZERO:
 		velocity = Vector2.ZERO
-		_set_dust(false)
 		return
 
 	velocity = direction * move_speed
 	move_and_slide()
 	_play_walk_animation(direction)
-	_set_dust(true)
 	_update_terrain_feedback(delta)
 
 
@@ -149,14 +180,6 @@ func _play_walk_animation(direction: Vector2) -> void:
 		animated_sprite.play(animation_name)
 
 
-func _set_dust(active: bool) -> void:
-	if dust_particles == null:
-		return
-	dust_particles.emitting = active and (_ground_layer == null or not _ground_layer.is_water_at(global_position))
-	if active and _ground_layer != null and not _ground_layer.is_water_at(global_position):
-		dust_particles.modulate = Color(0.72, 0.58, 0.38, 0.75)
-
-
 func _update_terrain_feedback(_delta: float) -> void:
 	if _ground_layer == null:
 		return
@@ -166,22 +189,10 @@ func _update_terrain_feedback(_delta: float) -> void:
 		_spawn_splash()
 	_was_on_water = on_water
 
-	var current_cell := _ground_layer.get_cell_at_world(global_position)
-	if current_cell != _last_grass_cell:
-		if _last_grass_cell != Vector2i(999999, 999999):
-			_ground_layer.release_grass_at_cell(_last_grass_cell)
-		_last_grass_cell = current_cell
-		if not on_water:
-			_ground_layer.press_grass_at(global_position)
-
-
-func _exit_tree() -> void:
-	if _ground_layer != null and _last_grass_cell != Vector2i(999999, 999999):
-		_ground_layer.release_grass_at_cell(_last_grass_cell)
-
 
 func _spawn_splash() -> void:
 	if dust_particles == null:
 		return
-	dust_particles.restart()
 	dust_particles.modulate = Color(0.55, 0.78, 1.0, 0.85)
+	dust_particles.restart()
+	dust_particles.emitting = true
