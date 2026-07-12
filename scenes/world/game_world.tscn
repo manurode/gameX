@@ -1,58 +1,45 @@
-[gd_scene load_steps=11 format=3 uid="uid://cworld001"]
+[gd_scene load_steps=10 format=3 uid="uid://cworld001"]
 
-[ext_resource type="Script" path="res://scripts/camera/rts_camera.gd" id="1_camera"]
-[ext_resource type="Script" path="res://scripts/world/terrain_map.gd" id="2_terrain"]
-[ext_resource type="TileSet" path="res://assets/tilesets/tiny_battle/tiny_battle_tileset.tres" id="3_tileset"]
-[ext_resource type="PackedScene" uid="uid://cunit001" path="res://scenes/units/unit.tscn" id="4_unit"]
-[ext_resource type="Texture2D" path="res://assets/sprites/units/blue_infantry.png" id="5_infantry"]
-[ext_resource type="Texture2D" path="res://assets/sprites/units/blue_truck.png" id="6_truck"]
-[ext_resource type="Texture2D" path="res://assets/sprites/units/blue_tank.png" id="7_tank"]
-[ext_resource type="Texture2D" path="res://assets/sprites/units/orange_tank.png" id="8_orange_tank"]
-[ext_resource type="Script" path="res://scripts/input/selection_manager.gd" id="9_selection"]
-[ext_resource type="Script" path="res://scripts/world/navigation_setup.gd" id="10_navigation"]
-[ext_resource type="Script" path="res://scripts/world/decoration_map.gd" id="11_decorations"]
+[ext_resource type="Script" path="res://scripts/world/game_world.gd" id="1_world"]
+[ext_resource type="Script" path="res://scripts/camera/rts_camera.gd" id="2_camera"]
+[ext_resource type="Script" path="res://scripts/world/navigation_setup.gd" id="3_navigation"]
+[ext_resource type="Script" path="res://scripts/world/tiny_tiles_map.gd" id="4_ground"]
+[ext_resource type="Script" path="res://scripts/world/world_decorations.gd" id="5_decorations"]
+[ext_resource type="Script" path="res://scripts/world/water_animator.gd" id="6_water"]
+[ext_resource type="Script" path="res://scripts/input/selection_manager.gd" id="7_selection"]
+[ext_resource type="PackedScene" uid="uid://cunitknight" path="res://scenes/units/unit_knight.tscn" id="8_knight"]
+[ext_resource type="PackedScene" uid="uid://cunitarcher" path="res://scenes/units/unit_archer.tscn" id="9_archer"]
+[ext_resource type="PackedScene" uid="uid://cunitbuilder" path="res://scenes/units/unit_builder.tscn" id="10_builder"]
 
 [node name="GameWorld" type="Node2D"]
+script = ExtResource("1_world")
 
 [node name="Camera2D" type="Camera2D" parent="."]
-position = Vector2(240, 136)
-script = ExtResource("1_camera")
+script = ExtResource("2_camera")
 
 [node name="NavigationRegion2D" type="NavigationRegion2D" parent="."]
-script = ExtResource("10_navigation")
+script = ExtResource("3_navigation")
 
 [node name="Terrain" type="Node2D" parent="."]
 
-[node name="TileMapLayer" type="TileMapLayer" parent="Terrain"]
-tile_set = ExtResource("3_tileset")
-script = ExtResource("2_terrain")
+[node name="Ground" type="TileMapLayer" parent="Terrain"]
+script = ExtResource("4_ground")
 
-[node name="Decorations" type="TileMapLayer" parent="Terrain"]
-z_index = 1
-tile_set = ExtResource("3_tileset")
-script = ExtResource("11_decorations")
+[node name="WaterAnimator" type="Node2D" parent="Terrain"]
+script = ExtResource("6_water")
+
+[node name="DecorationsHigh" type="Node2D" parent="."]
+y_sort_enabled = true
+script = ExtResource("5_decorations")
 
 [node name="Units" type="Node2D" parent="."]
 y_sort_enabled = true
 
-[node name="Unit1" parent="Units" instance=ExtResource("4_unit")]
-position = Vector2(200, 48)
+[node name="Knight" parent="Units" instance=ExtResource("8_knight")]
 
-[node name="Unit2" parent="Units" instance=ExtResource("4_unit")]
-position = Vector2(280, 72)
-unit_texture = ExtResource("5_infantry")
+[node name="Archer" parent="Units" instance=ExtResource("9_archer")]
 
-[node name="Unit3" parent="Units" instance=ExtResource("4_unit")]
-position = Vector2(160, 128)
-unit_texture = ExtResource("6_truck")
-
-[node name="Unit4" parent="Units" instance=ExtResource("4_unit")]
-position = Vector2(320, 96)
-unit_texture = ExtResource("7_tank")
-
-[node name="Unit5" parent="Units" instance=ExtResource("4_unit")]
-position = Vector2(240, 168)
-unit_texture = ExtResource("8_orange_tank")
+[node name="Builder" parent="Units" instance=ExtResource("10_builder")]
 
 [node name="SelectionManager" type="Node" parent="."]
-script = ExtResource("9_selection")
+script = ExtResource("7_selection")

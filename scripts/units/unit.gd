@@ -1,74 +1,112 @@
 class_name Unit
 extends CharacterBody2D
 
-@export var move_speed: float = 120.0
+@export var move_speed: float = 95.0
 @export var max_hp: int = 100
-@export var selection_radius: float = 8.0
-@export var unit_texture: Texture2D
+@export var selection_radius: float = 22.0
+@export var idle_sheet: Texture2D
+@export var walk_up_sheet: Texture2D
+@export var walk_down_sheet: Texture2D
+@export var sprite_offset := Vector2(0.0, -36.0)
 
 var hp: int
 var is_selected: bool = false
 
+var _ground_layer: TinyTilesMap
+var _was_on_water := false
+var _grass_press_cooldown := 0.0
+
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var navigation_agent: NavigationAgent2D = $NavigationAgent2D
 @onready var selection_indicator: Polygon2D = $SelectionIndicator
+@onready var shadow_sprite: Sprite2D = $Shadow
+@onready var dust_particles: GPUParticles2D = $DustParticles
+
 
 func _ready() -> void:
 	hp = max_hp
 	add_to_group("selectable_units")
 	add_to_group("units")
-	_apply_unit_texture()
+	_setup_sprite_frames()
+	_setup_shadow()
+	animated_sprite.offset = sprite_offset
 	await get_tree().physics_frame
 	_setup_navigation_agent()
 
-func _apply_unit_texture() -> void:
-	if unit_texture == null:
+
+func set_ground_layer(ground_layer: TinyTilesMap) -> void:
+	_ground_layer = ground_layer
+
+
+func _setup_sprite_frames() -> void:
+	var frames := SpriteSheetUtils.build_character_frames(
+		idle_sheet,
+		walk_up_sheet,
+		walk_down_sheet
+	)
+	if frames.get_animation_names().is_empty():
 		return
+	animated_sprite.sprite_frames = frames
+	animated_sprite.play(&"idle")
 
-	var sprite_frames := animated_sprite.sprite_frames
-	if sprite_frames == null:
-		return
 
-	animated_sprite.sprite_frames = sprite_frames.duplicate(true)
-	sprite_frames = animated_sprite.sprite_frames
+func _setup_shadow() -> void:
+	var image := Image.create(48, 20, false, Image.FORMAT_RGBA8)
+	for y in 20:
+		for x in 48:
+			var dx := (x - 24.0) / 24.0
+			var dy := (y - 10.0) / 10.0
+			var dist := dx * dx + dy * dy
+			if dist <= 1.0:
+				image.set_pixel(x, y, Color(0.0, 0.0, 0.0, 0.28 * (1.0 - dist)))
+	var texture := ImageTexture.create_from_image(image)
+	shadow_sprite.texture = texture
+	shadow_sprite.position = Vector2(0.0, -4.0)
 
-	for animation_name in sprite_frames.get_animation_names():
-		var duration := sprite_frames.get_frame_duration(animation_name, 0)
-		sprite_frames.set_frame(animation_name, 0, unit_texture, duration)
 
 func _setup_navigation_agent() -> void:
-	navigation_agent.path_desired_distance = 4.0
-	navigation_agent.target_desired_distance = 4.0
+	navigation_agent.path_desired_distance = 6.0
+	navigation_agent.target_desired_distance = 6.0
 	navigation_agent.max_speed = move_speed
 	navigation_agent.avoidance_enabled = false
 	navigation_agent.target_position = global_position
+
 
 func select() -> void:
 	is_selected = true
 	selection_indicator.visible = true
 
+
 func deselect() -> void:
 	is_selected = false
 	selection_indicator.visible = false
+
 
 func get_selection_rect() -> Rect2:
 	var half_size := Vector2(selection_radius, selection_radius)
 	return Rect2(global_position - half_size, half_size * 2.0)
 
+
 func contains_world_point(world_point: Vector2) -> bool:
 	return global_position.distance_to(world_point) <= selection_radius
+
 
 func intersects_world_rect(world_rect: Rect2) -> bool:
 	return world_rect.intersects(get_selection_rect(), true)
 
+
 func move_to(target: Vector2) -> void:
 	navigation_agent.target_position = target
 
-func _physics_process(_delta: float) -> void:
+
+func _physics_process(delta: float) -> void:
+	_grass_press_cooldown = maxf(_grass_press_cooldown - delta, 0.0)
+
 	if navigation_agent.is_navigation_finished():
 		velocity = Vector2.ZERO
-		if animated_sprite.animation != &"idle":
-			animated_sprite.play(&"idle")
+		_set_dust(false)
+		_play_idle()
+		_update_terrain_feedback(delta)
 		return
 
 	var next_position := navigation_agent.get_next_path_position()
@@ -76,18 +114,63 @@ func _physics_process(_delta: float) -> void:
 
 	if direction == Vector2.ZERO:
 		velocity = Vector2.ZERO
+		_set_dust(false)
 		return
 
 	velocity = direction * move_speed
 	move_and_slide()
 	_play_walk_animation(direction)
+	_set_dust(true)
+	_update_terrain_feedback(delta)
+
+
+func _play_idle() -> void:
+	if animated_sprite.animation != &"idle" and animated_sprite.sprite_frames.has_animation(&"idle"):
+		animated_sprite.play(&"idle")
+
 
 func _play_walk_animation(direction: Vector2) -> void:
 	var animation_name := &"walk_down"
-	if absf(direction.x) > absf(direction.y):
-		animation_name = &"walk_right" if direction.x > 0.0 else &"walk_left"
-	elif direction.y < 0.0:
+	if direction.y < -0.15:
 		animation_name = &"walk_up"
+	elif direction.y > 0.15:
+		animation_name = &"walk_down"
+	elif direction.x < 0.0:
+		animation_name = &"walk_up" if animated_sprite.sprite_frames.has_animation(&"walk_up") else &"walk_down"
+	else:
+		animation_name = &"walk_down"
+
+	if not animated_sprite.sprite_frames.has_animation(animation_name):
+		animation_name = &"idle"
 
 	if animated_sprite.animation != animation_name:
 		animated_sprite.play(animation_name)
+
+
+func _set_dust(active: bool) -> void:
+	if dust_particles == null:
+		return
+	dust_particles.emitting = active and (_ground_layer == null or not _ground_layer.is_water_at(global_position))
+	if active and _ground_layer != null and not _ground_layer.is_water_at(global_position):
+		dust_particles.modulate = Color(0.72, 0.58, 0.38, 0.75)
+
+
+func _update_terrain_feedback(_delta: float) -> void:
+	if _ground_layer == null:
+		return
+
+	var on_water := _ground_layer.is_water_at(global_position)
+	if on_water and not _was_on_water:
+		_spawn_splash()
+	_was_on_water = on_water
+
+	if velocity.length() > 0.0 and _grass_press_cooldown <= 0.0 and not on_water:
+		_ground_layer.press_grass_at(global_position)
+		_grass_press_cooldown = 0.18
+
+
+func _spawn_splash() -> void:
+	if dust_particles == null:
+		return
+	dust_particles.restart()
+	dust_particles.modulate = Color(0.55, 0.78, 1.0, 0.85)

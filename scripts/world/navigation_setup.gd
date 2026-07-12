@@ -1,14 +1,20 @@
 extends NavigationRegion2D
 
-const MAP_SIZE := Vector2(480, 272)
+var _ground_layer: TinyTilesMap
 
-func _ready() -> void:
+
+func setup_from_ground(ground_layer: TinyTilesMap) -> void:
+	_ground_layer = ground_layer
+	var bounds := ground_layer.get_map_bounds()
+	var padding := Vector2(64.0, 64.0)
+	var expanded := bounds.grow_individual(padding.x, padding.y, padding.x, padding.y)
+
 	var navigation_polygon := NavigationPolygon.new()
 	navigation_polygon.add_outline(PackedVector2Array([
-		Vector2.ZERO,
-		Vector2(MAP_SIZE.x, 0.0),
-		Vector2(MAP_SIZE),
-		Vector2(0.0, MAP_SIZE.y),
+		expanded.position,
+		Vector2(expanded.end.x, expanded.position.y),
+		expanded.end,
+		Vector2(expanded.position.x, expanded.end.y),
 	]))
 	navigation_polygon.make_polygons_from_outlines()
 	self.navigation_polygon = navigation_polygon
