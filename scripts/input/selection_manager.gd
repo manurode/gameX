@@ -9,19 +9,40 @@ var _drag_start_screen: Vector2
 var _drag_current_screen: Vector2
 var _is_dragging: bool = false
 var _drag_started: bool = false
+var _buildings_container: Node2D
+var _resource_manager: ResourceManager
 
 @onready var selection_box: Control = get_node_or_null("/root/Main/HUD/SelectionBox")
+
+
+func setup(buildings_container: Node2D, resource_manager: ResourceManager) -> void:
+	_buildings_container = buildings_container
+	_resource_manager = resource_manager
 
 
 func _ready() -> void:
 	if selection_box == null:
 		selection_box = get_node_or_null("/root/Main/HUD/SelectionBox")
 
+
 func _input(event: InputEvent) -> void:
+	if _is_build_mode_active() and event is InputEventMouseButton:
+		var mouse_event := event as InputEventMouseButton
+		if mouse_event.button_index == MOUSE_BUTTON_LEFT:
+			return
 	if event is InputEventMouseButton:
 		_handle_mouse_button(event as InputEventMouseButton)
 	elif event is InputEventMouseMotion and _drag_started:
 		_handle_mouse_motion(event as InputEventMouseMotion)
+	elif event is InputEventKey and event.pressed and not event.echo:
+		var key_event := event as InputEventKey
+		if key_event.keycode == KEY_E:
+			_exit_garrison_for_selected()
+			get_viewport().set_input_as_handled()
+		elif key_event.keycode == KEY_U:
+			_try_upgrade_building_at_cursor()
+			get_viewport().set_input_as_handled()
+
 
 func _handle_mouse_button(event: InputEventMouseButton) -> void:
 	if event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
@@ -29,8 +50,16 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 		var target_unit := _pick_attackable_unit_at(world_point)
 		if target_unit != null:
 			_attack_selected_units(target_unit)
-		else:
-			_move_selected_units(world_point)
+			get_viewport().set_input_as_handled()
+			return
+
+		var target_building := _pick_building_at(world_point)
+		if target_building != null:
+			_handle_building_command(target_building, world_point, event.shift_pressed)
+			get_viewport().set_input_as_handled()
+			return
+
+		_move_selected_units(world_point)
 		get_viewport().set_input_as_handled()
 		return
 
@@ -64,11 +93,64 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 	_is_dragging = false
 	get_viewport().set_input_as_handled()
 
+
 func _handle_mouse_motion(event: InputEventMouseMotion) -> void:
 	_drag_current_screen = event.position
 	if not _is_dragging and _drag_start_screen.distance_to(_drag_current_screen) >= DRAG_THRESHOLD:
 		_is_dragging = true
 	_update_selection_box()
+
+
+func _handle_building_command(building: Building, world_point: Vector2, force_attack: bool = false) -> void:
+	if building.building_state == Building.BuildingState.CONSTRUCTING:
+		_assign_builders_to_construction(building)
+		return
+
+	for unit in selected_units:
+		if not is_instance_valid(unit):
+			continue
+
+		if unit.garrisoned_building == building:
+			continue
+
+		if unit.can_attack:
+			var should_attack := force_attack or building.is_hostile_to(unit) or building.has_enemy_garrison(unit)
+
+			if should_attack and building.building_state == Building.BuildingState.ACTIVE:
+				unit.attack_target_building_node(building)
+			elif building.can_enter_garrison(unit):
+				unit.approach_garrison(building)
+			elif building.building_state == Building.BuildingState.ACTIVE:
+				unit.move_to(building.get_approach_point(unit.global_position))
+			else:
+				unit.move_to(world_point)
+		elif unit.can_build:
+			unit.move_to(building.get_approach_point(unit.global_position))
+		else:
+			unit.move_to(world_point)
+
+
+func _assign_builders_to_construction(site: Building) -> void:
+	for unit in selected_units:
+		if is_instance_valid(unit) and unit.can_build:
+			unit.assign_construction(site)
+
+
+func _try_upgrade_building_at_cursor() -> void:
+	if _resource_manager == null:
+		return
+	var world_point := _screen_to_world(get_viewport().get_mouse_position())
+	var building := _pick_building_at(world_point)
+	if building == null or not building.can_be_upgraded():
+		return
+	building.try_upgrade(_resource_manager)
+
+
+func _exit_garrison_for_selected() -> void:
+	for unit in selected_units:
+		if is_instance_valid(unit) and unit.garrisoned_building != null:
+			unit.exit_garrison()
+
 
 func _move_selected_units(world_point: Vector2) -> void:
 	for unit in selected_units:
@@ -87,6 +169,7 @@ func remove_unit_from_selection(unit: Unit) -> void:
 		if is_instance_valid(unit):
 			unit.deselect()
 		selected_units.erase(unit)
+
 
 func _select_unit_at(world_point: Vector2, add_to_selection: bool) -> void:
 	var picked_unit := _pick_unit_at(world_point)
@@ -108,6 +191,7 @@ func _select_unit_at(world_point: Vector2, add_to_selection: bool) -> void:
 		picked_unit.select()
 		selected_units.append(picked_unit)
 
+
 func _select_units_in_box(world_rect: Rect2, add_to_selection: bool = false) -> void:
 	if not add_to_selection:
 		_clear_selection()
@@ -118,6 +202,7 @@ func _select_units_in_box(world_rect: Rect2, add_to_selection: bool = false) -> 
 		unit.select()
 		if not selected_units.has(unit):
 			selected_units.append(unit)
+
 
 func _pick_unit_at(world_point: Vector2) -> Unit:
 	var unit := _pick_unit_in_group(world_point, "selectable_units")
@@ -134,6 +219,23 @@ func _pick_attackable_unit_at(world_point: Vector2) -> Unit:
 		if selected == unit:
 			return null
 	return unit
+
+
+func _pick_building_at(world_point: Vector2) -> Building:
+	var best_building: Building = null
+	var best_depth: float = INF
+	for node in get_tree().get_nodes_in_group("buildings"):
+		if node is Building:
+			var building := node as Building
+			if building.building_state == Building.BuildingState.DESTROYED:
+				continue
+			if not building.contains_command_point(world_point):
+				continue
+			var depth := building.global_position.y
+			if depth < best_depth:
+				best_depth = depth
+				best_building = building
+	return best_building
 
 
 func _pick_unit_in_group(world_point: Vector2, group_name: StringName) -> Unit:
@@ -154,7 +256,7 @@ func _pick_unit_in_group(world_point: Vector2, group_name: StringName) -> Unit:
 	for node in get_tree().get_nodes_in_group(group_name):
 		if node is Unit:
 			var unit := node as Unit
-			if unit._is_dying or not unit.contains_world_point(world_point):
+			if unit._is_dying or unit.garrisoned_building != null or not unit.contains_world_point(world_point):
 				continue
 			var depth := unit.global_position.y
 			if depth < best_depth:
@@ -162,6 +264,7 @@ func _pick_unit_in_group(world_point: Vector2, group_name: StringName) -> Unit:
 				best_unit = unit
 
 	return best_unit
+
 
 func _pick_units_in_rect(world_rect: Rect2) -> Array[Unit]:
 	var picked: Array[Unit] = []
@@ -172,19 +275,23 @@ func _pick_units_in_rect(world_rect: Rect2) -> Array[Unit]:
 
 	return picked
 
+
 func _clear_selection() -> void:
 	for unit in selected_units:
 		if is_instance_valid(unit):
 			unit.deselect()
 	selected_units.clear()
 
+
 func _screen_to_world(screen_point: Vector2) -> Vector2:
 	return get_viewport().get_canvas_transform().affine_inverse() * screen_point
+
 
 func _screen_rect_to_world_rect(screen_rect: Rect2) -> Rect2:
 	var top_left := _screen_to_world(screen_rect.position)
 	var bottom_right := _screen_to_world(screen_rect.position + screen_rect.size)
 	return Rect2(top_left, bottom_right - top_left)
+
 
 func _get_screen_drag_rect() -> Rect2:
 	var start := _drag_start_screen
@@ -193,6 +300,7 @@ func _get_screen_drag_rect() -> Rect2:
 		Vector2(minf(start.x, end.x), minf(start.y, end.y)),
 		Vector2(absf(end.x - start.x), absf(end.y - start.y))
 	)
+
 
 func _update_selection_box() -> void:
 	if selection_box == null or not _is_dragging:
@@ -203,6 +311,12 @@ func _update_selection_box() -> void:
 	selection_box.position = drag_rect.position
 	selection_box.size = drag_rect.size
 
+
 func _hide_selection_box() -> void:
 	if selection_box != null:
 		selection_box.visible = false
+
+
+func _is_build_mode_active() -> bool:
+	var build_manager := get_parent().get_node_or_null("BuildManager")
+	return build_manager != null and build_manager.build_mode_active

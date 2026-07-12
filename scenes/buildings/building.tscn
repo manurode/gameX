@@ -1,0 +1,44 @@
+[gd_scene load_steps=6 format=3 uid="uid://cbuilding001"]
+
+[ext_resource type="Script" path="res://scripts/buildings/building.gd" id="1_building"]
+[ext_resource type="Script" path="res://scripts/buildings/building_health_bar.gd" id="2_health"]
+[ext_resource type="Script" path="res://scripts/buildings/building_progress_bar.gd" id="3_progress"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_building"]
+size = Vector2(70, 45)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_damage"]
+size = Vector2(70, 45)
+
+[node name="Building" type="StaticBody2D"]
+y_sort_enabled = true
+collision_layer = 1
+collision_mask = 0
+script = ExtResource("1_building")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+centered = true
+texture_filter = 1
+
+[node name="DamageOverlay" type="Sprite2D" parent="."]
+visible = false
+modulate = Color(0.3, 0.2, 0.15, 0.35)
+centered = true
+texture_filter = 1
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, -11.25)
+shape = SubResource("RectangleShape2D_building")
+
+[node name="SelectionIndicator" type="Line2D" parent="."]
+visible = false
+width = 2.0
+default_color = Color(0.45, 0.95, 0.55, 0.55)
+antialiased = true
+
+[node name="HealthBar" type="Node2D" parent="."]
+visible = false
+script = ExtResource("2_health")
+
+[node name="ProgressBar" type="Node2D" parent="."]
+script = ExtResource("3_progress")

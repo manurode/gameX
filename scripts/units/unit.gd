@@ -2,7 +2,7 @@ class_name Unit
 extends CharacterBody2D
 
 enum CombatStyle { MELEE, RANGED }
-enum UnitState { IDLE, MOVING, CHASING, ATTACKING, DYING }
+enum UnitState { IDLE, MOVING, CHASING, ATTACKING, CONSTRUCTING, GARRISON_APPROACH, DYING }
 
 signal health_changed(current_hp: int, max_hp: int)
 signal died
@@ -13,6 +13,7 @@ const RANGED_DAMAGE_FRAME := 6
 const DEATH_LINGER_SECONDS := 2.8
 const HIT_FLASH_DURATION := 0.14
 const DEATH_FRAME_COUNT := 3
+const STONE_SCENE: PackedScene = preload("res://scenes/combat/stone.tscn")
 
 @export var move_speed: float = 95.0
 @export var max_hp: int = 100
@@ -27,6 +28,9 @@ const DEATH_FRAME_COUNT := 3
 @export var sprite_offset := Vector2(0.0, -36.0)
 @export var combat_style: CombatStyle = CombatStyle.MELEE
 @export var can_attack: bool = true
+@export var can_build: bool = false
+@export var build_range: float = 58.0
+@export var build_power: float = 1.0
 @export var attack_damage: int = 15
 @export var attack_cooldown: float = 1.1
 @export var melee_range: float = 52.0
@@ -36,6 +40,10 @@ const DEATH_FRAME_COUNT := 3
 var hp: int
 var is_selected: bool = false
 var attack_target: Unit = null
+var attack_target_building: Building = null
+var garrisoned_building: Building = null
+var garrison_approach_target: Building = null
+var construction_target: Building = null
 
 var _ground_layer: TinyTilesMap
 var _was_on_water := false
@@ -178,6 +186,8 @@ func deselect() -> void:
 
 
 func get_sprite_center() -> Vector2:
+	if garrisoned_building != null and is_instance_valid(garrisoned_building):
+		return garrisoned_building.get_sprite_center()
 	return global_position + sprite_offset
 
 
@@ -194,7 +204,11 @@ func intersects_world_rect(world_rect: Rect2) -> bool:
 
 
 func move_to(target: Vector2) -> void:
+	if garrisoned_building != null:
+		exit_garrison()
 	attack_target = null
+	attack_target_building = null
+	construction_target = null
 	_unit_state = UnitState.MOVING
 	_is_attack_animating = false
 	navigation_agent.target_desired_distance = 6.0
@@ -203,12 +217,121 @@ func move_to(target: Vector2) -> void:
 
 func attack_target_unit(target: Unit) -> void:
 	if not can_attack or target == self or not is_instance_valid(target) or target.hp <= 0 or target._is_dying:
-		move_to(target.global_position if is_instance_valid(target) else global_position)
+		if not garrisoned_building:
+			move_to(target.global_position if is_instance_valid(target) else global_position)
 		return
 
+	garrison_approach_target = null
+	attack_target_building = null
+	construction_target = null
 	attack_target = target
-	_unit_state = UnitState.CHASING
+	_unit_state = UnitState.CHASING if garrisoned_building == null else UnitState.IDLE
 	_is_attack_animating = false
+
+
+func attack_target_building_node(target: Building) -> void:
+	if not can_attack or not is_instance_valid(target) or target.building_state == Building.BuildingState.DESTROYED or target.hp <= 0:
+		if garrisoned_building == null and is_instance_valid(target):
+			move_to(target.global_position)
+		return
+
+	garrison_approach_target = null
+	attack_target = null
+	construction_target = null
+	attack_target_building = target
+	_unit_state = UnitState.CHASING if garrisoned_building == null else UnitState.IDLE
+	_is_attack_animating = false
+
+
+func approach_garrison(building: Building) -> void:
+	if not can_attack or not is_instance_valid(building) or not building.can_enter_garrison(self):
+		return
+	if garrisoned_building != null:
+		return
+
+	attack_target = null
+	attack_target_building = null
+	construction_target = null
+	garrison_approach_target = building
+	_unit_state = UnitState.GARRISON_APPROACH
+	_is_attack_animating = false
+	navigation_agent.target_desired_distance = 4.0
+	navigation_agent.target_position = building.get_entry_approach_point(global_position)
+
+
+func assign_construction(site: Building) -> void:
+	if not can_build or not is_instance_valid(site) or site.building_state != Building.BuildingState.CONSTRUCTING:
+		return
+	if garrisoned_building != null:
+		exit_garrison()
+	attack_target = null
+	attack_target_building = null
+	construction_target = site
+	_unit_state = UnitState.CONSTRUCTING
+	_is_attack_animating = false
+	navigation_agent.target_desired_distance = 4.0
+	navigation_agent.target_position = site.get_approach_point(global_position)
+
+
+func enter_garrison(building: Building) -> void:
+	if not is_instance_valid(building) or not building.enter_garrison(self):
+		return
+	garrison_approach_target = null
+
+
+func exit_garrison() -> void:
+	if garrisoned_building == null or not is_instance_valid(garrisoned_building):
+		garrisoned_building = null
+		return
+	garrisoned_building.exit_garrison(self)
+
+
+func on_entered_garrison(building: Building) -> void:
+	garrisoned_building = building
+	garrison_approach_target = null
+	attack_target = null
+	attack_target_building = null
+	construction_target = null
+	_unit_state = UnitState.IDLE
+	_is_attack_animating = false
+	velocity = Vector2.ZERO
+	global_position = building.global_position
+	navigation_agent.target_position = global_position
+	animated_sprite.visible = false
+	shadow_sprite.visible = false
+	set_collision_layer_value(2, false)
+	if is_selected:
+		selection_indicator.visible = true
+	else:
+		selection_indicator.visible = false
+
+
+func on_exited_garrison(exit_position: Vector2) -> void:
+	garrisoned_building = null
+	garrison_approach_target = null
+	global_position = exit_position
+	navigation_agent.target_position = exit_position
+	animated_sprite.visible = true
+	shadow_sprite.visible = true
+	set_collision_layer_value(2, true)
+	if is_selected:
+		selection_indicator.visible = true
+	_unit_state = UnitState.IDLE
+	_play_idle()
+
+
+func die_from_garrison_destruction() -> void:
+	garrisoned_building = null
+	_die()
+
+
+func get_attack_damage() -> int:
+	var base := attack_damage
+	if garrisoned_building != null and is_instance_valid(garrisoned_building):
+		var weapon_stats: Dictionary = garrisoned_building.get_weapon_stats()
+		base = weapon_stats.get("damage", attack_damage)
+		return int(round(float(base) * garrisoned_building.garrison_attack_multiplier))
+	return attack_damage
 
 
 func take_damage(amount: int, attacker: Unit = null) -> void:
@@ -317,6 +440,10 @@ func _physics_process(delta: float) -> void:
 	if _is_dying or hp <= 0:
 		return
 
+	if garrisoned_building != null:
+		_process_garrisoned_combat(delta)
+		return
+
 	_attack_cooldown_remaining = maxf(0.0, _attack_cooldown_remaining - delta)
 
 	if attack_target != null and (not is_instance_valid(attack_target) or attack_target.hp <= 0 or attack_target._is_dying):
@@ -324,12 +451,45 @@ func _physics_process(delta: float) -> void:
 		_unit_state = UnitState.IDLE
 		_is_attack_animating = false
 
+	if attack_target_building != null and (
+		not is_instance_valid(attack_target_building)
+		or attack_target_building.hp <= 0
+		or attack_target_building.building_state == Building.BuildingState.DESTROYED
+	):
+		attack_target_building = null
+		_unit_state = UnitState.IDLE
+		_is_attack_animating = false
+
+	if construction_target != null and (
+		not is_instance_valid(construction_target)
+		or construction_target.building_state != Building.BuildingState.CONSTRUCTING
+	):
+		construction_target = null
+		if _unit_state == UnitState.CONSTRUCTING:
+			_unit_state = UnitState.IDLE
+
+	if garrison_approach_target != null and (
+		not is_instance_valid(garrison_approach_target)
+		or not garrison_approach_target.can_enter_garrison(self)
+	):
+		garrison_approach_target = null
+		if _unit_state == UnitState.GARRISON_APPROACH:
+			_unit_state = UnitState.IDLE
+
+	if _unit_state == UnitState.GARRISON_APPROACH:
+		_process_garrison_approach(delta)
+		return
+
+	if _unit_state == UnitState.CONSTRUCTING and construction_target != null:
+		_process_construction(delta)
+		return
+
 	if _unit_state == UnitState.ATTACKING or _is_attack_animating:
 		velocity = Vector2.ZERO
 		_update_terrain_feedback(delta)
 		return
 
-	if attack_target != null:
+	if attack_target != null or attack_target_building != null:
 		_process_combat(delta)
 		return
 
@@ -354,7 +514,7 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2.ZERO
 		return
 
-	velocity = direction * move_speed
+	velocity = direction * _get_effective_move_speed()
 	move_and_slide()
 	_play_walk_animation(direction)
 	_update_terrain_feedback(delta)
@@ -375,7 +535,7 @@ func _process_combat(_delta: float) -> void:
 		var next_position := navigation_agent.get_next_path_position()
 		var direction := global_position.direction_to(next_position)
 		if direction != Vector2.ZERO:
-			velocity = direction * move_speed
+			velocity = direction * _get_effective_move_speed()
 			move_and_slide()
 			_play_walk_animation(direction)
 		else:
@@ -388,16 +548,139 @@ func _process_combat(_delta: float) -> void:
 	_update_terrain_feedback(_delta)
 
 
-func _is_in_attack_range() -> bool:
-	if attack_target == null:
-		return false
+func _process_garrisoned_combat(delta: float) -> void:
+	velocity = Vector2.ZERO
+	_attack_cooldown_remaining = maxf(0.0, _attack_cooldown_remaining - delta)
 
-	var dist := global_position.distance_to(attack_target.global_position)
-	match combat_style:
-		CombatStyle.MELEE:
-			return dist <= melee_range
-		CombatStyle.RANGED:
-			return dist >= attack_range_min and dist <= attack_range_max
+	if attack_target != null and (not is_instance_valid(attack_target) or attack_target.hp <= 0 or attack_target._is_dying):
+		attack_target = null
+	if attack_target_building != null and (
+		not is_instance_valid(attack_target_building)
+		or attack_target_building.hp <= 0
+		or attack_target_building.building_state == Building.BuildingState.DESTROYED
+	):
+		attack_target_building = null
+
+	if attack_target == null and attack_target_building == null:
+		_unit_state = UnitState.IDLE
+		_play_idle()
+		return
+
+	if _is_in_attack_range() and _attack_cooldown_remaining <= 0.0:
+		_start_attack()
+		return
+
+	_play_idle()
+
+
+func _process_garrison_approach(_delta: float) -> void:
+	var building := garrison_approach_target
+	if building == null:
+		_unit_state = UnitState.IDLE
+		return
+
+	var approach := building.get_entry_approach_point(global_position)
+	var distance := global_position.distance_to(approach)
+	if distance <= Building.ENTRY_RANGE:
+		building.enter_garrison(self)
+		return
+
+	navigation_agent.target_position = approach
+	if not navigation_agent.is_navigation_finished():
+		var next_position := navigation_agent.get_next_path_position()
+		var direction := global_position.direction_to(next_position)
+		if direction != Vector2.ZERO:
+			velocity = direction * _get_effective_move_speed()
+			move_and_slide()
+			_play_walk_animation(direction)
+		else:
+			velocity = Vector2.ZERO
+			_play_idle()
+	else:
+		if distance <= Building.ENTRY_RANGE * 1.5:
+			building.enter_garrison(self)
+		else:
+			velocity = Vector2.ZERO
+			_play_idle()
+
+
+func _process_construction(delta: float) -> void:
+	var site := construction_target
+	if site == null:
+		_unit_state = UnitState.IDLE
+		return
+
+	var approach := site.get_approach_point(global_position)
+	var distance := global_position.distance_to(approach)
+	if distance > build_range:
+		navigation_agent.target_position = approach
+		if not navigation_agent.is_navigation_finished():
+			var next_position := navigation_agent.get_next_path_position()
+			var direction := global_position.direction_to(next_position)
+			if direction != Vector2.ZERO:
+				velocity = direction * _get_effective_move_speed()
+				move_and_slide()
+				_play_walk_animation(direction)
+			else:
+				velocity = Vector2.ZERO
+				_play_idle()
+		return
+
+	velocity = Vector2.ZERO
+	_play_build_animation()
+	var progress_rate := (1.0 / maxf(site.build_time_total, 0.1)) * build_power * delta
+	site.add_construction_progress(progress_rate)
+
+
+func _play_build_animation() -> void:
+	if _is_attack_animating:
+		return
+	if animated_sprite.sprite_frames.has_animation(&"idle"):
+		if animated_sprite.animation != &"idle":
+			animated_sprite.play(&"idle")
+	# Subtle hammer bounce while building
+	var bounce := sin(Time.get_ticks_msec() * 0.012) * 2.0
+	animated_sprite.position = Vector2(0.0, bounce)
+
+
+func _get_effective_move_speed() -> float:
+	var multiplier := 1.0
+	for node in get_tree().get_nodes_in_group("slow_zones"):
+		if node is TerrainObstacle:
+			multiplier = minf(multiplier, node.get_slow_multiplier_at(global_position))
+	if _ground_layer != null and _ground_layer.is_water_at(global_position):
+		multiplier = minf(multiplier, 0.65)
+	return move_speed * multiplier
+
+
+func _is_in_attack_range() -> bool:
+	var origin := global_position
+	var weapon_stats: Dictionary = {}
+	if garrisoned_building != null and is_instance_valid(garrisoned_building):
+		origin = garrisoned_building.get_attack_point()
+		weapon_stats = garrisoned_building.get_weapon_stats()
+
+	if attack_target != null and is_instance_valid(attack_target):
+		var dist := origin.distance_to(attack_target.global_position)
+		if garrisoned_building != null:
+			var range_max: float = weapon_stats.get("range_max", attack_range_max)
+			return dist <= range_max
+		match combat_style:
+			CombatStyle.MELEE:
+				return dist <= melee_range
+			CombatStyle.RANGED:
+				return dist >= attack_range_min and dist <= attack_range_max
+
+	if attack_target_building != null and is_instance_valid(attack_target_building):
+		var building_dist := origin.distance_to(attack_target_building.get_attack_point())
+		if garrisoned_building != null:
+			var range_max: float = weapon_stats.get("range_max", attack_range_max)
+			return building_dist <= range_max
+		match combat_style:
+			CombatStyle.MELEE:
+				return building_dist <= melee_range * 1.2
+			CombatStyle.RANGED:
+				return building_dist >= attack_range_min * 0.85 and building_dist <= attack_range_max
 	return false
 
 
@@ -411,23 +694,44 @@ func _get_desired_attack_distance() -> float:
 
 
 func _get_chase_standoff_point() -> Vector2:
-	var target_pos := attack_target.global_position
-	var dir := global_position.direction_to(target_pos)
-	if dir == Vector2.ZERO:
-		dir = Vector2.DOWN
+	if attack_target != null and is_instance_valid(attack_target):
+		var target_pos := attack_target.global_position
+		var dir := global_position.direction_to(target_pos)
+		if dir == Vector2.ZERO:
+			dir = Vector2.DOWN
 
-	var dist := global_position.distance_to(target_pos)
-	var desired := _get_desired_attack_distance()
+		var dist := global_position.distance_to(target_pos)
+		var desired := _get_desired_attack_distance()
 
-	if combat_style == CombatStyle.RANGED:
-		if dist > attack_range_max:
-			desired = attack_range_max * 0.92
-		elif dist < attack_range_min:
-			desired = attack_range_min * 1.02
-		elif _is_in_attack_range():
+		if combat_style == CombatStyle.RANGED:
+			if dist > attack_range_max:
+				desired = attack_range_max * 0.92
+			elif dist < attack_range_min:
+				desired = attack_range_min * 1.02
+			elif _is_in_attack_range():
+				return global_position
+
+		return target_pos - dir * desired
+
+	if attack_target_building != null and is_instance_valid(attack_target_building):
+		var building_pos := attack_target_building.get_approach_point(global_position)
+		var building_dir := global_position.direction_to(building_pos)
+		if building_dir == Vector2.ZERO:
+			building_dir = Vector2.DOWN
+		var building_dist := global_position.distance_to(building_pos)
+		var building_desired := _get_desired_attack_distance()
+		if combat_style == CombatStyle.RANGED:
+			if building_dist > attack_range_max:
+				building_desired = attack_range_max * 0.92
+			elif building_dist < attack_range_min:
+				building_desired = attack_range_min * 1.02
+			elif _is_in_attack_range():
+				return global_position
+		elif building_dist <= melee_range * 1.3:
 			return global_position
+		return building_pos - building_dir * building_desired
 
-	return target_pos - dir * desired
+	return global_position
 
 
 func _start_attack() -> void:
@@ -436,13 +740,20 @@ func _start_attack() -> void:
 	_damage_dealt_this_swing = false
 	velocity = Vector2.ZERO
 	navigation_agent.target_position = global_position
+
+	if garrisoned_building != null:
+		_fire_garrison_attack()
+		return
+
 	_play_attack_animation(_direction_to_target())
 
 
 func _direction_to_target() -> Vector2:
-	if attack_target == null:
-		return Vector2.DOWN
-	return global_position.direction_to(attack_target.global_position)
+	if attack_target != null and is_instance_valid(attack_target):
+		return global_position.direction_to(attack_target.global_position)
+	if attack_target_building != null and is_instance_valid(attack_target_building):
+		return global_position.direction_to(attack_target_building.get_attack_point())
+	return Vector2.DOWN
 
 
 func _play_attack_animation(direction: Vector2) -> void:
@@ -473,33 +784,144 @@ func _on_animation_frame_changed() -> void:
 		_deal_attack()
 
 
+func _fire_garrison_attack() -> void:
+	_deal_attack()
+	_is_attack_animating = false
+	var cooldown_mult := 1.0
+	if garrisoned_building != null and is_instance_valid(garrisoned_building):
+		var weapon_stats: Dictionary = garrisoned_building.get_weapon_stats()
+		cooldown_mult = weapon_stats.get("cooldown_mult", 1.0)
+	_attack_cooldown_remaining = attack_cooldown * cooldown_mult
+	_unit_state = UnitState.IDLE if garrisoned_building != null else UnitState.CHASING
+
+
 func _deal_attack() -> void:
-	if attack_target == null or not is_instance_valid(attack_target) or attack_target.hp <= 0 or attack_target._is_dying:
+	if attack_target != null and is_instance_valid(attack_target) and attack_target.hp > 0 and not attack_target._is_dying:
+		if garrisoned_building != null:
+			_fire_garrison_projectile_at_unit(attack_target)
+			return
+		match combat_style:
+			CombatStyle.MELEE:
+				if global_position.distance_to(attack_target.global_position) <= melee_range * 1.15:
+					attack_target.take_damage(get_attack_damage(), self)
+			CombatStyle.RANGED:
+				_spawn_arrow_at_unit(attack_target)
 		return
 
-	match combat_style:
-		CombatStyle.MELEE:
-			if global_position.distance_to(attack_target.global_position) <= melee_range * 1.15:
-				attack_target.take_damage(attack_damage, self)
-		CombatStyle.RANGED:
-			_spawn_arrow()
+	if attack_target_building != null and is_instance_valid(attack_target_building) and attack_target_building.hp > 0:
+		if garrisoned_building != null:
+			_fire_garrison_projectile_at_building(attack_target_building)
+			return
+		match combat_style:
+			CombatStyle.MELEE:
+				if global_position.distance_to(attack_target_building.get_attack_point()) <= melee_range * 1.25:
+					attack_target_building.take_damage(get_attack_damage(), self)
+			CombatStyle.RANGED:
+				_spawn_arrow_at_building(attack_target_building)
 
 
-func _spawn_arrow() -> void:
-	if attack_target == null:
+func _fire_garrison_projectile_at_unit(target_unit: Unit) -> void:
+	if garrisoned_building == null or target_unit == null:
+		return
+	var weapon_id := garrisoned_building.garrison_weapon
+	if weapon_id == "stone":
+		_spawn_stone_at_unit(target_unit)
+	else:
+		_spawn_arrow_at_unit(target_unit)
+
+
+func _fire_garrison_projectile_at_building(target_building: Building) -> void:
+	if garrisoned_building == null or target_building == null:
+		return
+	var weapon_id := garrisoned_building.garrison_weapon
+	if weapon_id == "stone":
+		_spawn_stone_at_building(target_building)
+	else:
+		_spawn_arrow_at_building(target_building)
+
+
+func _spawn_stone_at_unit(target_unit: Unit) -> void:
+	if target_unit == null:
+		return
+
+	var stone: Stone = STONE_SCENE.instantiate()
+	var origin := get_sprite_center()
+	var target_point := target_unit.get_sprite_center()
+	var dir := origin.direction_to(target_point)
+	if dir == Vector2.ZERO:
+		dir = Vector2.RIGHT
+
+	stone.shooter = self
+	stone.target = target_unit
+	stone.damage = get_attack_damage()
+	stone.direction = dir
+	if garrisoned_building != null:
+		var weapon_stats: Dictionary = garrisoned_building.get_weapon_stats()
+		stone.speed = weapon_stats.get("speed", 220.0)
+	var world := get_parent().get_parent()
+	world.add_child(stone)
+	stone.global_position = origin + dir * 14.0
+
+
+func _spawn_stone_at_building(target_building: Building) -> void:
+	if target_building == null:
+		return
+
+	var stone: Stone = STONE_SCENE.instantiate()
+	var origin := get_sprite_center()
+	var target_point := target_building.get_attack_point()
+	var dir := origin.direction_to(target_point)
+	if dir == Vector2.ZERO:
+		dir = Vector2.RIGHT
+
+	stone.shooter = self
+	stone.building_target = target_building
+	stone.damage = get_attack_damage()
+	stone.direction = dir
+	if garrisoned_building != null:
+		var weapon_stats: Dictionary = garrisoned_building.get_weapon_stats()
+		stone.speed = weapon_stats.get("speed", 220.0)
+	var world := get_parent().get_parent()
+	world.add_child(stone)
+	stone.global_position = origin + dir * 14.0
+
+
+func _spawn_arrow_at_unit(target_unit: Unit) -> void:
+	if target_unit == null:
 		return
 
 	var arrow_scene: PackedScene = preload("res://scenes/combat/arrow.tscn")
 	var arrow: Arrow = arrow_scene.instantiate()
 	var origin := get_sprite_center()
-	var target_point := attack_target.get_sprite_center()
+	var target_point := target_unit.get_sprite_center()
 	var dir := origin.direction_to(target_point)
 	if dir == Vector2.ZERO:
 		dir = Vector2.RIGHT
 
 	arrow.shooter = self
-	arrow.target = attack_target
-	arrow.damage = attack_damage
+	arrow.target = target_unit
+	arrow.damage = get_attack_damage()
+	arrow.direction = dir
+	var world := get_parent().get_parent()
+	world.add_child(arrow)
+	arrow.global_position = origin + dir * 12.0
+
+
+func _spawn_arrow_at_building(target_building: Building) -> void:
+	if target_building == null:
+		return
+
+	var arrow_scene: PackedScene = preload("res://scenes/combat/arrow.tscn")
+	var arrow: Arrow = arrow_scene.instantiate()
+	var origin := get_sprite_center()
+	var target_point := target_building.get_attack_point()
+	var dir := origin.direction_to(target_point)
+	if dir == Vector2.ZERO:
+		dir = Vector2.RIGHT
+
+	arrow.shooter = self
+	arrow.building_target = target_building
+	arrow.damage = get_attack_damage()
 	arrow.direction = dir
 	var world := get_parent().get_parent()
 	world.add_child(arrow)
@@ -520,8 +942,11 @@ func _on_animation_finished() -> void:
 
 	if attack_target != null and is_instance_valid(attack_target) and attack_target.hp > 0 and not attack_target._is_dying:
 		_unit_state = UnitState.CHASING
+	elif attack_target_building != null and is_instance_valid(attack_target_building) and attack_target_building.hp > 0:
+		_unit_state = UnitState.CHASING
 	else:
 		attack_target = null
+		attack_target_building = null
 		_unit_state = UnitState.IDLE
 
 
@@ -538,6 +963,7 @@ func _freeze_death_pose() -> void:
 func _play_idle() -> void:
 	if _is_attack_animating:
 		return
+	animated_sprite.position = Vector2.ZERO
 	if animated_sprite.animation != &"idle" and animated_sprite.sprite_frames.has_animation(&"idle"):
 		animated_sprite.play(&"idle")
 

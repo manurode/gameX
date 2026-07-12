@@ -1,10 +1,10 @@
-class_name Arrow
+class_name Stone
 extends Area2D
 
-const MAX_LIFETIME := 2.5
+const MAX_LIFETIME := 1.8
 
-var speed: float = 300.0
-var damage: int = 12
+var speed: float = 220.0
+var damage: int = 4
 var direction: Vector2 = Vector2.RIGHT
 var shooter: Unit
 var target: Unit
@@ -21,16 +21,15 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	var motion := direction * speed * delta
-	global_position += motion
+	global_position += direction * speed * delta
 	_lifetime += delta
 
 	if not _has_hit and target != null and is_instance_valid(target) and target.hp > 0 and not target._is_dying:
-		if global_position.distance_to(target.get_sprite_center()) <= 18.0:
+		if global_position.distance_to(target.get_sprite_center()) <= 16.0:
 			_hit_unit(target)
 
 	if not _has_hit and building_target != null and is_instance_valid(building_target) and building_target.hp > 0:
-		if global_position.distance_to(building_target.get_attack_point()) <= 22.0:
+		if global_position.distance_to(building_target.get_attack_point()) <= 20.0:
 			_hit_building(building_target)
 
 	if _lifetime >= MAX_LIFETIME:
@@ -38,15 +37,8 @@ func _physics_process(delta: float) -> void:
 
 
 func _draw() -> void:
-	draw_colored_polygon(
-		PackedVector2Array([
-			Vector2(10.0, 0.0),
-			Vector2(-6.0, -3.0),
-			Vector2(-4.0, 0.0),
-			Vector2(-6.0, 3.0),
-		]),
-		Color(0.72, 0.52, 0.28, 1.0)
-	)
+	draw_circle(Vector2.ZERO, 4.5, Color(0.55, 0.52, 0.48, 1.0))
+	draw_circle(Vector2(-1.0, -1.0), 2.0, Color(0.68, 0.65, 0.6, 0.7))
 
 
 func _on_body_entered(body: Node2D) -> void:

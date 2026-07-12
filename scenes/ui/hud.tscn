@@ -1,4 +1,6 @@
-[gd_scene load_steps=2 format=3 uid="uid://chud001"]
+[gd_scene load_steps=3 format=3 uid="uid://chud001"]
+
+[ext_resource type="Script" path="res://scripts/ui/hud.gd" id="1_hud"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_selection"]
 bg_color = Color(0.3, 0.8, 1, 0.25)
@@ -9,6 +11,7 @@ border_width_bottom = 1
 border_color = Color(0.3, 0.8, 1, 0.9)
 
 [node name="HUD" type="CanvasLayer"]
+script = ExtResource("1_hud")
 
 [node name="MarginContainer" type="MarginContainer" parent="."]
 anchors_preset = 15
@@ -35,6 +38,24 @@ theme_override_constants/shadow_offset_x = 1
 theme_override_constants/shadow_offset_y = 1
 text = "gameX"
 
+[node name="ResourcesLabel" type="Label" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.95, 0.88, 0.55, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.6)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+text = "Madera: 0  |  Piedra: 0  |  Trigo: 0"
+
+[node name="BuildLabel" type="Label" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.75, 0.95, 0.8, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.6)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+text = "Construcción: 1 Casa  2 Casa grande  3 Molino  4 Establo  5 Torre  6 Muralla  7 Castillo  8 Castillo grande"
+
 [node name="HelpLabel" type="Label" parent="MarginContainer/VBoxContainer"]
 layout_mode = 2
 mouse_filter = 2
@@ -42,7 +63,7 @@ theme_override_colors/font_color = Color(0.9, 0.9, 0.9, 1)
 theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.6)
 theme_override_constants/shadow_offset_x = 1
 theme_override_constants/shadow_offset_y = 1
-text = "WASD/bordes: cámara  |  Rueda: zoom  |  Click: seleccionar  |  Click derecho: mover  |  Click derecho en unidad: atacar"
+text = "WASD: cámara  |  Click der. edificio vacío: entrar  |  Click der. edificio ocupado: atacar  |  Shift+click der.: asediar  |  E: salir  |  U: mejorar armas  |  1-8: construir"
 
 [node name="SelectionBox" type="Panel" parent="."]
 visible = false

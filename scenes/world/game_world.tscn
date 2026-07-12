@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3 uid="uid://cworld001"]
+[gd_scene load_steps=12 format=3 uid="uid://cworld001"]
 
 [ext_resource type="Script" path="res://scripts/world/game_world.gd" id="1_world"]
 [ext_resource type="Script" path="res://scripts/camera/rts_camera.gd" id="2_camera"]
@@ -7,9 +7,11 @@
 [ext_resource type="Script" path="res://scripts/world/world_decorations.gd" id="5_decorations"]
 [ext_resource type="Script" path="res://scripts/world/water_animator.gd" id="6_water"]
 [ext_resource type="Script" path="res://scripts/input/selection_manager.gd" id="7_selection"]
-[ext_resource type="PackedScene" uid="uid://cunitknight" path="res://scenes/units/unit_knight.tscn" id="8_knight"]
-[ext_resource type="PackedScene" uid="uid://cunitarcher" path="res://scenes/units/unit_archer.tscn" id="9_archer"]
-[ext_resource type="PackedScene" uid="uid://cunitbuilder" path="res://scenes/units/unit_builder.tscn" id="10_builder"]
+[ext_resource type="Script" path="res://scripts/input/build_manager.gd" id="8_build"]
+[ext_resource type="Script" path="res://scripts/game/resource_manager.gd" id="9_resources"]
+[ext_resource type="PackedScene" uid="uid://cunitknight" path="res://scenes/units/unit_knight.tscn" id="10_knight"]
+[ext_resource type="PackedScene" uid="uid://cunitarcher" path="res://scenes/units/unit_archer.tscn" id="11_archer"]
+[ext_resource type="PackedScene" uid="uid://cunitbuilder" path="res://scenes/units/unit_builder.tscn" id="12_builder"]
 
 [node name="GameWorld" type="Node2D"]
 script = ExtResource("1_world")
@@ -32,14 +34,23 @@ script = ExtResource("6_water")
 y_sort_enabled = true
 script = ExtResource("5_decorations")
 
+[node name="Buildings" type="Node2D" parent="."]
+y_sort_enabled = true
+
 [node name="Units" type="Node2D" parent="."]
 y_sort_enabled = true
 
-[node name="Knight" parent="Units" instance=ExtResource("8_knight")]
+[node name="Knight" parent="Units" instance=ExtResource("10_knight")]
 
-[node name="Archer" parent="Units" instance=ExtResource("9_archer")]
+[node name="Archer" parent="Units" instance=ExtResource("11_archer")]
 
-[node name="Builder" parent="Units" instance=ExtResource("10_builder")]
+[node name="Builder" parent="Units" instance=ExtResource("12_builder")]
 
 [node name="SelectionManager" type="Node" parent="."]
 script = ExtResource("7_selection")
+
+[node name="BuildManager" type="Node2D" parent="."]
+script = ExtResource("8_build")
+
+[node name="ResourceManager" type="Node" parent="."]
+script = ExtResource("9_resources")

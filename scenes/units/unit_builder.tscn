@@ -8,6 +8,8 @@
 [node name="UnitBuilder" instance=ExtResource("1_base")]
 move_speed = 88.0
 can_attack = false
+can_build = true
+build_power = 1.0
 idle_sheet = ExtResource("2_idle")
 walk_up_sheet = ExtResource("3_walk_up")
 walk_down_sheet = ExtResource("4_walk_down")
