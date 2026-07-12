@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3 uid="uid://cworld001"]
+[gd_scene load_steps=11 format=3 uid="uid://cworld001"]
 
 [ext_resource type="Script" path="res://scripts/camera/rts_camera.gd" id="1_camera"]
 [ext_resource type="Script" path="res://scripts/world/terrain_map.gd" id="2_terrain"]
@@ -6,10 +6,11 @@
 [ext_resource type="PackedScene" uid="uid://cunit001" path="res://scenes/units/unit.tscn" id="4_unit"]
 [ext_resource type="Texture2D" path="res://assets/sprites/units/blue_infantry.png" id="5_infantry"]
 [ext_resource type="Texture2D" path="res://assets/sprites/units/blue_truck.png" id="6_truck"]
-[ext_resource type="Texture2D" path="res://assets/sprites/units/blue_plane.png" id="7_plane"]
+[ext_resource type="Texture2D" path="res://assets/sprites/units/blue_tank.png" id="7_tank"]
 [ext_resource type="Texture2D" path="res://assets/sprites/units/orange_tank.png" id="8_orange_tank"]
 [ext_resource type="Script" path="res://scripts/input/selection_manager.gd" id="9_selection"]
 [ext_resource type="Script" path="res://scripts/world/navigation_setup.gd" id="10_navigation"]
+[ext_resource type="Script" path="res://scripts/world/decoration_map.gd" id="11_decorations"]
 
 [node name="GameWorld" type="Node2D"]
 
@@ -26,26 +27,31 @@ script = ExtResource("10_navigation")
 tile_set = ExtResource("3_tileset")
 script = ExtResource("2_terrain")
 
+[node name="Decorations" type="TileMapLayer" parent="Terrain"]
+z_index = 1
+tile_set = ExtResource("3_tileset")
+script = ExtResource("11_decorations")
+
 [node name="Units" type="Node2D" parent="."]
 y_sort_enabled = true
 
 [node name="Unit1" parent="Units" instance=ExtResource("4_unit")]
-position = Vector2(40, 40)
+position = Vector2(200, 48)
 
 [node name="Unit2" parent="Units" instance=ExtResource("4_unit")]
-position = Vector2(72, 56)
+position = Vector2(280, 72)
 unit_texture = ExtResource("5_infantry")
 
 [node name="Unit3" parent="Units" instance=ExtResource("4_unit")]
-position = Vector2(56, 184)
+position = Vector2(160, 128)
 unit_texture = ExtResource("6_truck")
 
 [node name="Unit4" parent="Units" instance=ExtResource("4_unit")]
-position = Vector2(120, 96)
-unit_texture = ExtResource("7_plane")
+position = Vector2(320, 96)
+unit_texture = ExtResource("7_tank")
 
 [node name="Unit5" parent="Units" instance=ExtResource("4_unit")]
-position = Vector2(200, 160)
+position = Vector2(240, 168)
 unit_texture = ExtResource("8_orange_tank")
 
 [node name="SelectionManager" type="Node" parent="."]

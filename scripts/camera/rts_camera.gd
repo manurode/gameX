@@ -6,6 +6,7 @@ const PAN_SPEED := 500.0
 const ZOOM_STEP := 0.1
 const EDGE_PAN_MARGIN := 24
 const EDGE_PAN_SPEED := 450.0
+const START_ZOOM := 2.0
 const MAP_BOUNDS := Rect2(0.0, 0.0, 480.0, 272.0)
 
 var _mouse_in_window := false
@@ -13,7 +14,7 @@ var _mouse_in_window := false
 func _ready() -> void:
 	make_current()
 	position = MAP_BOUNDS.get_center()
-	zoom = Vector2(1.0, 1.0)
+	zoom = Vector2(START_ZOOM, START_ZOOM)
 
 func _notification(what: int) -> void:
 	match what:

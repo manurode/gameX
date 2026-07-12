@@ -1,8 +1,9 @@
 extends Node
 
 const DRAG_THRESHOLD := 6.0
+const UNIT_COLLISION_MASK := 2
 
-var selected_units: Array[Node] = []
+var selected_units: Array[Unit] = []
 
 var _drag_start_screen: Vector2
 var _drag_current_screen: Vector2
@@ -11,7 +12,7 @@ var _drag_started: bool = false
 
 @onready var selection_box: Control = get_node_or_null("/root/Main/HUD/SelectionBox")
 
-func _unhandled_input(event: InputEvent) -> void:
+func _input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		_handle_mouse_button(event as InputEventMouseButton)
 	elif event is InputEventMouseMotion and _drag_started:
@@ -20,6 +21,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _handle_mouse_button(event: InputEventMouseButton) -> void:
 	if event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
 		_move_selected_units(_screen_to_world(event.position))
+		get_viewport().set_input_as_handled()
 		return
 
 	if event.button_index != MOUSE_BUTTON_LEFT:
@@ -31,6 +33,7 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 		_drag_started = true
 		_is_dragging = false
 		_update_selection_box()
+		get_viewport().set_input_as_handled()
 		return
 
 	if not _drag_started:
@@ -49,6 +52,7 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 		_select_unit_at(_screen_to_world(event.position), event.shift_pressed)
 
 	_is_dragging = false
+	get_viewport().set_input_as_handled()
 
 func _handle_mouse_motion(event: InputEventMouseMotion) -> void:
 	_drag_current_screen = event.position
@@ -57,69 +61,70 @@ func _handle_mouse_motion(event: InputEventMouseMotion) -> void:
 	_update_selection_box()
 
 func _move_selected_units(world_point: Vector2) -> void:
-	if selected_units.is_empty():
-		return
-
 	for unit in selected_units:
-		if is_instance_valid(unit) and unit.has_method("move_to"):
-			unit.call("move_to", world_point)
+		if is_instance_valid(unit):
+			unit.move_to(world_point)
 
 func _select_unit_at(world_point: Vector2, add_to_selection: bool) -> void:
-	var closest_unit: Node = null
-	var closest_distance: float = INF
+	var picked_unit := _pick_unit_at(world_point)
 
-	for unit in get_tree().get_nodes_in_group("units"):
-		if not _is_selectable_unit(unit):
-			continue
-		if not unit.call("contains_world_point", world_point):
-			continue
-
-		var unit_node := unit as Node2D
-		var distance: float = unit_node.global_position.distance_to(world_point)
-		if distance < closest_distance:
-			closest_distance = distance
-			closest_unit = unit
-
-	if closest_unit == null:
+	if picked_unit == null:
 		if not add_to_selection:
 			_clear_selection()
 		return
 
 	if add_to_selection:
-		if closest_unit.get("is_selected"):
-			closest_unit.call("deselect")
-			selected_units.erase(closest_unit)
+		if picked_unit.is_selected:
+			picked_unit.deselect()
+			selected_units.erase(picked_unit)
 		else:
-			closest_unit.call("select")
-			selected_units.append(closest_unit)
+			picked_unit.select()
+			selected_units.append(picked_unit)
 	else:
 		_clear_selection()
-		closest_unit.call("select")
-		selected_units.append(closest_unit)
+		picked_unit.select()
+		selected_units.append(picked_unit)
 
 func _select_units_in_box(world_rect: Rect2, add_to_selection: bool = false) -> void:
 	if not add_to_selection:
 		_clear_selection()
 
-	for unit in get_tree().get_nodes_in_group("units"):
-		if not _is_selectable_unit(unit):
+	for unit in _pick_units_in_rect(world_rect):
+		if add_to_selection and unit.is_selected:
 			continue
-		if not unit.call("intersects_world_rect", world_rect):
-			continue
-		if add_to_selection and unit.get("is_selected"):
-			continue
-		unit.call("select")
+		unit.select()
 		if not selected_units.has(unit):
 			selected_units.append(unit)
+
+func _pick_unit_at(world_point: Vector2) -> Unit:
+	var space_state := get_viewport().world_2d.direct_space_state
+	var params := PhysicsPointQueryParameters2D.new()
+	params.position = world_point
+	params.collision_mask = UNIT_COLLISION_MASK
+	params.collide_with_bodies = true
+	params.collide_with_areas = false
+
+	for result in space_state.intersect_point(params, 16):
+		var collider: Object = result.collider
+		if collider is Unit and (collider as Unit).is_in_group("selectable_units"):
+			return collider as Unit
+
+	return null
+
+func _pick_units_in_rect(world_rect: Rect2) -> Array[Unit]:
+	var picked: Array[Unit] = []
+
+	for node in get_tree().get_nodes_in_group("selectable_units"):
+		if node is Unit and (node as Unit).intersects_world_rect(world_rect):
+			picked.append(node as Unit)
+
+	return picked
 
 func _clear_selection() -> void:
 	for unit in selected_units:
 		if is_instance_valid(unit):
-			unit.call("deselect")
+			unit.deselect()
 	selected_units.clear()
-
-func _is_selectable_unit(unit: Node) -> bool:
-	return unit is Node2D and unit.has_method("contains_world_point")
 
 func _screen_to_world(screen_point: Vector2) -> Vector2:
 	return get_viewport().get_canvas_transform().affine_inverse() * screen_point
