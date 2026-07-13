@@ -24,7 +24,7 @@ func _physics_process(delta: float) -> void:
 	global_position += direction * speed * delta
 	_lifetime += delta
 
-	if not _has_hit and target != null and is_instance_valid(target) and target.hp > 0 and not target._is_dying:
+	if not _has_hit and target != null and _can_hit_unit(target):
 		if global_position.distance_to(target.get_sprite_center()) <= 16.0:
 			_hit_unit(target)
 
@@ -41,12 +41,20 @@ func _draw() -> void:
 	draw_circle(Vector2(-1.0, -1.0), 2.0, Color(0.68, 0.65, 0.6, 0.7))
 
 
+func _can_hit_unit(unit: Unit) -> bool:
+	if unit == null or not is_instance_valid(unit) or unit == shooter or unit.hp <= 0 or unit._is_dying:
+		return false
+	if shooter != null and is_instance_valid(shooter) and not shooter.is_hostile_to(unit):
+		return false
+	return true
+
+
 func _on_body_entered(body: Node2D) -> void:
 	if _has_hit:
 		return
 	if body is Unit:
 		var unit := body as Unit
-		if unit == shooter or unit.hp <= 0 or unit._is_dying:
+		if not _can_hit_unit(unit):
 			return
 		_hit_unit(unit)
 	elif body is Building:

@@ -357,6 +357,10 @@ func attack_target_unit(target: Unit) -> void:
 		if not garrisoned_building:
 			move_to(target.global_position if is_instance_valid(target) else global_position)
 		return
+	if not is_hostile_to(target):
+		if not garrisoned_building:
+			move_to(target.global_position)
+		return
 
 	garrison_approach_target = null
 	attack_target_building = null
@@ -477,6 +481,8 @@ func get_attack_damage() -> int:
 
 func take_damage(amount: int, attacker: Unit = null) -> void:
 	if _is_dying or hp <= 0:
+		return
+	if attacker != null and is_instance_valid(attacker) and not is_hostile_to(attacker):
 		return
 
 	hp = maxi(0, hp - amount)
@@ -1053,6 +1059,8 @@ func _fire_garrison_attack() -> void:
 
 func _deal_attack() -> void:
 	if attack_target != null and is_instance_valid(attack_target) and attack_target.hp > 0 and not attack_target._is_dying:
+		if not is_hostile_to(attack_target):
+			return
 		if garrisoned_building != null:
 			_fire_garrison_projectile_at_unit(attack_target)
 			return
