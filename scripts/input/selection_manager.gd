@@ -26,6 +26,10 @@ func _ready() -> void:
 
 
 func _input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		var mouse_event := event as InputEventMouseButton
+		if _is_pointer_over_ui(mouse_event.position):
+			return
 	if _is_placement_mode_active() and event is InputEventMouseButton:
 		var mouse_event := event as InputEventMouseButton
 		if mouse_event.button_index == MOUSE_BUTTON_LEFT or mouse_event.button_index == MOUSE_BUTTON_RIGHT:
@@ -327,3 +331,10 @@ func _is_spawn_mode_active() -> bool:
 
 func _is_placement_mode_active() -> bool:
 	return _is_build_mode_active() or _is_spawn_mode_active()
+
+
+func _is_pointer_over_ui(screen_pos: Vector2) -> bool:
+	var hub := get_node_or_null("/root/Main/HUD/GameHub")
+	if hub is Control and (hub as Control).get_global_rect().has_point(screen_pos):
+		return true
+	return false

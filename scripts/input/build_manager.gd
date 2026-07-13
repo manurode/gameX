@@ -65,6 +65,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	if event is InputEventMouseButton and event.pressed:
 		var mouse_event := event as InputEventMouseButton
+		if _is_pointer_over_ui(mouse_event.position):
+			return
 		if mouse_event.button_index == MOUSE_BUTTON_LEFT:
 			_try_place_building(_screen_to_world(mouse_event.position))
 			get_viewport().set_input_as_handled()
@@ -83,6 +85,10 @@ func _process(_delta: float) -> void:
 	ghost_valid = _is_valid_placement(world_pos)
 	_ghost_sprite.modulate = Color(0.4, 0.95, 0.55, 0.65) if ghost_valid else Color(0.95, 0.35, 0.35, 0.55)
 	_ghost_sprite.visible = true
+
+
+func start_build_mode(type_id: String) -> void:
+	_start_build_mode(type_id)
 
 
 func _start_build_mode(type_id: String) -> void:
@@ -200,3 +206,10 @@ func _request_nav_rebuild() -> void:
 
 func _screen_to_world(screen_point: Vector2) -> Vector2:
 	return get_viewport().get_canvas_transform().affine_inverse() * screen_point
+
+
+func _is_pointer_over_ui(screen_pos: Vector2) -> bool:
+	var hub := get_node_or_null("/root/Main/HUD/GameHub")
+	if hub is Control and (hub as Control).get_global_rect().has_point(screen_pos):
+		return true
+	return false
