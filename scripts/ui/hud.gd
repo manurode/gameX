@@ -6,10 +6,10 @@ extends CanvasLayer
 var _build_manager: Node
 
 
-func setup(resource_manager: ResourceManager, build_manager: Node, spawn_manager: Node = null) -> void:
+func setup(resource_manager: ResourceManager, build_manager: Node, spawn_manager: Node = null, selection_manager: Node = null) -> void:
 	_build_manager = build_manager
 	if game_hub != null and game_hub.has_method("setup"):
-		game_hub.setup(resource_manager, build_manager)
+		game_hub.setup(resource_manager, build_manager, selection_manager)
 	if _build_manager != null and _build_manager.has_signal("build_mode_changed"):
 		_build_manager.build_mode_changed.connect(_on_build_mode_changed)
 

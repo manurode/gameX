@@ -3,6 +3,7 @@ extends CharacterBody2D
 
 enum CombatStyle { MELEE, RANGED }
 enum UnitState { IDLE, MOVING, CHASING, ATTACKING, CONSTRUCTING, GARRISON_APPROACH, DYING }
+enum FormationType { COLUMN, LINE, WEDGE, DIAMOND }
 
 signal health_changed(current_hp: int, max_hp: int)
 signal died
@@ -178,31 +179,93 @@ func reset_navigation() -> void:
 	_unit_state = UnitState.IDLE
 
 
-static func compute_formation_positions(center: Vector2, count: int) -> PackedVector2Array:
-	var positions := PackedVector2Array()
+static func compute_formation_positions(
+	center: Vector2,
+	count: int,
+	formation: FormationType = FormationType.WEDGE
+) -> PackedVector2Array:
 	if count <= 0:
-		return positions
+		return PackedVector2Array()
 
 	var spacing := PERSONAL_SPACE_RADIUS * 2.0
+	match formation:
+		FormationType.COLUMN:
+			return _compute_column_positions(center, count, spacing)
+		FormationType.LINE:
+			return _compute_line_positions(center, count, spacing)
+		FormationType.WEDGE:
+			return _compute_wedge_positions(center, count, spacing)
+		FormationType.DIAMOND:
+			return _compute_diamond_positions(center, count, spacing)
+		_:
+			return _compute_wedge_positions(center, count, spacing)
+
+
+static func _compute_column_positions(center: Vector2, count: int, spacing: float) -> PackedVector2Array:
+	var positions := PackedVector2Array()
+	for i in count:
+		positions.append(center + Vector2(0.0, float(i) * spacing))
+	return positions
+
+
+static func _compute_line_positions(center: Vector2, count: int, spacing: float) -> PackedVector2Array:
+	var positions := PackedVector2Array()
+	for i in count:
+		var offset := (float(i) - (float(count) - 1.0) / 2.0) * spacing
+		positions.append(center + Vector2(offset, 0.0))
+	return positions
+
+
+static func _compute_wedge_positions(center: Vector2, count: int, spacing: float) -> PackedVector2Array:
+	var positions := PackedVector2Array()
 	positions.append(center)
 
 	var assigned := 1
-	var ring := 1
+	var row := 1
 	while assigned < count:
-		var ring_radius := ring * spacing
-		var slots_in_ring := ring * 6
-		for slot in slots_in_ring:
+		var depth := float(row) * spacing
+		var width := row + 1
+		for col in width:
 			if assigned >= count:
 				break
-			var angle := (float(slot) / float(slots_in_ring)) * TAU
-			positions.append(center + Vector2(cos(angle), sin(angle)) * ring_radius)
+			var lateral := (float(col) - float(width - 1) / 2.0) * spacing
+			positions.append(center + Vector2(lateral, depth))
 			assigned += 1
-		ring += 1
+		row += 1
 
 	return positions
 
 
-static func assign_move_destinations(units: Array, center: Vector2) -> void:
+static func _compute_diamond_positions(center: Vector2, count: int, spacing: float) -> PackedVector2Array:
+	var positions := PackedVector2Array()
+	positions.append(center)
+
+	if count <= 1:
+		return positions
+
+	var offsets: Array[Vector2] = []
+	var layer := 1
+	while offsets.size() < count - 1:
+		for x in range(-layer, layer + 1):
+			offsets.append(Vector2(float(x), -float(layer)))
+		for y in range(-layer + 1, layer):
+			offsets.append(Vector2(float(layer), float(y)))
+			offsets.append(Vector2(-float(layer), float(y)))
+		for x in range(layer - 1, -layer, -1):
+			offsets.append(Vector2(float(x), float(layer)))
+		layer += 1
+
+	for i in count - 1:
+		positions.append(center + offsets[i] * spacing)
+
+	return positions
+
+
+static func assign_move_destinations(
+	units: Array,
+	center: Vector2,
+	formation: FormationType = FormationType.WEDGE
+) -> void:
 	var valid_units: Array[Unit] = []
 	for unit in units:
 		if is_instance_valid(unit) and unit.garrisoned_building == null:
@@ -211,25 +274,14 @@ static func assign_move_destinations(units: Array, center: Vector2) -> void:
 	if valid_units.is_empty():
 		return
 
-	var slots := compute_formation_positions(center, valid_units.size())
-	var available_slots: Array[Vector2] = []
-	for slot in slots:
-		available_slots.append(slot)
+	var slots := compute_formation_positions(center, valid_units.size(), formation)
 
 	valid_units.sort_custom(func(a: Unit, b: Unit) -> bool:
 		return a.get_instance_id() < b.get_instance_id()
 	)
 
-	for unit in valid_units:
-		var best_index := 0
-		var best_distance := INF
-		for i in available_slots.size():
-			var distance := unit.global_position.distance_squared_to(available_slots[i])
-			if distance < best_distance:
-				best_distance = distance
-				best_index = i
-		unit.move_to(available_slots[best_index])
-		available_slots.remove_at(best_index)
+	for i in valid_units.size():
+		valid_units[i].move_to(slots[i])
 
 
 func select() -> void:

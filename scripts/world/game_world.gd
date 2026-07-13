@@ -53,7 +53,7 @@ func on_ground_ready(ground: TinyTilesMap) -> void:
 
 	var hud := get_node_or_null("/root/Main/HUD")
 	if hud != null and hud.has_method("setup"):
-		hud.call("setup", resource_manager, build_manager, unit_spawn_manager)
+		hud.call("setup", resource_manager, build_manager, unit_spawn_manager, selection_manager)
 
 
 func _on_build_mode_changed(active: bool, _type_id: String) -> void:

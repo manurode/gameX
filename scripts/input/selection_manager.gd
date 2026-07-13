@@ -1,9 +1,14 @@
 extends Node
 
+signal selection_changed(selected_units: Array)
+signal formation_changed(formation: Unit.FormationType)
+
 const DRAG_THRESHOLD := 6.0
 const UNIT_COLLISION_MASK := 2
+const MIN_FORMATION_UNITS := 2
 
 var selected_units: Array[Unit] = []
+var move_formation: Unit.FormationType = Unit.FormationType.WEDGE
 
 var _drag_start_screen: Vector2
 var _drag_current_screen: Vector2
@@ -157,7 +162,42 @@ func _exit_garrison_for_selected() -> void:
 
 
 func _move_selected_units(world_point: Vector2) -> void:
-	Unit.assign_move_destinations(selected_units, world_point)
+	Unit.assign_move_destinations(selected_units, world_point, move_formation)
+
+
+func set_move_formation(formation: Unit.FormationType) -> void:
+	move_formation = formation
+	formation_changed.emit(move_formation)
+	_apply_formation_to_selected()
+
+
+func _apply_formation_to_selected() -> void:
+	var valid_units: Array[Unit] = []
+	for unit in selected_units:
+		if is_instance_valid(unit) and unit.garrisoned_building == null:
+			valid_units.append(unit)
+
+	if valid_units.size() < MIN_FORMATION_UNITS:
+		return
+
+	var center := Vector2.ZERO
+	for unit in valid_units:
+		center += unit.global_position
+	center /= float(valid_units.size())
+
+	Unit.assign_move_destinations(selected_units, center, move_formation)
+
+
+func get_movable_selected_count() -> int:
+	var count := 0
+	for unit in selected_units:
+		if is_instance_valid(unit) and unit.garrisoned_building == null:
+			count += 1
+	return count
+
+
+func _notify_selection_changed() -> void:
+	selection_changed.emit(selected_units)
 
 
 func _attack_selected_units(target: Unit) -> void:
@@ -171,6 +211,7 @@ func remove_unit_from_selection(unit: Unit) -> void:
 		if is_instance_valid(unit):
 			unit.deselect()
 		selected_units.erase(unit)
+		_notify_selection_changed()
 
 
 func _select_unit_at(world_point: Vector2, add_to_selection: bool) -> void:
@@ -193,10 +234,12 @@ func _select_unit_at(world_point: Vector2, add_to_selection: bool) -> void:
 		picked_unit.select()
 		selected_units.append(picked_unit)
 
+	_notify_selection_changed()
+
 
 func _select_units_in_box(world_rect: Rect2, add_to_selection: bool = false) -> void:
 	if not add_to_selection:
-		_clear_selection()
+		_clear_selection(false)
 
 	for unit in _pick_units_in_rect(world_rect):
 		if add_to_selection and unit.is_selected:
@@ -204,6 +247,8 @@ func _select_units_in_box(world_rect: Rect2, add_to_selection: bool = false) -> 
 		unit.select()
 		if not selected_units.has(unit):
 			selected_units.append(unit)
+
+	_notify_selection_changed()
 
 
 func _pick_unit_at(world_point: Vector2) -> Unit:
@@ -278,11 +323,13 @@ func _pick_units_in_rect(world_rect: Rect2) -> Array[Unit]:
 	return picked
 
 
-func _clear_selection() -> void:
+func _clear_selection(notify: bool = true) -> void:
 	for unit in selected_units:
 		if is_instance_valid(unit):
 			unit.deselect()
 	selected_units.clear()
+	if notify:
+		_notify_selection_changed()
 
 
 func _screen_to_world(screen_point: Vector2) -> Vector2:
