@@ -10,6 +10,9 @@ signal died
 
 const HEALTH_BAR_VISIBLE_MS := 3000
 const PERSONAL_SPACE_RADIUS := 28.0
+const NAV_AGENT_RADIUS := 16.0
+const STUCK_TIME_SECONDS := 0.4
+const STUCK_MOVE_EPSILON_SQ := 2.0
 const MELEE_DAMAGE_FRAME := 5
 const RANGED_DAMAGE_FRAME := 6
 const DEATH_LINGER_SECONDS := 2.8
@@ -59,6 +62,9 @@ var _is_dying: bool = false
 var _last_facing_direction := Vector2.DOWN
 var _move_destination: Vector2
 var _hit_flash_tween: Tween
+var _stuck_timer := 0.0
+var _stuck_check_position := Vector2.ZERO
+var _nav_repath_attempts := 0
 
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var navigation_agent: NavigationAgent2D = $NavigationAgent2D
@@ -184,8 +190,10 @@ func _setup_selection_indicator() -> void:
 func _setup_navigation_agent() -> void:
 	navigation_agent.path_desired_distance = 8.0
 	navigation_agent.target_desired_distance = PERSONAL_SPACE_RADIUS * 0.85
+	navigation_agent.radius = NAV_AGENT_RADIUS
 	navigation_agent.max_speed = move_speed
 	navigation_agent.avoidance_enabled = false
+	_stuck_check_position = global_position
 	reset_navigation()
 
 
@@ -338,6 +346,8 @@ func move_to(target: Vector2) -> void:
 	_unit_state = UnitState.MOVING
 	_is_attack_animating = false
 	_move_destination = target
+	_reset_stuck_tracking()
+	_nav_repath_attempts = 0
 	navigation_agent.target_desired_distance = PERSONAL_SPACE_RADIUS * 0.85
 	navigation_agent.target_position = target
 
@@ -354,6 +364,8 @@ func attack_target_unit(target: Unit) -> void:
 	attack_target = target
 	_unit_state = UnitState.CHASING if garrisoned_building == null else UnitState.IDLE
 	_is_attack_animating = false
+	_reset_stuck_tracking()
+	_nav_repath_attempts = 0
 
 
 func attack_target_building_node(target: Building) -> void:
@@ -368,6 +380,8 @@ func attack_target_building_node(target: Building) -> void:
 	attack_target_building = target
 	_unit_state = UnitState.CHASING if garrisoned_building == null else UnitState.IDLE
 	_is_attack_animating = false
+	_reset_stuck_tracking()
+	_nav_repath_attempts = 0
 
 
 func approach_garrison(building: Building) -> void:
@@ -634,17 +648,82 @@ func _physics_process(delta: float) -> void:
 		return
 
 	_unit_state = UnitState.MOVING
-	var next_position := navigation_agent.get_next_path_position()
-	var direction := global_position.direction_to(next_position)
+	_follow_navigation_toward(_move_destination, PERSONAL_SPACE_RADIUS * 0.85, delta)
+	_update_terrain_feedback(delta)
 
-	if direction == Vector2.ZERO:
+
+func _reset_stuck_tracking() -> void:
+	_stuck_timer = 0.0
+	_stuck_check_position = global_position
+
+
+func _is_stuck_moving(delta: float) -> bool:
+	if global_position.distance_squared_to(_stuck_check_position) > STUCK_MOVE_EPSILON_SQ:
+		_reset_stuck_tracking()
+		return false
+
+	_stuck_timer += delta
+	return _stuck_timer >= STUCK_TIME_SECONDS
+
+
+func _force_navigation_repath(target: Vector2) -> void:
+	_nav_repath_attempts += 1
+	_reset_stuck_tracking()
+	var map_rid := navigation_agent.get_navigation_map()
+	if map_rid.is_valid():
+		var reachable := NavigationServer2D.map_get_closest_point(map_rid, target)
+		navigation_agent.target_position = reachable
+	navigation_agent.target_position = target
+
+
+func _follow_navigation_toward(target: Vector2, desired_distance: float, delta: float) -> void:
+	var remaining := global_position.distance_to(target)
+	if remaining <= desired_distance:
 		velocity = Vector2.ZERO
+		_reset_stuck_tracking()
+		_play_idle()
 		return
 
+	navigation_agent.target_desired_distance = desired_distance
+	if navigation_agent.target_position.distance_squared_to(target) > 4.0:
+		navigation_agent.target_position = target
+
+	var direction := _get_navigation_direction(target)
+	if direction == Vector2.ZERO:
+		velocity = Vector2.ZERO
+		_play_idle()
+		return
+
+	var before := global_position
 	velocity = direction * _get_effective_move_speed()
 	move_and_slide()
-	_play_walk_animation(direction)
-	_update_terrain_feedback(delta)
+
+	if global_position.distance_squared_to(before) >= STUCK_MOVE_EPSILON_SQ:
+		_reset_stuck_tracking()
+		_play_walk_animation(direction)
+	elif _is_stuck_moving(delta):
+		_force_navigation_repath(target)
+		_play_idle()
+	else:
+		_play_idle()
+
+
+func _get_navigation_direction(target: Vector2) -> Vector2:
+	if not navigation_agent.is_navigation_finished():
+		var next_position := navigation_agent.get_next_path_position()
+		if next_position.distance_squared_to(global_position) > 4.0:
+			return global_position.direction_to(next_position)
+
+	var map_rid := navigation_agent.get_navigation_map()
+	if map_rid.is_valid():
+		var reachable := NavigationServer2D.map_get_closest_point(map_rid, target)
+		if reachable.distance_squared_to(global_position) > 4.0:
+			return global_position.direction_to(reachable)
+
+	if global_position.distance_squared_to(target) > 4.0:
+		return global_position.direction_to(target)
+
+	return Vector2.ZERO
 
 
 func _process_combat(_delta: float) -> void:
@@ -659,34 +738,15 @@ func _process_combat(_delta: float) -> void:
 		_update_terrain_feedback(_delta)
 		return
 
-	# Melee vs unit: walk straight to the target. No standoff or nav — gameplay
-	# positions must never be blocked by personal-space margins.
+	# Melee vs unit: direct chase (no terrain blocking between open units).
 	if combat_style == CombatStyle.MELEE and attack_target != null and is_instance_valid(attack_target):
 		_chase_melee_unit_direct(_delta)
 		_update_terrain_feedback(_delta)
 		return
 
-	var standoff := _get_chase_standoff_point()
-	navigation_agent.target_desired_distance = 2.0 if attack_target_building != null else 4.0
-	navigation_agent.target_position = standoff
-
-	if not navigation_agent.is_navigation_finished():
-		var next_position := navigation_agent.get_next_path_position()
-		var direction := global_position.direction_to(next_position)
-		if direction != Vector2.ZERO:
-			velocity = direction * _get_effective_move_speed()
-			move_and_slide()
-			_play_walk_animation(direction)
-		else:
-			velocity = Vector2.ZERO
-			_play_idle()
-	else:
-		if _try_direct_melee_building_push(_delta):
-			_update_terrain_feedback(_delta)
-			return
-		velocity = Vector2.ZERO
-		_play_idle()
-
+	var chase_target := _get_chase_navigation_target()
+	var desired_distance := _get_chase_desired_distance()
+	_follow_navigation_toward(chase_target, desired_distance, _delta)
 	_update_terrain_feedback(_delta)
 
 
@@ -703,31 +763,32 @@ func _chase_melee_unit_direct(_delta: float) -> void:
 	_play_walk_animation(direction)
 
 
+func _get_chase_navigation_target() -> Vector2:
+	if attack_target != null and is_instance_valid(attack_target):
+		if combat_style == CombatStyle.MELEE:
+			return attack_target.get_sprite_center()
+		return _get_chase_standoff_point()
+
+	if attack_target_building != null and is_instance_valid(attack_target_building):
+		return _get_chase_standoff_point()
+
+	return global_position
+
+
+func _get_chase_desired_distance() -> float:
+	if attack_target != null and is_instance_valid(attack_target):
+		return 2.0 if combat_style == CombatStyle.MELEE else 4.0
+	if attack_target_building != null:
+		return 2.0
+	return 4.0
+
+
 func _get_melee_combat_distance() -> float:
 	if attack_target != null and is_instance_valid(attack_target):
 		return get_sprite_center().distance_to(attack_target.get_sprite_center())
 	if attack_target_building != null and is_instance_valid(attack_target_building):
 		return get_sprite_center().distance_to(attack_target_building.get_melee_attack_point())
 	return INF
-
-
-func _try_direct_melee_building_push(delta: float) -> bool:
-	if combat_style != CombatStyle.MELEE:
-		return false
-	if attack_target_building == null or not is_instance_valid(attack_target_building):
-		return false
-	if not attack_target_building.can_be_damaged() or _is_in_attack_range():
-		return false
-
-	var aim_point := attack_target_building.get_melee_attack_point()
-	var direction := global_position.direction_to(aim_point)
-	if direction == Vector2.ZERO:
-		return false
-
-	velocity = direction * _get_effective_move_speed() * 0.8
-	move_and_slide()
-	_play_walk_animation(direction)
-	return true
 
 
 func _process_garrisoned_combat(delta: float) -> void:
@@ -766,23 +827,10 @@ func _process_garrison_approach(_delta: float) -> void:
 		building.enter_garrison(self)
 		return
 
-	navigation_agent.target_position = approach
-	if not navigation_agent.is_navigation_finished():
-		var next_position := navigation_agent.get_next_path_position()
-		var direction := global_position.direction_to(next_position)
-		if direction != Vector2.ZERO:
-			velocity = direction * _get_effective_move_speed()
-			move_and_slide()
-			_play_walk_animation(direction)
-		else:
-			velocity = Vector2.ZERO
-			_play_idle()
-	else:
-		if distance <= Building.ENTRY_RANGE * 1.5:
-			building.enter_garrison(self)
-		else:
-			velocity = Vector2.ZERO
-			_play_idle()
+	_follow_navigation_toward(approach, 4.0, _delta)
+	distance = global_position.distance_to(approach)
+	if navigation_agent.is_navigation_finished() and distance <= Building.ENTRY_RANGE * 1.5:
+		building.enter_garrison(self)
 
 
 func _process_construction(delta: float) -> void:
@@ -794,17 +842,7 @@ func _process_construction(delta: float) -> void:
 	var approach := site.get_approach_point(global_position)
 	var distance := global_position.distance_to(approach)
 	if distance > build_range:
-		navigation_agent.target_position = approach
-		if not navigation_agent.is_navigation_finished():
-			var next_position := navigation_agent.get_next_path_position()
-			var direction := global_position.direction_to(next_position)
-			if direction != Vector2.ZERO:
-				velocity = direction * _get_effective_move_speed()
-				move_and_slide()
-				_play_walk_animation(direction)
-			else:
-				velocity = Vector2.ZERO
-				_play_idle()
+		_follow_navigation_toward(approach, 4.0, delta)
 		return
 
 	velocity = Vector2.ZERO
@@ -832,11 +870,11 @@ func _should_stop_move_order() -> bool:
 	if distance_to_destination <= PERSONAL_SPACE_RADIUS:
 		return true
 
-	if navigation_agent.is_navigation_finished():
-		return true
-
 	if distance_to_destination <= PERSONAL_SPACE_RADIUS * 2.25 and _is_adjacent_to_other_unit():
 		return true
+
+	if navigation_agent.is_navigation_finished():
+		return distance_to_destination <= navigation_agent.target_desired_distance + 12.0
 
 	return false
 

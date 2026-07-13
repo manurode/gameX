@@ -1,5 +1,7 @@
 extends NavigationRegion2D
 
+const NAV_CLEARANCE := 12.0
+
 var _ground_layer: TinyTilesMap
 
 
@@ -24,13 +26,13 @@ func rebuild_navigation(obstacles: Array = [], buildings: Array = []) -> void:
 	]))
 
 	for cell in _ground_layer.get_water_cells():
-		navigation_polygon.add_outline(_cell_block_outline(cell))
+		navigation_polygon.add_outline(_expand_outline(_cell_block_outline(cell), NAV_CLEARANCE))
 
 	for obstacle in obstacles:
 		if obstacle is TerrainObstacle and (obstacle as TerrainObstacle).blocks_movement:
 			var outline: PackedVector2Array = (obstacle as TerrainObstacle).get_nav_block_outline()
 			if outline.size() >= 3:
-				navigation_polygon.add_outline(outline)
+				navigation_polygon.add_outline(_expand_outline(outline, NAV_CLEARANCE))
 
 	for building in buildings:
 		if building is Building:
@@ -38,7 +40,7 @@ func rebuild_navigation(obstacles: Array = [], buildings: Array = []) -> void:
 			if built.blocks_navigation and built.building_state == Building.BuildingState.ACTIVE:
 				var outline: PackedVector2Array = built.get_nav_block_outline()
 				if outline.size() >= 3:
-					navigation_polygon.add_outline(outline)
+					navigation_polygon.add_outline(_expand_outline(outline, NAV_CLEARANCE))
 
 	navigation_polygon.make_polygons_from_outlines()
 	self.navigation_polygon = navigation_polygon
@@ -53,3 +55,23 @@ func _cell_block_outline(cell: Vector2i) -> PackedVector2Array:
 		center + Vector2(half.x, 0.0),
 		center + Vector2(0.0, half.y),
 	])
+
+
+func _expand_outline(outline: PackedVector2Array, margin: float) -> PackedVector2Array:
+	if outline.size() < 3 or margin <= 0.0:
+		return outline
+
+	var center := Vector2.ZERO
+	for point in outline:
+		center += point
+	center /= float(outline.size())
+
+	var expanded := PackedVector2Array()
+	for point in outline:
+		var direction := point - center
+		var length := direction.length()
+		if length < 0.01:
+			expanded.append(point)
+			continue
+		expanded.append(point + direction / length * margin)
+	return expanded
