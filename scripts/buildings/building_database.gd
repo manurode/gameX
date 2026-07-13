@@ -173,7 +173,7 @@ const DEFINITIONS: Dictionary = {
 		"blocks_nav": true,
 		"footprint": Vector2(100.0, 60.0),
 		"pick_half_size": Vector2(75.0, 65.0),
-		"produces": ["knight_gear"],
+		"produces": ["knight_gear", "archer_gear"],
 	},
 	"tower": {
 		"name": "Torre",

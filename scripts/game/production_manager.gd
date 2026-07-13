@@ -14,7 +14,7 @@ var _ground_layer: TinyTilesMap
 
 # building -> Array of queue entries
 var _queues: Dictionary = {}
-# building -> pending recruitment { item_id, count, transforms_to }
+# building -> Array of { item_id, transforms_to } waiting for idle villagers
 var _pending_recruitment: Dictionary = {}
 
 
@@ -30,6 +30,8 @@ func setup(
 	_job_manager = job_manager
 	_units_container = units_container
 	_ground_layer = ground_layer
+	if _population_manager != null:
+		_population_manager.population_changed.connect(_on_population_changed)
 
 
 func _process(delta: float) -> void:
@@ -63,6 +65,9 @@ func enqueue(building: Building, item_id: String, batch_count: int = 1) -> bool:
 		return false
 
 	var def := EquipmentDatabase.get_definition(item_id)
+	if def.is_empty():
+		return false
+
 	var cost: Dictionary = def.get("cost", {})
 	register_producer(building)
 	var queue: Array = _queues[building]
@@ -89,7 +94,27 @@ func get_queue(building: Building) -> Array:
 
 
 func get_pending_recruitment(building: Building) -> Dictionary:
-	return _pending_recruitment.get(building, {})
+	var queue: Array = _pending_recruitment.get(building, [])
+	if queue.is_empty():
+		return {}
+	return {
+		"count": queue.size(),
+		"item_id": queue[0].get("item_id", ""),
+	}
+
+
+func get_queue_counts(building: Building) -> Dictionary:
+	var counts: Dictionary = {}
+	for entry in get_queue(building):
+		var item_id: String = entry.get("item_id", "")
+		counts[item_id] = counts.get(item_id, 0) + 1
+	return counts
+
+
+func _on_population_changed(_population: int, _population_cap: int) -> void:
+	for building in _queues.keys():
+		if is_instance_valid(building):
+			queue_changed.emit(building)
 
 
 func _advance_queue(building: Building, delta: float) -> void:
@@ -101,19 +126,22 @@ func _advance_queue(building: Building, delta: float) -> void:
 	if not current.get("paid", false):
 		var cost: Dictionary = current.get("cost", {})
 		if not _resource_manager.can_afford(cost):
-			queue_changed.emit(building)
 			return
 		if not _resource_manager.spend(cost):
-			queue_changed.emit(building)
 			return
 		current.paid = true
+		queue_changed.emit(building)
 
 	current.progress = current.get("progress", 0.0) + delta
 	if current.progress < current.get("time_total", 10.0):
-		queue_changed.emit(building)
 		return
 
 	var item_id: String = current.get("item_id", "")
+	var def := EquipmentDatabase.get_definition(item_id)
+	if def.get("transforms_to", "").is_empty():
+		if _population_manager != null and not _population_manager.can_add_population():
+			return
+
 	queue.remove_at(0)
 	queue_changed.emit(building)
 	_on_item_completed(building, item_id)
@@ -127,44 +155,43 @@ func _on_item_completed(building: Building, item_id: String) -> void:
 		_spawn_villager(building)
 		return
 
-	var batch_size: int = def.get("batch_size", 1)
-	if _pending_recruitment.has(building):
-		var pending: Dictionary = _pending_recruitment[building]
-		if pending.get("item_id", "") == item_id:
-			pending.count += batch_size
-		else:
-			_pending_recruitment[building] = {"item_id": item_id, "count": batch_size, "transforms_to": transforms_to}
-	else:
-		_pending_recruitment[building] = {"item_id": item_id, "count": batch_size, "transforms_to": transforms_to}
+	if not _pending_recruitment.has(building):
+		_pending_recruitment[building] = []
+	var pending_queue: Array = _pending_recruitment[building]
+	pending_queue.append({
+		"item_id": item_id,
+		"transforms_to": transforms_to,
+	})
+	queue_changed.emit(building)
 
 
 func _process_pending_recruitment() -> void:
+	if _job_manager == null:
+		return
+
 	for building in _pending_recruitment.keys():
 		if not is_instance_valid(building):
 			_pending_recruitment.erase(building)
 			continue
-		var pending: Dictionary = _pending_recruitment[building]
-		var needed: int = pending.get("count", 0)
-		if needed <= 0:
-			_pending_recruitment.erase(building)
-			continue
 
-		if _job_manager == null:
-			continue
-
-		var villagers := _job_manager.collect_civilian_villagers(needed)
-		for villager in villagers:
-			if needed <= 0:
+		var pending_queue: Array = _pending_recruitment[building]
+		var changed := false
+		while not pending_queue.is_empty():
+			var entry: Dictionary = pending_queue[0]
+			var villagers := _job_manager.collect_civilian_villagers(1)
+			if villagers.is_empty():
 				break
+			var villager: Unit = villagers[0]
 			if not is_instance_valid(villager):
-				continue
-			villager.begin_recruitment(building, pending.get("transforms_to", ""))
-			needed -= 1
+				break
+			villager.begin_recruitment(building, entry.get("transforms_to", ""))
+			pending_queue.remove_at(0)
+			changed = true
 
-		if needed <= 0:
+		if pending_queue.is_empty():
 			_pending_recruitment.erase(building)
-		else:
-			pending.count = needed
+		if changed:
+			queue_changed.emit(building)
 
 
 func _spawn_villager(building: Building) -> void:

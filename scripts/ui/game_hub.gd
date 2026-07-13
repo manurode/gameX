@@ -73,6 +73,13 @@ const MIN_FORMATION_UNITS := 2
 @onready var _status_label: Label = $MarginContainer/HBoxContainer/CommandArea/StatusColumn/StatusLabel
 
 var _production_box: VBoxContainer
+var _production_title: Label
+var _production_items_box: VBoxContainer
+var _production_item_buttons: Dictionary = {}
+var _production_queue_label: Label
+var _production_progress_label: Label
+var _production_pending_label: Label
+var _production_panel_key: String = ""
 var _resource_manager: ResourceManager
 var _build_manager: Node
 var _selection_manager: Node
@@ -81,7 +88,6 @@ var _production_manager: ProductionManager
 var _resource_labels: Dictionary = {}
 var _build_slots: Dictionary = {}
 var _formation_slots: Dictionary = {}
-var _production_buttons: Array[Button] = []
 var _population_label: Label
 var _food_upkeep_label: Label
 var _active_build_type: String = ""
@@ -194,6 +200,32 @@ func _ensure_production_box() -> void:
 	_production_box.visible = false
 	hbox.add_child(_production_box)
 	hbox.move_child(_production_box, 2)
+
+	_production_title = Label.new()
+	_production_title.add_theme_font_size_override("font_size", 12)
+	_production_title.add_theme_color_override("font_color", Color(0.85, 0.78, 0.55))
+	_production_box.add_child(_production_title)
+
+	_production_items_box = VBoxContainer.new()
+	_production_items_box.add_theme_constant_override("separation", 4)
+	_production_box.add_child(_production_items_box)
+
+	_production_queue_label = Label.new()
+	_production_queue_label.add_theme_font_size_override("font_size", 11)
+	_production_queue_label.add_theme_color_override("font_color", Color(0.75, 0.72, 0.55))
+	_production_queue_label.visible = false
+	_production_box.add_child(_production_queue_label)
+
+	_production_progress_label = Label.new()
+	_production_progress_label.add_theme_font_size_override("font_size", 11)
+	_production_progress_label.visible = false
+	_production_box.add_child(_production_progress_label)
+
+	_production_pending_label = Label.new()
+	_production_pending_label.add_theme_font_size_override("font_size", 11)
+	_production_pending_label.add_theme_color_override("font_color", Color(1.0, 0.7, 0.5))
+	_production_pending_label.visible = false
+	_production_box.add_child(_production_pending_label)
 
 
 func _build_command_grid() -> void:
@@ -489,76 +521,147 @@ func _on_building_selection_changed(building: Building) -> void:
 
 func _on_production_queue_changed(building: Building) -> void:
 	if building == _selected_building:
-		_refresh_production_panel()
+		_update_production_status_labels()
+
+
+func _process(_delta: float) -> void:
+	if _production_box == null or not _production_box.visible:
+		return
+	_update_production_progress_label()
 
 
 func _refresh_production_panel() -> void:
 	if _production_box == null:
 		return
-	for child in _production_box.get_children():
-		child.queue_free()
-	_production_buttons.clear()
 
 	if _selected_building == null or _production_manager == null:
 		_production_box.visible = false
+		_production_panel_key = ""
 		return
 
-	var items := _selected_building.get_production_items()
-	if items.is_empty():
-		items = EquipmentDatabase.get_items_for_building(_selected_building.building_type_id)
+	var items := _get_production_items_for_building(_selected_building)
 	if items.is_empty():
 		_production_box.visible = false
+		_production_panel_key = ""
 		return
 
 	_production_box.visible = true
-	var title := Label.new()
-	title.text = _selected_building.get_display_name()
-	title.add_theme_font_size_override("font_size", 12)
-	title.add_theme_color_override("font_color", Color(0.85, 0.78, 0.55))
-	_production_box.add_child(title)
+	_production_title.text = _selected_building.get_display_name()
+
+	var panel_key := "%d:%s" % [_selected_building.get_instance_id(), ",".join(items)]
+	if _production_panel_key != panel_key:
+		_rebuild_production_item_buttons(items)
+		_production_panel_key = panel_key
+
+	_update_production_status_labels()
+
+
+func _get_production_items_for_building(building: Building) -> Array[String]:
+	var items := building.get_production_items()
+	if items.is_empty():
+		items = EquipmentDatabase.get_items_for_building(building.building_type_id)
+	return items
+
+
+func _rebuild_production_item_buttons(items: Array[String]) -> void:
+	for child in _production_items_box.get_children():
+		child.queue_free()
+	_production_item_buttons.clear()
 
 	for item_id in items:
 		var def := EquipmentDatabase.get_definition(item_id)
+		var cost: Dictionary = def.get("cost", {})
+		var cost_parts: PackedStringArray = []
+		if cost.get("wood", 0) > 0:
+			cost_parts.append("%d madera" % cost.wood)
+		if cost.get("stone", 0) > 0:
+			cost_parts.append("%d piedra" % cost.stone)
+		if cost.get("food", 0) > 0:
+			cost_parts.append("%d comida" % cost.food)
+		var cost_text := ", ".join(cost_parts) if not cost_parts.is_empty() else "Gratis"
+
 		var button := Button.new()
 		button.text = def.get("name", item_id)
+		button.tooltip_text = cost_text
 		button.focus_mode = Control.FOCUS_NONE
+		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 		button.pressed.connect(_on_production_pressed.bind(item_id))
-		_production_box.add_child(button)
-		_production_buttons.append(button)
+		_production_items_box.add_child(button)
+		_production_item_buttons[item_id] = button
+
+
+func _update_production_status_labels() -> void:
+	if _selected_building == null or _production_manager == null:
+		return
+
+	var items := _get_production_items_for_building(_selected_building)
+	var queue_counts := _production_manager.get_queue_counts(_selected_building)
+	for item_id in items:
+		var button: Button = _production_item_buttons.get(item_id)
+		if button == null:
+			continue
+		var def := EquipmentDatabase.get_definition(item_id)
+		var queued_count: int = queue_counts.get(item_id, 0)
+		button.text = def.get("name", item_id)
+		if queued_count > 0:
+			button.text += " (x%d)" % queued_count
 
 	var queue := _production_manager.get_queue(_selected_building)
 	if queue.size() > 0:
-		var queue_label := Label.new()
-		queue_label.text = "En cola: %d" % queue.size()
-		queue_label.add_theme_font_size_override("font_size", 11)
-		queue_label.add_theme_color_override("font_color", Color(0.75, 0.72, 0.55))
-		_production_box.add_child(queue_label)
+		_production_queue_label.visible = true
+		_production_queue_label.text = "En cola: %d" % queue.size()
+	else:
+		_production_queue_label.visible = false
 
-	if not queue.is_empty():
-		var current: Dictionary = queue[0]
-		var progress_label := Label.new()
-		var pct: float = float(current.get("progress", 0.0)) / maxf(float(current.get("time_total", 1.0)), 0.1)
-		if not current.get("paid", true):
-			progress_label.text = "Esperando recursos..."
-		else:
-			progress_label.text = "Produciendo... %d%%" % int(pct * 100.0)
-		progress_label.add_theme_font_size_override("font_size", 11)
-		_production_box.add_child(progress_label)
+	_update_production_progress_label()
 
 	var pending := _production_manager.get_pending_recruitment(_selected_building)
 	if not pending.is_empty() and pending.get("count", 0) > 0:
-		var wait_label := Label.new()
-		wait_label.text = "Esperando %d aldeano(s)" % pending.count
-		wait_label.add_theme_font_size_override("font_size", 11)
-		wait_label.add_theme_color_override("font_color", Color(1.0, 0.7, 0.5))
-		_production_box.add_child(wait_label)
+		var pending_def := EquipmentDatabase.get_definition(pending.get("item_id", ""))
+		var pending_name: String = pending_def.get("name", "equipo")
+		_production_pending_label.text = "Esperando %d aldeano(s) para %s" % [pending.count, pending_name]
+		_production_pending_label.visible = true
+	else:
+		_production_pending_label.visible = false
+
+
+func _update_production_progress_label() -> void:
+	if _production_progress_label == null or _production_manager == null or _selected_building == null:
+		return
+
+	var queue := _production_manager.get_queue(_selected_building)
+	if queue.is_empty():
+		_production_progress_label.visible = false
+		return
+
+	var current: Dictionary = queue[0]
+	if not current.get("paid", true):
+		_production_progress_label.text = "Esperando recursos..."
+		_production_progress_label.visible = true
+		return
+
+	var time_total: float = maxf(float(current.get("time_total", 1.0)), 0.1)
+	var progress: float = float(current.get("progress", 0.0))
+	if progress >= time_total:
+		var item_id: String = current.get("item_id", "")
+		var def := EquipmentDatabase.get_definition(item_id)
+		if def.get("transforms_to", "").is_empty() \
+				and _population_manager != null \
+				and not _population_manager.can_add_population():
+			_production_progress_label.text = "Esperando espacio de población..."
+			_production_progress_label.visible = true
+			return
+
+	var pct: float = progress / time_total
+	_production_progress_label.text = "Produciendo... %d%%" % int(pct * 100.0)
+	_production_progress_label.visible = true
 
 
 func _on_production_pressed(item_id: String) -> void:
 	if _production_manager == null or _selected_building == null:
 		return
-	_production_manager.enqueue(_selected_building, item_id)
-	_refresh_production_panel()
+	if _production_manager.enqueue(_selected_building, item_id):
+		_update_production_status_labels()
 
 
 func _on_selection_changed(selected_units: Array) -> void:

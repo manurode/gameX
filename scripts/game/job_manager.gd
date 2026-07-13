@@ -140,6 +140,8 @@ func collect_civilian_villagers(count: int) -> Array[Unit]:
 		var unit := node as Unit
 		if not unit.is_civilian or unit._is_dying or unit.hp <= 0:
 			continue
+		if unit._unit_state == Unit.UnitState.RECRUITING:
+			continue
 		if unit.garrisoned_building != null:
 			continue
 		candidates.append(unit)
