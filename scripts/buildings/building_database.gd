@@ -2,10 +2,11 @@ class_name BuildingDatabase
 extends RefCounted
 
 ## Weapon tiers for garrisoned attacks: stone < crossbow < ballista
+## range_max for stone matches archer range (~220)
 const WEAPON_STATS: Dictionary = {
-	"stone": {"damage": 4, "cooldown_mult": 1.0, "range_min": 0.0, "range_max": 180.0, "speed": 220.0},
-	"crossbow": {"damage": 14, "cooldown_mult": 0.85, "range_min": 40.0, "range_max": 260.0, "speed": 380.0},
-	"ballista": {"damage": 28, "cooldown_mult": 1.2, "range_min": 60.0, "range_max": 320.0, "speed": 420.0},
+	"stone": {"damage": 4, "cooldown_mult": 1.0, "range_min": 0.0, "range_max": 220.0, "speed": 220.0},
+	"crossbow": {"damage": 14, "cooldown_mult": 0.85, "range_min": 0.0, "range_max": 260.0, "speed": 380.0},
+	"ballista": {"damage": 28, "cooldown_mult": 1.2, "range_min": 0.0, "range_max": 320.0, "speed": 420.0},
 }
 
 const UPGRADE_PATHS: Dictionary = {
@@ -67,7 +68,7 @@ const DEFINITIONS: Dictionary = {
 		"wheat": 0,
 		"build_time": 14.0,
 		"max_hp": 380,
-		"garrison_capacity": 6,
+		"garrison_capacity": 7,
 		"garrison_attack_multiplier": 1.7,
 		"garrison_weapon": "stone",
 		"can_garrison": true,
@@ -83,7 +84,7 @@ const DEFINITIONS: Dictionary = {
 		"wheat": 0,
 		"build_time": 16.0,
 		"max_hp": 320,
-		"garrison_capacity": 3,
+		"garrison_capacity": 6,
 		"garrison_attack_multiplier": 1.4,
 		"garrison_weapon": "stone",
 		"can_garrison": true,
@@ -99,7 +100,7 @@ const DEFINITIONS: Dictionary = {
 		"wheat": 30,
 		"build_time": 18.0,
 		"max_hp": 300,
-		"garrison_capacity": 5,
+		"garrison_capacity": 8,
 		"garrison_attack_multiplier": 1.5,
 		"garrison_weapon": "stone",
 		"can_garrison": true,
@@ -115,7 +116,7 @@ const DEFINITIONS: Dictionary = {
 		"wheat": 0,
 		"build_time": 22.0,
 		"max_hp": 520,
-		"garrison_capacity": 4,
+		"garrison_capacity": 5,
 		"garrison_attack_multiplier": 2.0,
 		"garrison_weapon": "crossbow",
 		"can_garrison": true,
@@ -131,7 +132,7 @@ const DEFINITIONS: Dictionary = {
 		"wheat": 0,
 		"build_time": 5.0,
 		"max_hp": 180,
-		"garrison_capacity": 2,
+		"garrison_capacity": 3,
 		"garrison_attack_multiplier": 1.3,
 		"garrison_weapon": "stone",
 		"can_garrison": true,
@@ -148,7 +149,7 @@ const DEFINITIONS: Dictionary = {
 		"wheat": 50,
 		"build_time": 45.0,
 		"max_hp": 1200,
-		"garrison_capacity": 10,
+		"garrison_capacity": 12,
 		"garrison_attack_multiplier": 2.2,
 		"garrison_weapon": "crossbow",
 		"can_garrison": true,
@@ -164,7 +165,7 @@ const DEFINITIONS: Dictionary = {
 		"wheat": 100,
 		"build_time": 90.0,
 		"max_hp": 2500,
-		"garrison_capacity": 16,
+		"garrison_capacity": 18,
 		"garrison_attack_multiplier": 2.5,
 		"garrison_weapon": "ballista",
 		"can_garrison": true,

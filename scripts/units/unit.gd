@@ -330,10 +330,14 @@ func get_selection_rect() -> Rect2:
 
 
 func contains_world_point(world_point: Vector2) -> bool:
+	if garrisoned_building != null:
+		return false
 	return get_selection_rect().has_point(world_point)
 
 
 func intersects_world_rect(world_rect: Rect2) -> bool:
+	if garrisoned_building != null:
+		return false
 	return world_rect.intersects(get_selection_rect(), true)
 
 
@@ -434,8 +438,6 @@ func exit_garrison() -> void:
 func on_entered_garrison(building: Building) -> void:
 	garrisoned_building = building
 	garrison_approach_target = null
-	attack_target = null
-	attack_target_building = null
 	construction_target = null
 	_unit_state = UnitState.IDLE
 	_is_attack_animating = false
@@ -445,10 +447,11 @@ func on_entered_garrison(building: Building) -> void:
 	animated_sprite.visible = false
 	shadow_sprite.visible = false
 	set_collision_layer_value(2, false)
-	if is_selected:
-		selection_indicator.visible = true
-	else:
-		selection_indicator.visible = false
+	remove_from_group("selectable_units")
+	deselect()
+	_remove_from_selection()
+	attack_target = building.garrison_attack_target
+	attack_target_building = building.garrison_attack_target_building
 
 
 func on_exited_garrison(exit_position: Vector2) -> void:
@@ -459,8 +462,7 @@ func on_exited_garrison(exit_position: Vector2) -> void:
 	animated_sprite.visible = true
 	shadow_sprite.visible = true
 	set_collision_layer_value(2, true)
-	if is_selected:
-		selection_indicator.visible = true
+	add_to_group("selectable_units")
 	_unit_state = UnitState.IDLE
 	_play_idle()
 
@@ -471,12 +473,38 @@ func die_from_garrison_destruction() -> void:
 
 
 func get_attack_damage() -> int:
-	var base := attack_damage
 	if garrisoned_building != null and is_instance_valid(garrisoned_building):
-		var weapon_stats: Dictionary = garrisoned_building.get_weapon_stats()
-		base = weapon_stats.get("damage", attack_damage)
-		return int(round(float(base) * garrisoned_building.garrison_attack_multiplier))
+		return garrisoned_building.get_garrison_attack_damage()
 	return attack_damage
+
+
+func fire_garrison_shot() -> void:
+	if garrisoned_building == null or not is_instance_valid(garrisoned_building):
+		return
+
+	var building := garrisoned_building
+	if building.garrison_attack_target != null and is_instance_valid(building.garrison_attack_target):
+		if building.garrison_attack_target.hp <= 0 or building.garrison_attack_target._is_dying:
+			return
+		if not is_hostile_to(building.garrison_attack_target):
+			return
+		_fire_garrison_projectile_at_unit(building.garrison_attack_target)
+		return
+
+	if building.garrison_attack_target_building != null and is_instance_valid(building.garrison_attack_target_building):
+		if not building.garrison_attack_target_building.can_be_damaged():
+			return
+		_fire_garrison_projectile_at_building(building.garrison_attack_target_building)
+
+
+func _get_combat_world() -> Node:
+	var world := get_tree().get_first_node_in_group("game_world")
+	if world != null:
+		return world
+	var parent := get_parent()
+	if parent != null and parent.get_parent() != null:
+		return parent.get_parent()
+	return get_tree().current_scene
 
 
 func take_damage(amount: int, attacker: Unit = null) -> void:
@@ -797,27 +825,9 @@ func _get_melee_combat_distance() -> float:
 	return INF
 
 
-func _process_garrisoned_combat(delta: float) -> void:
+func _process_garrisoned_combat(_delta: float) -> void:
 	velocity = Vector2.ZERO
-	_attack_cooldown_remaining = maxf(0.0, _attack_cooldown_remaining - delta)
-
-	if attack_target != null and (not is_instance_valid(attack_target) or attack_target.hp <= 0 or attack_target._is_dying):
-		attack_target = null
-	if attack_target_building != null and (
-		not is_instance_valid(attack_target_building)
-		or not attack_target_building.can_be_damaged()
-	):
-		attack_target_building = null
-
-	if attack_target == null and attack_target_building == null:
-		_unit_state = UnitState.IDLE
-		_play_idle()
-		return
-
-	if _is_in_attack_range() and _attack_cooldown_remaining <= 0.0:
-		_start_attack()
-		return
-
+	_unit_state = UnitState.IDLE
 	_play_idle()
 
 
@@ -1122,9 +1132,9 @@ func _spawn_stone_at_unit(target_unit: Unit) -> void:
 	if garrisoned_building != null:
 		var weapon_stats: Dictionary = garrisoned_building.get_weapon_stats()
 		stone.speed = weapon_stats.get("speed", 220.0)
-	var world := get_parent().get_parent()
+	var world := _get_combat_world()
 	world.add_child(stone)
-	stone.global_position = origin + dir * 14.0
+	stone.global_position = origin + dir * _get_projectile_spawn_offset()
 
 
 func _spawn_stone_at_building(target_building: Building) -> void:
@@ -1145,9 +1155,9 @@ func _spawn_stone_at_building(target_building: Building) -> void:
 	if garrisoned_building != null:
 		var weapon_stats: Dictionary = garrisoned_building.get_weapon_stats()
 		stone.speed = weapon_stats.get("speed", 220.0)
-	var world := get_parent().get_parent()
+	var world := _get_combat_world()
 	world.add_child(stone)
-	stone.global_position = origin + dir * 14.0
+	stone.global_position = origin + dir * _get_projectile_spawn_offset()
 
 
 func _spawn_arrow_at_unit(target_unit: Unit) -> void:
@@ -1166,9 +1176,9 @@ func _spawn_arrow_at_unit(target_unit: Unit) -> void:
 	arrow.target = target_unit
 	arrow.damage = get_attack_damage()
 	arrow.direction = dir
-	var world := get_parent().get_parent()
+	var world := _get_combat_world()
 	world.add_child(arrow)
-	arrow.global_position = origin + dir * 12.0
+	arrow.global_position = origin + dir * _get_projectile_spawn_offset()
 
 
 func _spawn_arrow_at_building(target_building: Building) -> void:
@@ -1187,9 +1197,15 @@ func _spawn_arrow_at_building(target_building: Building) -> void:
 	arrow.building_target = target_building
 	arrow.damage = get_attack_damage()
 	arrow.direction = dir
-	var world := get_parent().get_parent()
+	var world := _get_combat_world()
 	world.add_child(arrow)
-	arrow.global_position = origin + dir * 12.0
+	arrow.global_position = origin + dir * _get_projectile_spawn_offset()
+
+
+func _get_projectile_spawn_offset() -> float:
+	if garrisoned_building != null and is_instance_valid(garrisoned_building):
+		return 36.0
+	return 14.0
 
 
 func _on_animation_finished() -> void:

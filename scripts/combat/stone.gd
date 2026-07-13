@@ -28,7 +28,7 @@ func _physics_process(delta: float) -> void:
 		if global_position.distance_to(target.get_sprite_center()) <= 16.0:
 			_hit_unit(target)
 
-	if not _has_hit and building_target != null and is_instance_valid(building_target) and building_target.hp > 0:
+	if not _has_hit and building_target != null and _can_hit_building(building_target):
 		if global_position.distance_to(building_target.get_attack_point()) <= 20.0:
 			_hit_building(building_target)
 
@@ -49,6 +49,20 @@ func _can_hit_unit(unit: Unit) -> bool:
 	return true
 
 
+func _can_hit_building(building: Building) -> bool:
+	if building == null or not is_instance_valid(building):
+		return false
+	if building.hp <= 0 or building.building_state == Building.BuildingState.DESTROYED:
+		return false
+	if shooter == null or not is_instance_valid(shooter):
+		return false
+	if not Team.are_hostile(shooter.team_id, building.team_id):
+		return false
+	if shooter.garrisoned_building == building:
+		return false
+	return true
+
+
 func _on_body_entered(body: Node2D) -> void:
 	if _has_hit:
 		return
@@ -59,7 +73,7 @@ func _on_body_entered(body: Node2D) -> void:
 		_hit_unit(unit)
 	elif body is Building:
 		var building := body as Building
-		if building.hp <= 0 or building.building_state == Building.BuildingState.DESTROYED:
+		if not _can_hit_building(building):
 			return
 		_hit_building(building)
 

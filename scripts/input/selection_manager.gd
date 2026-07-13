@@ -7,6 +7,7 @@ signal formation_changed(formation: Unit.FormationType)
 const DRAG_THRESHOLD := 6.0
 const UNIT_COLLISION_MASK := 2
 const MIN_FORMATION_UNITS := 2
+const GARRISON_ATTACK_PICK_RADIUS := 80.0
 
 var selected_units: Array[Unit] = []
 var selected_building: Building = null
@@ -58,6 +59,10 @@ func _unhandled_input(event: InputEvent) -> void:
 func _handle_mouse_button(event: InputEventMouseButton) -> void:
 	if event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
 		var world_point := _screen_to_world(event.position)
+		if _try_garrison_building_command(world_point):
+			get_viewport().set_input_as_handled()
+			return
+
 		var target_unit := _pick_attackable_unit_at(world_point)
 		if target_unit != null:
 			_attack_selected_units(target_unit)
@@ -158,6 +163,9 @@ func _try_upgrade_building_at_cursor() -> void:
 
 
 func _exit_garrison_for_selected() -> void:
+	if selected_building != null and is_instance_valid(selected_building):
+		selected_building.exit_all_garrison()
+		return
 	for unit in selected_units:
 		if is_instance_valid(unit) and unit.garrisoned_building != null:
 			unit.exit_garrison()
@@ -217,6 +225,11 @@ func remove_unit_from_selection(unit: Unit) -> void:
 
 
 func _select_unit_at(world_point: Vector2, add_to_selection: bool) -> void:
+	var garrisoned_building := _pick_building_for_selection(world_point)
+	if garrisoned_building != null and garrisoned_building.is_garrison_occupied():
+		_select_building_at(garrisoned_building, add_to_selection)
+		return
+
 	var picked_unit := _pick_unit_at(world_point)
 
 	if picked_unit == null:
@@ -283,6 +296,10 @@ func _pick_attackable_unit_at(world_point: Vector2) -> Unit:
 			return unit
 
 	return null
+
+
+func select_building(building: Building) -> void:
+	_select_building_at(building, false)
 
 
 func _select_building_at(building: Building, add_to_selection: bool) -> void:
@@ -385,10 +402,73 @@ func _pick_units_in_rect(world_rect: Rect2) -> Array[Unit]:
 	var picked: Array[Unit] = []
 
 	for node in get_tree().get_nodes_in_group("selectable_units"):
-		if node is Unit and (node as Unit).intersects_world_rect(world_rect):
-			picked.append(node as Unit)
+		if node is Unit:
+			var unit := node as Unit
+			if unit.garrisoned_building != null:
+				continue
+			if unit.intersects_world_rect(world_rect):
+				picked.append(unit)
 
 	return picked
+
+
+func _try_garrison_building_command(world_point: Vector2) -> bool:
+	if selected_building == null or not is_instance_valid(selected_building):
+		return false
+	if not selected_building.can_garrison or not selected_building.is_garrison_occupied():
+		return false
+
+	var hostile_unit := _pick_hostile_unit_for_building(world_point, selected_building)
+	if hostile_unit != null:
+		selected_building.order_garrison_attack_unit(hostile_unit)
+		return true
+
+	var target_building := _pick_building_at(world_point)
+	if target_building != null and target_building != selected_building:
+		var is_hostile := Team.are_hostile(selected_building.team_id, target_building.team_id)
+		var has_enemy_garrison := false
+		for garrisoned in target_building.garrisoned_units:
+			if is_instance_valid(garrisoned) and Team.are_hostile(garrisoned.team_id, selected_building.team_id):
+				has_enemy_garrison = true
+				break
+		if is_hostile or has_enemy_garrison:
+			selected_building.order_garrison_attack_building(target_building)
+			return true
+
+	return false
+
+
+func _pick_hostile_unit_for_building(world_point: Vector2, building: Building) -> Unit:
+	var direct := _pick_unit_in_group(world_point, "units")
+	if direct != null and not direct._is_dying and Team.are_hostile(building.team_id, direct.team_id):
+		return direct
+
+	var best_unit: Unit = null
+	var best_distance := INF
+	var attack_range := building.get_garrison_attack_range()
+	var origin := building.get_attack_point()
+	for node in get_tree().get_nodes_in_group("units"):
+		if not node is Unit:
+			continue
+		var unit := node as Unit
+		if unit._is_dying or not Team.are_hostile(building.team_id, unit.team_id):
+			continue
+		var click_distance := unit.get_sprite_center().distance_to(world_point)
+		if click_distance > GARRISON_ATTACK_PICK_RADIUS:
+			continue
+		if origin.distance_to(unit.get_sprite_center()) > attack_range:
+			continue
+		if click_distance < best_distance:
+			best_distance = click_distance
+			best_unit = unit
+	return best_unit
+
+
+func _order_garrison_attack(building: Building, target_unit: Unit, target_building: Building) -> void:
+	if target_unit != null:
+		building.order_garrison_attack_unit(target_unit)
+	elif target_building != null:
+		building.order_garrison_attack_building(target_building)
 
 
 func _clear_selection(notify: bool = true) -> void:

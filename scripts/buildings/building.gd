@@ -12,6 +12,7 @@ signal upgraded(new_level: int, weapon_type: String)
 const HEALTH_BAR_VISIBLE_MS := 4000
 const CONSTRUCTION_ALPHA := 0.55
 const ENTRY_RANGE := 42.0
+const GARRISON_ATTACK_RANGE := 220.0
 
 @export var building_type_id: String = "house_small"
 @export var team_id: int = Team.PLAYER
@@ -32,6 +33,9 @@ var sprite_offset := Vector2(0.0, -40.0)
 var is_selected: bool = false
 
 var garrisoned_units: Array[Unit] = []
+var garrison_attack_target: Unit = null
+var garrison_attack_target_building: Building = null
+var _garrison_attack_cooldown: float = 0.0
 var _last_damage_time: int = 0
 var _definition: Dictionary = {}
 var _footprint := Vector2(70.0, 45.0)
@@ -52,6 +56,12 @@ func _ready() -> void:
 	_update_construction_visual()
 	_setup_selection_indicator()
 	selection_indicator.visible = false
+	set_process(true)
+
+
+func _process(delta: float) -> void:
+	if building_state == BuildingState.ACTIVE and is_garrison_occupied():
+		_process_garrison_combat(delta)
 
 
 func configure(type_id: String, state: BuildingState = BuildingState.ACTIVE, progress: float = 1.0) -> void:
@@ -144,7 +154,121 @@ func get_weapon_stats() -> Dictionary:
 
 
 func is_garrison_occupied() -> bool:
-	return garrisoned_units.size() > 0
+	return get_garrison_count() > 0
+
+
+func get_garrison_count() -> int:
+	var count := 0
+	for unit in garrisoned_units:
+		if is_instance_valid(unit):
+			count += 1
+	return count
+
+
+func get_garrison_attack_damage() -> int:
+	var occupants := get_garrison_count()
+	if occupants <= 0:
+		return 0
+	var weapon_stats: Dictionary = get_weapon_stats()
+	var base: int = weapon_stats.get("damage", 4)
+	return int(round(float(base) * garrison_attack_multiplier * float(occupants)))
+
+
+func get_garrison_attack_range() -> float:
+	var weapon_stats: Dictionary = get_weapon_stats()
+	return weapon_stats.get("range_max", GARRISON_ATTACK_RANGE)
+
+
+func order_garrison_attack_unit(target: Unit) -> void:
+	if target == null or not is_instance_valid(target):
+		return
+	garrison_attack_target = target
+	garrison_attack_target_building = null
+	_garrison_attack_cooldown = 0.0
+	_sync_garrison_unit_targets()
+
+
+func order_garrison_attack_building(target: Building) -> void:
+	if target == null or not is_instance_valid(target):
+		return
+	garrison_attack_target = null
+	garrison_attack_target_building = target
+	_garrison_attack_cooldown = 0.0
+	_sync_garrison_unit_targets()
+
+
+func clear_garrison_attack() -> void:
+	garrison_attack_target = null
+	garrison_attack_target_building = null
+	_sync_garrison_unit_targets()
+
+
+func _sync_garrison_unit_targets() -> void:
+	for unit in garrisoned_units:
+		if not is_instance_valid(unit):
+			continue
+		unit.attack_target = garrison_attack_target
+		unit.attack_target_building = garrison_attack_target_building
+
+
+func _process_garrison_combat(delta: float) -> void:
+	_garrison_attack_cooldown = maxf(0.0, _garrison_attack_cooldown - delta)
+	_validate_garrison_attack_targets()
+
+	if garrison_attack_target == null and garrison_attack_target_building == null:
+		return
+	if not _is_garrison_in_attack_range():
+		return
+	if _garrison_attack_cooldown > 0.0:
+		return
+
+	var shooter := _get_garrison_shooter_unit()
+	if shooter == null:
+		return
+
+	shooter.fire_garrison_shot()
+	var weapon_stats: Dictionary = get_weapon_stats()
+	var cooldown_mult: float = weapon_stats.get("cooldown_mult", 1.0)
+	_garrison_attack_cooldown = maxf(0.45, shooter.attack_cooldown * cooldown_mult)
+
+
+func _validate_garrison_attack_targets() -> void:
+	if garrison_attack_target != null and (
+		not is_instance_valid(garrison_attack_target)
+		or garrison_attack_target.hp <= 0
+		or garrison_attack_target._is_dying
+	):
+		garrison_attack_target = null
+		_sync_garrison_unit_targets()
+
+	if garrison_attack_target_building != null and (
+		not is_instance_valid(garrison_attack_target_building)
+		or not garrison_attack_target_building.can_be_damaged()
+	):
+		garrison_attack_target_building = null
+		_sync_garrison_unit_targets()
+
+
+func _is_garrison_in_attack_range() -> bool:
+	var origin := get_attack_point()
+	var range_max := get_garrison_attack_range()
+
+	if garrison_attack_target != null and is_instance_valid(garrison_attack_target):
+		var dist := origin.distance_to(garrison_attack_target.get_sprite_center())
+		return dist <= range_max
+
+	if garrison_attack_target_building != null and is_instance_valid(garrison_attack_target_building):
+		var dist := origin.distance_to(garrison_attack_target_building.get_attack_point())
+		return dist <= range_max
+
+	return false
+
+
+func _get_garrison_shooter_unit() -> Unit:
+	for unit in garrisoned_units:
+		if is_instance_valid(unit) and unit.can_attack and not unit._is_dying:
+			return unit
+	return null
 
 
 func has_enemy_garrison(unit: Unit) -> bool:
@@ -328,7 +452,15 @@ func enter_garrison(unit: Unit) -> bool:
 	garrisoned_units.append(unit)
 	unit.on_entered_garrison(self)
 	garrison_changed.emit()
+	if team_id == Team.PLAYER and unit.team_id == Team.PLAYER:
+		_select_for_player()
 	return true
+
+
+func _select_for_player() -> void:
+	var selection_manager := get_node_or_null("/root/Main/GameWorld/SelectionManager")
+	if selection_manager != null and selection_manager.has_method("select_building"):
+		selection_manager.select_building(self)
 
 
 func exit_garrison(unit: Unit) -> void:
@@ -337,6 +469,8 @@ func exit_garrison(unit: Unit) -> void:
 	garrisoned_units.erase(unit)
 	unit.on_exited_garrison(_find_exit_position())
 	garrison_changed.emit()
+	if garrisoned_units.is_empty():
+		clear_garrison_attack()
 
 
 func exit_all_garrison() -> void:
@@ -394,6 +528,11 @@ func _complete_construction() -> void:
 func take_damage(amount: int, attacker: Unit = null) -> void:
 	if not can_be_damaged():
 		return
+	if attacker != null and is_instance_valid(attacker):
+		if not Team.are_hostile(team_id, attacker.team_id):
+			return
+		if attacker.garrisoned_building == self:
+			return
 
 	hp = maxi(0, hp - amount)
 	_last_damage_time = Time.get_ticks_msec()

@@ -45,6 +45,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			_cancel_spawn_mode()
 			get_viewport().set_input_as_handled()
 			return
+		if key_event.keycode == KEY_F4:
+			_spawn_debug_enemy_at_cursor()
+			get_viewport().set_input_as_handled()
+			return
 		if key_event.keycode in UnitDatabase.SPAWN_HOTKEYS:
 			_start_spawn_mode(UnitDatabase.SPAWN_HOTKEYS[key_event.keycode])
 			get_viewport().set_input_as_handled()
@@ -102,11 +106,16 @@ func _update_ghost_texture() -> void:
 		_ghost_sprite.offset = Vector2(0.0, -texture.get_height() * 0.5 + 64.0)
 
 
-func _try_spawn_unit(world_pos: Vector2) -> void:
+func _spawn_debug_enemy_at_cursor() -> void:
+	_try_spawn_unit(_screen_to_world(get_viewport().get_mouse_position()), "enemy")
+
+
+func _try_spawn_unit(world_pos: Vector2, type_id: String = "") -> void:
 	if not _is_valid_spawn(world_pos):
 		return
 
-	var scene := UnitDatabase.get_scene(selected_unit_type)
+	var spawn_type := type_id if not type_id.is_empty() else selected_unit_type
+	var scene := UnitDatabase.get_scene(spawn_type)
 	if scene == null:
 		return
 
