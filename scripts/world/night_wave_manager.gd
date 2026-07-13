@@ -4,7 +4,7 @@ class_name NightWaveManager
 
 const ENEMY_SCENE: PackedScene = preload("res://scenes/units/unit_enemy.tscn")
 const MIN_ENEMIES := 6
-const MAX_ENEMIES := 8
+const MAX_ENEMIES := 20
 const EDGE_MARGIN := 48.0
 const WALKABLE_SEARCH_RADIUS := 96.0
 
