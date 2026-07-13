@@ -160,6 +160,10 @@ func is_hostile_to(unit: Unit) -> bool:
 	return Team.are_hostile(team_id, unit.team_id)
 
 
+func can_be_damaged() -> bool:
+	return building_state != BuildingState.DESTROYED and hp > 0
+
+
 func can_be_upgraded() -> bool:
 	return (
 		building_state == BuildingState.ACTIVE
@@ -207,13 +211,17 @@ func _apply_upgrade_visual() -> void:
 
 
 func get_approach_point(from_position: Vector2, margin: float = 12.0) -> Vector2:
-	var center := global_position + Vector2(0.0, -_footprint.y * 0.2)
+	var center := get_base_center()
 	var direction := from_position.direction_to(center)
 	if direction == Vector2.ZERO:
 		direction = Vector2.DOWN
 	var half := _footprint * 0.55
 	var reach := maxf(half.x, half.y) + margin
 	return center - direction * reach
+
+
+func get_combat_approach_point(from_position: Vector2) -> Vector2:
+	return get_approach_point(from_position, -6.0)
 
 
 func get_entry_approach_point(from_position: Vector2) -> Vector2:
@@ -236,6 +244,14 @@ func _setup_selection_indicator() -> void:
 
 func get_sprite_center() -> Vector2:
 	return global_position + sprite_offset
+
+
+func get_base_center() -> Vector2:
+	return global_position + Vector2(0.0, -_footprint.y * 0.2)
+
+
+func get_melee_attack_point() -> Vector2:
+	return get_base_center()
 
 
 func get_attack_point() -> Vector2:
@@ -263,7 +279,18 @@ func should_show_health_bar() -> bool:
 		return true
 	if is_selected:
 		return true
+	if is_being_attacked():
+		return true
 	return Time.get_ticks_msec() - _last_damage_time < HEALTH_BAR_VISIBLE_MS
+
+
+func is_being_attacked() -> bool:
+	for node in get_tree().get_nodes_in_group("enemies"):
+		if node is Unit:
+			var enemy := node as Unit
+			if enemy.attack_target_building == self and enemy.hp > 0 and not enemy._is_dying:
+				return true
+	return false
 
 
 func select() -> void:
@@ -364,7 +391,7 @@ func _complete_construction() -> void:
 
 
 func take_damage(amount: int, attacker: Unit = null) -> void:
-	if building_state == BuildingState.DESTROYED or hp <= 0:
+	if not can_be_damaged():
 		return
 
 	hp = maxi(0, hp - amount)

@@ -1,8 +1,8 @@
 class_name EnemyUnit
 extends Unit
 
-const AGGRO_RANGE := 120.0
-const TARGET_SCAN_INTERVAL := 0.4
+const UNIT_AGGRO_RANGE := 180.0
+const TARGET_SCAN_INTERVAL := 0.35
 const PRIORITY_BUILDING_TYPES: Array[String] = ["mill", "house_small", "house_big"]
 
 var _scan_timer := 0.0
@@ -24,10 +24,22 @@ func _physics_process(delta: float) -> void:
 		_scan_timer -= delta
 		if _scan_timer <= 0.0:
 			_scan_timer = TARGET_SCAN_INTERVAL
-			if not _has_valid_combat_target():
-				_acquire_target()
+			_evaluate_combat_target()
 
 	super._physics_process(delta)
+
+
+func _evaluate_combat_target() -> void:
+	var nearby_player := _find_nearest_player_unit(UNIT_AGGRO_RANGE)
+	if nearby_player != null:
+		if attack_target != nearby_player:
+			attack_target_unit(nearby_player)
+		return
+
+	if _has_valid_combat_target():
+		return
+
+	_acquire_target()
 
 
 func _has_valid_combat_target() -> bool:
@@ -37,10 +49,7 @@ func _has_valid_combat_target() -> bool:
 		attack_target = null
 
 	if attack_target_building != null and is_instance_valid(attack_target_building):
-		if (
-			attack_target_building.hp > 0
-			and attack_target_building.building_state != Building.BuildingState.DESTROYED
-		):
+		if attack_target_building.can_be_damaged():
 			return true
 		attack_target_building = null
 
@@ -48,7 +57,7 @@ func _has_valid_combat_target() -> bool:
 
 
 func _acquire_target() -> void:
-	var nearby_player := _find_nearest_player_unit_in_aggro()
+	var nearby_player := _find_nearest_player_unit(UNIT_AGGRO_RANGE)
 	if nearby_player != null:
 		attack_target_unit(nearby_player)
 		return
@@ -58,9 +67,9 @@ func _acquire_target() -> void:
 		attack_target_building_node(target_building)
 
 
-func _find_nearest_player_unit_in_aggro() -> Unit:
+func _find_nearest_player_unit(max_range: float) -> Unit:
 	var best_unit: Unit = null
-	var best_distance := AGGRO_RANGE
+	var best_distance := max_range
 
 	for node in get_tree().get_nodes_in_group("selectable_units"):
 		if not node is Unit:
@@ -84,9 +93,9 @@ func _find_best_player_building() -> Building:
 		if not node is Building:
 			continue
 		var building := node as Building
-		if building.team_id != Team.PLAYER:
+		if building.team_id != Team.PLAYER or not building.can_be_damaged():
 			continue
-		if building.building_state != Building.BuildingState.ACTIVE or building.hp <= 0:
+		if building.building_state != Building.BuildingState.ACTIVE:
 			continue
 
 		var distance := global_position.distance_to(building.global_position)

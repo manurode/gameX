@@ -1,6 +1,7 @@
 extends Node
 
 signal selection_changed(selected_units: Array)
+signal building_selection_changed(selected_building: Building)
 signal formation_changed(formation: Unit.FormationType)
 
 const DRAG_THRESHOLD := 6.0
@@ -8,6 +9,7 @@ const UNIT_COLLISION_MASK := 2
 const MIN_FORMATION_UNITS := 2
 
 var selected_units: Array[Unit] = []
+var selected_building: Building = null
 var move_formation: Unit.FormationType = Unit.FormationType.WEDGE
 
 var _drag_start_screen: Vector2
@@ -218,9 +220,15 @@ func _select_unit_at(world_point: Vector2, add_to_selection: bool) -> void:
 	var picked_unit := _pick_unit_at(world_point)
 
 	if picked_unit == null:
+		var picked_building := _pick_building_for_selection(world_point)
+		if picked_building != null:
+			_select_building_at(picked_building, add_to_selection)
+			return
 		if not add_to_selection:
 			_clear_selection()
 		return
+
+	_deselect_building()
 
 	if add_to_selection:
 		if picked_unit.is_selected:
@@ -240,6 +248,8 @@ func _select_unit_at(world_point: Vector2, add_to_selection: bool) -> void:
 func _select_units_in_box(world_rect: Rect2, add_to_selection: bool = false) -> void:
 	if not add_to_selection:
 		_clear_selection(false)
+	else:
+		_deselect_building(false)
 
 	for unit in _pick_units_in_rect(world_rect):
 		if add_to_selection and unit.is_selected:
@@ -273,6 +283,57 @@ func _pick_attackable_unit_at(world_point: Vector2) -> Unit:
 			return unit
 
 	return null
+
+
+func _select_building_at(building: Building, add_to_selection: bool) -> void:
+	if not add_to_selection:
+		_clear_selection(false)
+	else:
+		_clear_unit_selection(false)
+
+	if selected_building == building and not add_to_selection:
+		return
+
+	if selected_building != null and is_instance_valid(selected_building):
+		selected_building.deselect()
+
+	selected_building = building
+	building.select()
+	building_selection_changed.emit(selected_building)
+
+
+func _deselect_building(notify: bool = true) -> void:
+	if selected_building != null and is_instance_valid(selected_building):
+		selected_building.deselect()
+	selected_building = null
+	if notify:
+		building_selection_changed.emit(null)
+
+
+func _clear_unit_selection(notify: bool = true) -> void:
+	for unit in selected_units:
+		if is_instance_valid(unit):
+			unit.deselect()
+	selected_units.clear()
+	if notify:
+		_notify_selection_changed()
+
+
+func _pick_building_for_selection(world_point: Vector2) -> Building:
+	var best_building: Building = null
+	var best_depth: float = INF
+	for node in get_tree().get_nodes_in_group("selectable_buildings"):
+		if node is Building:
+			var building := node as Building
+			if building.building_state == Building.BuildingState.DESTROYED:
+				continue
+			if not building.contains_world_point(world_point):
+				continue
+			var depth := building.global_position.y
+			if depth < best_depth:
+				best_depth = depth
+				best_building = building
+	return best_building
 
 
 func _pick_building_at(world_point: Vector2) -> Building:
@@ -331,12 +392,11 @@ func _pick_units_in_rect(world_rect: Rect2) -> Array[Unit]:
 
 
 func _clear_selection(notify: bool = true) -> void:
-	for unit in selected_units:
-		if is_instance_valid(unit):
-			unit.deselect()
-	selected_units.clear()
+	_clear_unit_selection(false)
+	_deselect_building(false)
 	if notify:
 		_notify_selection_changed()
+		building_selection_changed.emit(null)
 
 
 func _screen_to_world(screen_point: Vector2) -> Vector2:

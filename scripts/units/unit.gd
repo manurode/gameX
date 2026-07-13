@@ -357,7 +357,7 @@ func attack_target_unit(target: Unit) -> void:
 
 
 func attack_target_building_node(target: Building) -> void:
-	if not can_attack or not is_instance_valid(target) or target.building_state == Building.BuildingState.DESTROYED or target.hp <= 0:
+	if not can_attack or not is_instance_valid(target) or not target.can_be_damaged():
 		if garrisoned_building == null and is_instance_valid(target):
 			move_to(target.global_position)
 		return
@@ -580,8 +580,7 @@ func _physics_process(delta: float) -> void:
 
 	if attack_target_building != null and (
 		not is_instance_valid(attack_target_building)
-		or attack_target_building.hp <= 0
-		or attack_target_building.building_state == Building.BuildingState.DESTROYED
+		or not attack_target_building.can_be_damaged()
 	):
 		attack_target_building = null
 		_unit_state = UnitState.IDLE
@@ -656,7 +655,7 @@ func _process_combat(_delta: float) -> void:
 		return
 
 	var standoff := _get_chase_standoff_point()
-	navigation_agent.target_desired_distance = 4.0
+	navigation_agent.target_desired_distance = 2.0 if attack_target_building != null else 4.0
 	navigation_agent.target_position = standoff
 
 	if not navigation_agent.is_navigation_finished():
@@ -670,10 +669,34 @@ func _process_combat(_delta: float) -> void:
 			velocity = Vector2.ZERO
 			_play_idle()
 	else:
+		if _try_direct_melee_building_push(_delta):
+			return
 		velocity = Vector2.ZERO
 		_play_idle()
 
 	_update_terrain_feedback(_delta)
+
+
+func _try_direct_melee_building_push(delta: float) -> bool:
+	if attack_target_building == null or not is_instance_valid(attack_target_building):
+		return false
+	if combat_style != CombatStyle.MELEE or not attack_target_building.can_be_damaged():
+		return false
+
+	var attack_point := attack_target_building.get_melee_attack_point()
+	var dist := global_position.distance_to(attack_point)
+	if dist <= melee_range * 1.35:
+		return false
+
+	var direction := global_position.direction_to(attack_point)
+	if direction == Vector2.ZERO:
+		return false
+
+	velocity = direction * _get_effective_move_speed() * 0.7
+	move_and_slide()
+	_play_walk_animation(direction)
+	_update_terrain_feedback(delta)
+	return true
 
 
 func _process_garrisoned_combat(delta: float) -> void:
@@ -684,8 +707,7 @@ func _process_garrisoned_combat(delta: float) -> void:
 		attack_target = null
 	if attack_target_building != null and (
 		not is_instance_valid(attack_target_building)
-		or attack_target_building.hp <= 0
-		or attack_target_building.building_state == Building.BuildingState.DESTROYED
+		or not attack_target_building.can_be_damaged()
 	):
 		attack_target_building = null
 
@@ -833,13 +855,14 @@ func _is_in_attack_range() -> bool:
 				return dist >= attack_range_min and dist <= attack_range_max
 
 	if attack_target_building != null and is_instance_valid(attack_target_building):
-		var building_dist := origin.distance_to(attack_target_building.get_attack_point())
+		var building_origin := attack_target_building.get_melee_attack_point() if combat_style == CombatStyle.MELEE else attack_target_building.get_attack_point()
+		var building_dist := origin.distance_to(building_origin)
 		if garrisoned_building != null:
 			var range_max: float = weapon_stats.get("range_max", attack_range_max)
 			return building_dist <= range_max
 		match combat_style:
 			CombatStyle.MELEE:
-				return building_dist <= melee_range * 1.2
+				return building_dist <= melee_range * 1.35
 			CombatStyle.RANGED:
 				return building_dist >= attack_range_min * 0.85 and building_dist <= attack_range_max
 	return false
@@ -875,20 +898,27 @@ func _get_chase_standoff_point() -> Vector2:
 		return target_pos - dir * desired
 
 	if attack_target_building != null and is_instance_valid(attack_target_building):
+		var attack_point := attack_target_building.get_melee_attack_point()
+		if combat_style == CombatStyle.MELEE:
+			var dist_to_attack := global_position.distance_to(attack_point)
+			if dist_to_attack <= melee_range * 1.35:
+				return global_position
+			var dir := global_position.direction_to(attack_point)
+			if dir == Vector2.ZERO:
+				dir = Vector2.DOWN
+			return attack_point - dir * (melee_range * 0.45)
+
 		var building_pos := attack_target_building.get_approach_point(global_position)
 		var building_dir := global_position.direction_to(building_pos)
 		if building_dir == Vector2.ZERO:
 			building_dir = Vector2.DOWN
 		var building_dist := global_position.distance_to(building_pos)
 		var building_desired := _get_desired_attack_distance()
-		if combat_style == CombatStyle.RANGED:
-			if building_dist > attack_range_max:
-				building_desired = attack_range_max * 0.92
-			elif building_dist < attack_range_min:
-				building_desired = attack_range_min * 1.02
-			elif _is_in_attack_range():
-				return global_position
-		elif building_dist <= melee_range * 1.3:
+		if building_dist > attack_range_max:
+			building_desired = attack_range_max * 0.92
+		elif building_dist < attack_range_min:
+			building_desired = attack_range_min * 1.02
+		elif _is_in_attack_range():
 			return global_position
 		return building_pos - building_dir * building_desired
 
@@ -913,7 +943,8 @@ func _direction_to_target() -> Vector2:
 	if attack_target != null and is_instance_valid(attack_target):
 		return global_position.direction_to(attack_target.global_position)
 	if attack_target_building != null and is_instance_valid(attack_target_building):
-		return global_position.direction_to(attack_target_building.get_attack_point())
+		var aim_point := attack_target_building.get_melee_attack_point() if combat_style == CombatStyle.MELEE else attack_target_building.get_attack_point()
+		return global_position.direction_to(aim_point)
 	return Vector2.DOWN
 
 
@@ -969,13 +1000,13 @@ func _deal_attack() -> void:
 				_spawn_arrow_at_unit(attack_target)
 		return
 
-	if attack_target_building != null and is_instance_valid(attack_target_building) and attack_target_building.hp > 0:
+	if attack_target_building != null and is_instance_valid(attack_target_building) and attack_target_building.can_be_damaged():
 		if garrisoned_building != null:
 			_fire_garrison_projectile_at_building(attack_target_building)
 			return
 		match combat_style:
 			CombatStyle.MELEE:
-				if global_position.distance_to(attack_target_building.get_attack_point()) <= melee_range * 1.25:
+				if global_position.distance_to(attack_target_building.get_melee_attack_point()) <= melee_range * 1.35:
 					attack_target_building.take_damage(get_attack_damage(), self)
 			CombatStyle.RANGED:
 				_spawn_arrow_at_building(attack_target_building)
@@ -1103,7 +1134,7 @@ func _on_animation_finished() -> void:
 
 	if attack_target != null and is_instance_valid(attack_target) and attack_target.hp > 0 and not attack_target._is_dying:
 		_unit_state = UnitState.CHASING
-	elif attack_target_building != null and is_instance_valid(attack_target_building) and attack_target_building.hp > 0:
+	elif attack_target_building != null and is_instance_valid(attack_target_building) and attack_target_building.can_be_damaged():
 		_unit_state = UnitState.CHASING
 	else:
 		attack_target = null
