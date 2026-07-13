@@ -153,9 +153,7 @@ func _exit_garrison_for_selected() -> void:
 
 
 func _move_selected_units(world_point: Vector2) -> void:
-	for unit in selected_units:
-		if is_instance_valid(unit):
-			unit.move_to(world_point)
+	Unit.assign_move_destinations(selected_units, world_point)
 
 
 func _attack_selected_units(target: Unit) -> void:

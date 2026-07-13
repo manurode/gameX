@@ -8,6 +8,7 @@ signal health_changed(current_hp: int, max_hp: int)
 signal died
 
 const HEALTH_BAR_VISIBLE_MS := 3000
+const PERSONAL_SPACE_RADIUS := 28.0
 const MELEE_DAMAGE_FRAME := 5
 const RANGED_DAMAGE_FRAME := 6
 const DEATH_LINGER_SECONDS := 2.8
@@ -54,6 +55,7 @@ var _damage_dealt_this_swing: bool = false
 var _last_damage_time: int = 0
 var _is_dying: bool = false
 var _last_facing_direction := Vector2.DOWN
+var _move_destination: Vector2
 var _hit_flash_tween: Tween
 
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
@@ -162,17 +164,72 @@ func _setup_selection_indicator() -> void:
 
 
 func _setup_navigation_agent() -> void:
-	navigation_agent.path_desired_distance = 6.0
-	navigation_agent.target_desired_distance = 6.0
+	navigation_agent.path_desired_distance = 8.0
+	navigation_agent.target_desired_distance = PERSONAL_SPACE_RADIUS * 0.85
 	navigation_agent.max_speed = move_speed
 	navigation_agent.avoidance_enabled = false
 	reset_navigation()
 
 
 func reset_navigation() -> void:
+	_move_destination = global_position
 	navigation_agent.target_position = global_position
 	velocity = Vector2.ZERO
 	_unit_state = UnitState.IDLE
+
+
+static func compute_formation_positions(center: Vector2, count: int) -> PackedVector2Array:
+	var positions := PackedVector2Array()
+	if count <= 0:
+		return positions
+
+	var spacing := PERSONAL_SPACE_RADIUS * 2.0
+	positions.append(center)
+
+	var assigned := 1
+	var ring := 1
+	while assigned < count:
+		var ring_radius := ring * spacing
+		var slots_in_ring := ring * 6
+		for slot in slots_in_ring:
+			if assigned >= count:
+				break
+			var angle := (float(slot) / float(slots_in_ring)) * TAU
+			positions.append(center + Vector2(cos(angle), sin(angle)) * ring_radius)
+			assigned += 1
+		ring += 1
+
+	return positions
+
+
+static func assign_move_destinations(units: Array, center: Vector2) -> void:
+	var valid_units: Array[Unit] = []
+	for unit in units:
+		if is_instance_valid(unit) and unit.garrisoned_building == null:
+			valid_units.append(unit)
+
+	if valid_units.is_empty():
+		return
+
+	var slots := compute_formation_positions(center, valid_units.size())
+	var available_slots: Array[Vector2] = []
+	for slot in slots:
+		available_slots.append(slot)
+
+	valid_units.sort_custom(func(a: Unit, b: Unit) -> bool:
+		return a.get_instance_id() < b.get_instance_id()
+	)
+
+	for unit in valid_units:
+		var best_index := 0
+		var best_distance := INF
+		for i in available_slots.size():
+			var distance := unit.global_position.distance_squared_to(available_slots[i])
+			if distance < best_distance:
+				best_distance = distance
+				best_index = i
+		unit.move_to(available_slots[best_index])
+		available_slots.remove_at(best_index)
 
 
 func select() -> void:
@@ -211,7 +268,8 @@ func move_to(target: Vector2) -> void:
 	construction_target = null
 	_unit_state = UnitState.MOVING
 	_is_attack_animating = false
-	navigation_agent.target_desired_distance = 6.0
+	_move_destination = target
+	navigation_agent.target_desired_distance = PERSONAL_SPACE_RADIUS * 0.85
 	navigation_agent.target_position = target
 
 
@@ -493,9 +551,10 @@ func _physics_process(delta: float) -> void:
 		_process_combat(delta)
 		return
 
-	if navigation_agent.is_navigation_finished():
+	if _should_stop_move_order():
 		velocity = Vector2.ZERO
 		_unit_state = UnitState.IDLE
+		navigation_agent.target_position = global_position
 		_play_idle()
 		_update_terrain_feedback(delta)
 		return
@@ -641,6 +700,39 @@ func _play_build_animation() -> void:
 	# Subtle hammer bounce while building
 	var bounce := sin(Time.get_ticks_msec() * 0.012) * 2.0
 	animated_sprite.position = Vector2(0.0, bounce)
+
+
+func _should_stop_move_order() -> bool:
+	if _unit_state != UnitState.MOVING:
+		return false
+
+	var distance_to_destination := global_position.distance_to(_move_destination)
+	if distance_to_destination <= PERSONAL_SPACE_RADIUS:
+		return true
+
+	if navigation_agent.is_navigation_finished():
+		return true
+
+	if distance_to_destination <= PERSONAL_SPACE_RADIUS * 2.25 and _is_adjacent_to_other_unit():
+		return true
+
+	return false
+
+
+func _is_adjacent_to_other_unit() -> bool:
+	var touch_distance_sq := PERSONAL_SPACE_RADIUS * PERSONAL_SPACE_RADIUS * 1.44
+	for node in get_tree().get_nodes_in_group("units"):
+		if node == self or not node is Unit:
+			continue
+
+		var other := node as Unit
+		if other._is_dying or other.garrisoned_building != null:
+			continue
+
+		if global_position.distance_squared_to(other.global_position) <= touch_distance_sq:
+			return true
+
+	return false
 
 
 func _get_effective_move_speed() -> float:
