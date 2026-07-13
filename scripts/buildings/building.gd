@@ -221,7 +221,8 @@ func get_approach_point(from_position: Vector2, margin: float = 12.0) -> Vector2
 
 
 func get_combat_approach_point(from_position: Vector2) -> Vector2:
-	return get_approach_point(from_position, -6.0)
+	# Just outside the nav block so melee units can reach the perimeter from any side.
+	return get_approach_point(from_position, 4.0)
 
 
 func get_entry_approach_point(from_position: Vector2) -> Vector2:
