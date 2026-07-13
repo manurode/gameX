@@ -1,0 +1,102 @@
+class_name EnemyUnit
+extends Unit
+
+const AGGRO_RANGE := 120.0
+const TARGET_SCAN_INTERVAL := 0.4
+const PRIORITY_BUILDING_TYPES: Array[String] = ["mill", "house_small", "house_big"]
+
+var _scan_timer := 0.0
+
+
+func _ready() -> void:
+	team_id = Team.ENEMY
+	super._ready()
+	remove_from_group("selectable_units")
+	add_to_group("enemies")
+
+	var day_night := get_tree().get_first_node_in_group("day_night_manager")
+	if day_night != null and day_night.has_method("is_night") and day_night.call("is_night"):
+		apply_cycle_visuals(true)
+
+
+func _physics_process(delta: float) -> void:
+	if not _is_dying and hp > 0 and garrisoned_building == null:
+		_scan_timer -= delta
+		if _scan_timer <= 0.0:
+			_scan_timer = TARGET_SCAN_INTERVAL
+			if not _has_valid_combat_target():
+				_acquire_target()
+
+	super._physics_process(delta)
+
+
+func _has_valid_combat_target() -> bool:
+	if attack_target != null and is_instance_valid(attack_target):
+		if attack_target.hp > 0 and not attack_target._is_dying:
+			return true
+		attack_target = null
+
+	if attack_target_building != null and is_instance_valid(attack_target_building):
+		if (
+			attack_target_building.hp > 0
+			and attack_target_building.building_state != Building.BuildingState.DESTROYED
+		):
+			return true
+		attack_target_building = null
+
+	return false
+
+
+func _acquire_target() -> void:
+	var nearby_player := _find_nearest_player_unit_in_aggro()
+	if nearby_player != null:
+		attack_target_unit(nearby_player)
+		return
+
+	var target_building := _find_best_player_building()
+	if target_building != null:
+		attack_target_building_node(target_building)
+
+
+func _find_nearest_player_unit_in_aggro() -> Unit:
+	var best_unit: Unit = null
+	var best_distance := AGGRO_RANGE
+
+	for node in get_tree().get_nodes_in_group("selectable_units"):
+		if not node is Unit:
+			continue
+		var player_unit := node as Unit
+		if player_unit._is_dying or player_unit.hp <= 0:
+			continue
+		var distance := global_position.distance_to(player_unit.global_position)
+		if distance < best_distance:
+			best_distance = distance
+			best_unit = player_unit
+
+	return best_unit
+
+
+func _find_best_player_building() -> Building:
+	var best_building: Building = null
+	var best_score := INF
+
+	for node in get_tree().get_nodes_in_group("buildings"):
+		if not node is Building:
+			continue
+		var building := node as Building
+		if building.team_id != Team.PLAYER:
+			continue
+		if building.building_state != Building.BuildingState.ACTIVE or building.hp <= 0:
+			continue
+
+		var distance := global_position.distance_to(building.global_position)
+		var priority_bonus := 0.0
+		if building.building_type_id in PRIORITY_BUILDING_TYPES:
+			priority_bonus = -200.0
+
+		var score := distance + priority_bonus
+		if score < best_score:
+			best_score = score
+			best_building = building
+
+	return best_building

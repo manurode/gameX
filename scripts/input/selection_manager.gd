@@ -30,7 +30,7 @@ func _ready() -> void:
 		selection_box = get_node_or_null("/root/Main/HUD/SelectionBox")
 
 
-func _input(event: InputEvent) -> void:
+func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		var mouse_event := event as InputEventMouseButton
 		if _is_pointer_over_ui(mouse_event.position):
@@ -265,7 +265,14 @@ func _pick_attackable_unit_at(world_point: Vector2) -> Unit:
 	for selected in selected_units:
 		if selected == unit:
 			return null
-	return unit
+	if selected_units.is_empty():
+		return null
+
+	for selected in selected_units:
+		if is_instance_valid(selected) and selected.is_hostile_to(unit):
+			return unit
+
+	return null
 
 
 func _pick_building_at(world_point: Vector2) -> Building:
@@ -381,7 +388,20 @@ func _is_placement_mode_active() -> bool:
 
 
 func _is_pointer_over_ui(screen_pos: Vector2) -> bool:
-	var hub := get_node_or_null("/root/Main/HUD/GameHub")
+	var hud := get_node_or_null("/root/Main/HUD")
+	if hud == null:
+		return false
+
+	var cycle_button := hud.get_node_or_null("TopLeft/MarginContainer/VBoxContainer/CycleButton")
+	if cycle_button is Control and (cycle_button as Control).get_global_rect().has_point(screen_pos):
+		return true
+
+	var top_left := hud.get_node_or_null("TopLeft/MarginContainer")
+	if top_left is Control and (top_left as Control).get_global_rect().has_point(screen_pos):
+		return true
+
+	var hub := hud.get_node_or_null("GameHub")
 	if hub is Control and (hub as Control).get_global_rect().has_point(screen_pos):
 		return true
+
 	return false

@@ -1,4 +1,4 @@
-[gd_scene load_steps=13 format=3 uid="uid://cworld001"]
+[gd_scene load_steps=16 format=3 uid="uid://cworld001"]
 
 [ext_resource type="Script" path="res://scripts/world/game_world.gd" id="1_world"]
 [ext_resource type="Script" path="res://scripts/camera/rts_camera.gd" id="2_camera"]
@@ -13,9 +13,13 @@
 [ext_resource type="PackedScene" uid="uid://cunitknight" path="res://scenes/units/unit_knight.tscn" id="10_knight"]
 [ext_resource type="PackedScene" uid="uid://cunitarcher" path="res://scenes/units/unit_archer.tscn" id="11_archer"]
 [ext_resource type="PackedScene" uid="uid://cunitbuilder" path="res://scenes/units/unit_builder.tscn" id="12_builder"]
+[ext_resource type="Script" path="res://scripts/world/day_night_manager.gd" id="14_day_night"]
+[ext_resource type="Script" path="res://scripts/world/night_wave_manager.gd" id="15_night_wave"]
 
 [node name="GameWorld" type="Node2D"]
 script = ExtResource("1_world")
+
+[node name="DayNightModulate" type="CanvasModulate" parent="."]
 
 [node name="Camera2D" type="Camera2D" parent="."]
 script = ExtResource("2_camera")
@@ -58,3 +62,9 @@ script = ExtResource("13_spawn")
 
 [node name="ResourceManager" type="Node" parent="."]
 script = ExtResource("9_resources")
+
+[node name="DayNightManager" type="Node" parent="."]
+script = ExtResource("14_day_night")
+
+[node name="NightWaveManager" type="Node" parent="."]
+script = ExtResource("15_night_wave")

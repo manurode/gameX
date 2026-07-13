@@ -38,6 +38,7 @@ const STONE_SCENE: PackedScene = preload("res://scenes/combat/stone.tscn")
 @export var melee_range: float = 52.0
 @export var attack_range_min: float = 90.0
 @export var attack_range_max: float = 210.0
+@export var team_id: int = Team.PLAYER
 
 var hp: int
 var is_selected: bool = false
@@ -84,6 +85,22 @@ func _ready() -> void:
 
 func set_ground_layer(ground_layer: TinyTilesMap) -> void:
 	_ground_layer = ground_layer
+
+
+func is_enemy() -> bool:
+	return team_id == Team.ENEMY
+
+
+func is_hostile_to(other: Unit) -> bool:
+	if other == null or other == self:
+		return false
+	return Team.are_hostile(team_id, other.team_id)
+
+
+func apply_cycle_visuals(is_night: bool) -> void:
+	if shadow_sprite == null:
+		return
+	shadow_sprite.modulate = Color(1, 1, 1, 0.65) if is_night else Color(1, 1, 1, 1)
 
 
 func should_show_health_bar() -> bool:

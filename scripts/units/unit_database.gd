@@ -17,6 +17,11 @@ const DEFINITIONS: Dictionary = {
 		"scene": "res://scenes/units/unit_builder.tscn",
 		"preview": "res://assets/tilesets/tiny_tiles/Characters/Builder/chr_builder_idle.png",
 	},
+	"enemy": {
+		"name": "Monstruo",
+		"scene": "res://scenes/units/unit_enemy.tscn",
+		"preview": "res://assets/tilesets/tiny_tiles/Characters/Enemy/chr_enemy_idle.png",
+	},
 }
 
 const SPAWN_HOTKEYS: Dictionary = {

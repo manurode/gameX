@@ -11,6 +11,9 @@ extends Node2D
 @onready var build_manager: Node = $BuildManager
 @onready var unit_spawn_manager: Node = $UnitSpawnManager
 @onready var resource_manager: ResourceManager = $ResourceManager
+@onready var day_night_modulate: CanvasModulate = $DayNightModulate
+@onready var day_night_manager: DayNightManager = $DayNightManager
+@onready var night_wave_manager: NightWaveManager = $NightWaveManager
 
 const BUILDING_SCENE: PackedScene = preload("res://scenes/buildings/building.tscn")
 
@@ -50,10 +53,12 @@ func on_ground_ready(ground: TinyTilesMap) -> void:
 	build_manager.build_mode_changed.connect(_on_build_mode_changed)
 	unit_spawn_manager.spawn_mode_changed.connect(_on_spawn_mode_changed)
 	selection_manager.setup(buildings, resource_manager)
+	day_night_manager.setup(day_night_modulate, water_animator)
+	night_wave_manager.setup(day_night_manager, units, ground)
 
 	var hud := get_node_or_null("/root/Main/HUD")
 	if hud != null and hud.has_method("setup"):
-		hud.call("setup", resource_manager, build_manager, unit_spawn_manager, selection_manager)
+		hud.call("setup", resource_manager, build_manager, unit_spawn_manager, selection_manager, day_night_manager)
 
 
 func _on_build_mode_changed(active: bool, _type_id: String) -> void:

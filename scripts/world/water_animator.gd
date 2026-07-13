@@ -6,11 +6,22 @@ extends Node
 var _ground_layer: TinyTilesMap
 var _overlays: Array[Sprite2D] = []
 var _time := 0.0
+var _night_mode := false
+var _base_pulse_strength := 0.12
+
+
+func _ready() -> void:
+	_base_pulse_strength = pulse_strength
 
 
 func setup(ground_layer: TinyTilesMap) -> void:
 	_ground_layer = ground_layer
 	_create_water_overlays()
+
+
+func set_night_mode(is_night: bool) -> void:
+	_night_mode = is_night
+	pulse_strength = _base_pulse_strength * (0.45 if is_night else 1.0)
 
 
 func _create_water_overlays() -> void:
@@ -33,6 +44,12 @@ func _create_water_overlays() -> void:
 func _process(delta: float) -> void:
 	_time += delta
 	var shimmer := 0.85 + sin(_time * pulse_speed) * pulse_strength
+	var alpha_base := 0.28 if _night_mode else 0.38
 	for overlay in _overlays:
 		if is_instance_valid(overlay):
-			overlay.modulate = Color(shimmer, shimmer + 0.05, 1.0, 0.38 + sin(_time * pulse_speed + 0.5) * 0.08)
+			overlay.modulate = Color(
+				shimmer,
+				shimmer + 0.05,
+				1.0,
+				alpha_base + sin(_time * pulse_speed + 0.5) * 0.08
+			)

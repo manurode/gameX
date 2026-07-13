@@ -14,6 +14,7 @@ const CONSTRUCTION_ALPHA := 0.55
 const ENTRY_RANGE := 42.0
 
 @export var building_type_id: String = "house_small"
+@export var team_id: int = Team.PLAYER
 
 var hp: int = 0
 var max_hp: int = 100
@@ -146,13 +147,17 @@ func is_garrison_occupied() -> bool:
 	return garrisoned_units.size() > 0
 
 
-func has_enemy_garrison(_unit: Unit) -> bool:
-	# Placeholder until faction system: no friendly-fire on own garrison
+func has_enemy_garrison(unit: Unit) -> bool:
+	for garrisoned in garrisoned_units:
+		if is_instance_valid(garrisoned) and Team.are_hostile(garrisoned.team_id, unit.team_id):
+			return true
 	return false
 
 
-func is_hostile_to(_unit: Unit) -> bool:
-	return false
+func is_hostile_to(unit: Unit) -> bool:
+	if unit == null:
+		return false
+	return Team.are_hostile(team_id, unit.team_id)
 
 
 func can_be_upgraded() -> bool:
