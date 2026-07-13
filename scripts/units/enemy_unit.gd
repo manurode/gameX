@@ -3,7 +3,14 @@ extends Unit
 
 const UNIT_AGGRO_RANGE := 180.0
 const TARGET_SCAN_INTERVAL := 0.35
-const PRIORITY_BUILDING_TYPES: Array[String] = ["mill", "house_small", "house_big"]
+const PRIORITY_BUILDING_TYPES: Array[String] = [
+	"town_center",
+	"mill",
+	"lumber_camp",
+	"mine",
+	"house_small",
+	"house_big",
+]
 
 var _scan_timer := 0.0
 
@@ -100,8 +107,9 @@ func _find_best_player_building() -> Building:
 
 		var distance := global_position.distance_to(building.global_position)
 		var priority_bonus := 0.0
-		if building.building_type_id in PRIORITY_BUILDING_TYPES:
-			priority_bonus = -200.0
+		var type_index := PRIORITY_BUILDING_TYPES.find(building.building_type_id)
+		if type_index >= 0:
+			priority_bonus = -300.0 - float(type_index) * 50.0
 
 		var score := distance + priority_bonus
 		if score < best_score:

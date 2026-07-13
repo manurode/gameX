@@ -69,6 +69,10 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 			get_viewport().set_input_as_handled()
 			return
 
+		if _try_gather_resource_command(world_point):
+			get_viewport().set_input_as_handled()
+			return
+
 		var target_building := _pick_building_at(world_point)
 		if target_building != null:
 			_handle_building_command(target_building, world_point, event.shift_pressed)
@@ -140,10 +144,53 @@ func _handle_building_command(building: Building, world_point: Vector2, force_at
 				unit.move_to(building.get_approach_point(unit.global_position))
 			else:
 				unit.move_to(world_point)
+		elif unit.is_civilian and building.can_enter_garrison(unit):
+			unit.approach_garrison(building)
 		elif unit.can_build:
-			unit.move_to(building.get_approach_point(unit.global_position))
+			if building.building_state == Building.BuildingState.CONSTRUCTING:
+				unit.assign_construction(building)
+			else:
+				unit.move_to(building.get_approach_point(unit.global_position))
 		else:
 			unit.move_to(world_point)
+
+
+func _try_gather_resource_command(world_point: Vector2) -> bool:
+	var resource_node := _pick_resource_node_at(world_point)
+	if resource_node == null:
+		return false
+
+	var job_manager := get_tree().get_first_node_in_group("job_manager")
+	if job_manager == null or not job_manager is JobManager:
+		return false
+
+	var gatherers: Array = []
+	for unit in selected_units:
+		if is_instance_valid(unit) and unit.is_civilian and unit.can_gather:
+			gatherers.append(unit)
+
+	if gatherers.is_empty():
+		return false
+
+	return (job_manager as JobManager).assign_villagers_to_resource(gatherers, resource_node)
+
+
+func _pick_resource_node_at(world_point: Vector2) -> ResourceNode:
+	var best_node: ResourceNode = null
+	var best_dist := INF
+	for node in get_tree().get_nodes_in_group("resource_nodes"):
+		if not node is ResourceNode:
+			continue
+		var resource_node := node as ResourceNode
+		if not resource_node.has_resources():
+			continue
+		if not resource_node.contains_point(world_point):
+			continue
+		var dist := resource_node.global_position.distance_squared_to(world_point)
+		if dist < best_dist:
+			best_dist = dist
+			best_node = resource_node
+	return best_node
 
 
 func _assign_builders_to_construction(site: Building) -> void:

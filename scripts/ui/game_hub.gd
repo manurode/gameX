@@ -1,8 +1,8 @@
 extends PanelContainer
 
 const BUILD_ORDER: Array[String] = [
-	"house_small", "house_big", "mill", "stable",
-	"tower", "wall", "castle_small", "castle_big",
+	"house_small", "house_big", "lumber_camp", "mill",
+	"mine", "stable", "tower", "wall",
 ]
 
 const FORMATION_ORDER: Array[Unit.FormationType] = [
@@ -59,7 +59,7 @@ const FORMATION_INFO: Dictionary = {
 
 const TEX_WOOD := "res://assets/tilesets/tiny_tiles/UI/Icons/UI_icon_resources_wood.png"
 const TEX_STONE := "res://assets/tilesets/tiny_tiles/UI/Icons/UI_icon_resources_stone.png"
-const TEX_WHEAT := "res://assets/tilesets/tiny_tiles/UI/Icons/UI_icon_resources_wheat.png"
+const TEX_FOOD := "res://assets/tilesets/tiny_tiles/UI/Icons/UI_icon_resources_wheat.png"
 const TEX_HAMMER := "res://assets/tilesets/tiny_tiles/UI/Icons/UI_icon_hammer.png"
 
 const ICON_VARIANT_SIZE := 128
@@ -72,15 +72,22 @@ const MIN_FORMATION_UNITS := 2
 @onready var _formation_grid: GridContainer = $MarginContainer/HBoxContainer/CommandArea/FormationGrid
 @onready var _status_label: Label = $MarginContainer/HBoxContainer/CommandArea/StatusColumn/StatusLabel
 
+var _production_box: VBoxContainer
 var _resource_manager: ResourceManager
 var _build_manager: Node
 var _selection_manager: Node
+var _population_manager: PopulationManager
+var _production_manager: ProductionManager
 var _resource_labels: Dictionary = {}
 var _build_slots: Dictionary = {}
 var _formation_slots: Dictionary = {}
+var _production_buttons: Array[Button] = []
+var _population_label: Label
+var _food_upkeep_label: Label
 var _active_build_type: String = ""
 var _formation_mode: bool = false
 var _selected_unit_count: int = 0
+var _selected_building: Building = null
 
 
 func _ready() -> void:
@@ -89,16 +96,25 @@ func _ready() -> void:
 	_show_build_panel()
 
 
-func setup(resource_manager: ResourceManager, build_manager: Node, selection_manager: Node = null) -> void:
+func setup(
+	resource_manager: ResourceManager,
+	build_manager: Node,
+	selection_manager: Node = null,
+	population_manager: PopulationManager = null,
+	production_manager: ProductionManager = null
+) -> void:
 	_resource_manager = resource_manager
 	_build_manager = build_manager
 	_selection_manager = selection_manager
+	_population_manager = population_manager
+	_production_manager = production_manager
 	_build_resource_rows()
 	_build_command_grid()
 	_build_formation_grid()
+	_ensure_production_box()
 	if _resource_manager != null:
 		_resource_manager.resources_changed.connect(_on_resources_changed)
-		_on_resources_changed(_resource_manager.wood, _resource_manager.stone, _resource_manager.wheat)
+		_on_resources_changed(_resource_manager.wood, _resource_manager.stone, _resource_manager.food)
 	if _build_manager != null and _build_manager.has_signal("build_mode_changed"):
 		_build_manager.build_mode_changed.connect(_on_build_mode_changed)
 	if _selection_manager != null:
@@ -106,7 +122,17 @@ func setup(resource_manager: ResourceManager, build_manager: Node, selection_man
 			_selection_manager.selection_changed.connect(_on_selection_changed)
 		if _selection_manager.has_signal("formation_changed"):
 			_selection_manager.formation_changed.connect(_on_formation_changed)
+		if _selection_manager.has_signal("building_selection_changed"):
+			_selection_manager.building_selection_changed.connect(_on_building_selection_changed)
 		_on_selection_changed(_selection_manager.selected_units)
+	if _population_manager != null:
+		_population_manager.population_changed.connect(_on_population_changed)
+		_population_manager.food_shortage.connect(_on_food_shortage)
+		_population_manager.food_upkeep_changed.connect(_on_food_upkeep_changed)
+		_on_population_changed(_population_manager.population, _population_manager.population_cap)
+		_on_food_upkeep_changed(_population_manager.get_food_upkeep_per_second())
+	if _production_manager != null:
+		_production_manager.queue_changed.connect(_on_production_queue_changed)
 	_update_status(false, "")
 
 
@@ -114,7 +140,7 @@ func _build_resource_rows() -> void:
 	var entries: Array[Dictionary] = [
 		{"key": "wood", "texture": TEX_WOOD, "label": "Madera"},
 		{"key": "stone", "texture": TEX_STONE, "label": "Piedra"},
-		{"key": "wheat", "texture": TEX_WHEAT, "label": "Trigo"},
+		{"key": "food", "texture": TEX_FOOD, "label": "Comida"},
 	]
 	for entry in entries:
 		var row := HBoxContainer.new()
@@ -139,6 +165,35 @@ func _build_resource_rows() -> void:
 
 		_resources_box.add_child(row)
 		_resource_labels[entry.key] = amount
+
+	var pop_row := HBoxContainer.new()
+	pop_row.add_theme_constant_override("separation", 6)
+	pop_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	_population_label = Label.new()
+	_population_label.text = "Pob: 0/5"
+	_population_label.add_theme_font_size_override("font_size", 13)
+	_population_label.add_theme_color_override("font_color", Color(0.75, 0.85, 0.95))
+	pop_row.add_child(_population_label)
+	_resources_box.add_child(pop_row)
+
+	_food_upkeep_label = Label.new()
+	_food_upkeep_label.text = "Consumo: 0 comida/s"
+	_food_upkeep_label.add_theme_font_size_override("font_size", 11)
+	_food_upkeep_label.add_theme_color_override("font_color", Color(0.72, 0.82, 0.55))
+	_food_upkeep_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_resources_box.add_child(_food_upkeep_label)
+
+
+func _ensure_production_box() -> void:
+	if _production_box != null:
+		return
+	var hbox := $MarginContainer/HBoxContainer
+	_production_box = VBoxContainer.new()
+	_production_box.name = "ProductionBox"
+	_production_box.custom_minimum_size = Vector2(180, 0)
+	_production_box.visible = false
+	hbox.add_child(_production_box)
+	hbox.move_child(_production_box, 2)
 
 
 func _build_command_grid() -> void:
@@ -366,8 +421,8 @@ func _format_cost_tooltip(name: String, cost: Dictionary) -> String:
 		parts.append("%d madera" % cost.wood)
 	if cost.get("stone", 0) > 0:
 		parts.append("%d piedra" % cost.stone)
-	if cost.get("wheat", 0) > 0:
-		parts.append("%d trigo" % cost.wheat)
+	if cost.get("food", 0) > 0:
+		parts.append("%d comida" % cost.food)
 	if parts.is_empty():
 		return name
 	return "%s\n%s" % [name, " · ".join(parts)]
@@ -388,14 +443,122 @@ func _on_formation_slot_pressed(formation: Unit.FormationType) -> void:
 	_refresh_formation_highlight()
 
 
-func _on_resources_changed(wood: int, stone: int, wheat: int) -> void:
+func _on_resources_changed(wood: int, stone: int, food: int) -> void:
 	if _resource_labels.has("wood"):
 		_resource_labels.wood.text = str(wood)
 	if _resource_labels.has("stone"):
 		_resource_labels.stone.text = str(stone)
-	if _resource_labels.has("wheat"):
-		_resource_labels.wheat.text = str(wheat)
+	if _resource_labels.has("food"):
+		_resource_labels.food.text = str(food)
 	_refresh_affordability()
+	_refresh_production_panel()
+
+
+func _on_population_changed(pop: int, cap: int) -> void:
+	if _population_label != null:
+		_population_label.text = "Pob: %d/%d" % [pop, cap]
+
+
+func _on_food_upkeep_changed(upkeep: float) -> void:
+	if _food_upkeep_label == null or _population_manager == null:
+		return
+	_food_upkeep_label.text = "Consumo: " + _population_manager.get_food_upkeep_label()
+	if upkeep <= 0.0:
+		_food_upkeep_label.add_theme_color_override("font_color", Color(0.72, 0.82, 0.55))
+	elif _population_manager.food_shortage_active:
+		_food_upkeep_label.add_theme_color_override("font_color", Color(1.0, 0.45, 0.45))
+	else:
+		_food_upkeep_label.add_theme_color_override("font_color", Color(0.85, 0.78, 0.45))
+
+
+func _on_food_shortage(active: bool) -> void:
+	if _food_upkeep_label != null and _population_manager != null:
+		_on_food_upkeep_changed(_population_manager.get_food_upkeep_per_second())
+	if _status_label == null:
+		return
+	if active and not _formation_mode:
+		_status_label.text = "Sin comida: recolectores, colas y reclutamiento pausados"
+	elif not _formation_mode and _selected_building == null:
+		_update_status(_active_build_type != "", _active_build_type)
+
+
+func _on_building_selection_changed(building: Building) -> void:
+	_selected_building = building
+	_refresh_production_panel()
+
+
+func _on_production_queue_changed(building: Building) -> void:
+	if building == _selected_building:
+		_refresh_production_panel()
+
+
+func _refresh_production_panel() -> void:
+	if _production_box == null:
+		return
+	for child in _production_box.get_children():
+		child.queue_free()
+	_production_buttons.clear()
+
+	if _selected_building == null or _production_manager == null:
+		_production_box.visible = false
+		return
+
+	var items := _selected_building.get_production_items()
+	if items.is_empty():
+		items = EquipmentDatabase.get_items_for_building(_selected_building.building_type_id)
+	if items.is_empty():
+		_production_box.visible = false
+		return
+
+	_production_box.visible = true
+	var title := Label.new()
+	title.text = _selected_building.get_display_name()
+	title.add_theme_font_size_override("font_size", 12)
+	title.add_theme_color_override("font_color", Color(0.85, 0.78, 0.55))
+	_production_box.add_child(title)
+
+	for item_id in items:
+		var def := EquipmentDatabase.get_definition(item_id)
+		var button := Button.new()
+		button.text = def.get("name", item_id)
+		button.focus_mode = Control.FOCUS_NONE
+		button.pressed.connect(_on_production_pressed.bind(item_id))
+		_production_box.add_child(button)
+		_production_buttons.append(button)
+
+	var queue := _production_manager.get_queue(_selected_building)
+	if queue.size() > 0:
+		var queue_label := Label.new()
+		queue_label.text = "En cola: %d" % queue.size()
+		queue_label.add_theme_font_size_override("font_size", 11)
+		queue_label.add_theme_color_override("font_color", Color(0.75, 0.72, 0.55))
+		_production_box.add_child(queue_label)
+
+	if not queue.is_empty():
+		var current: Dictionary = queue[0]
+		var progress_label := Label.new()
+		var pct: float = float(current.get("progress", 0.0)) / maxf(float(current.get("time_total", 1.0)), 0.1)
+		if not current.get("paid", true):
+			progress_label.text = "Esperando recursos..."
+		else:
+			progress_label.text = "Produciendo... %d%%" % int(pct * 100.0)
+		progress_label.add_theme_font_size_override("font_size", 11)
+		_production_box.add_child(progress_label)
+
+	var pending := _production_manager.get_pending_recruitment(_selected_building)
+	if not pending.is_empty() and pending.get("count", 0) > 0:
+		var wait_label := Label.new()
+		wait_label.text = "Esperando %d aldeano(s)" % pending.count
+		wait_label.add_theme_font_size_override("font_size", 11)
+		wait_label.add_theme_color_override("font_color", Color(1.0, 0.7, 0.5))
+		_production_box.add_child(wait_label)
+
+
+func _on_production_pressed(item_id: String) -> void:
+	if _production_manager == null or _selected_building == null:
+		return
+	_production_manager.enqueue(_selected_building, item_id)
+	_refresh_production_panel()
 
 
 func _on_selection_changed(selected_units: Array) -> void:

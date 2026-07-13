@@ -2,7 +2,7 @@ class_name Unit
 extends CharacterBody2D
 
 enum CombatStyle { MELEE, RANGED }
-enum UnitState { IDLE, MOVING, CHASING, ATTACKING, CONSTRUCTING, GARRISON_APPROACH, DYING }
+enum UnitState { IDLE, MOVING, CHASING, ATTACKING, CONSTRUCTING, GARRISON_APPROACH, GATHERING, DEPOSITING, RECRUITING, DYING }
 enum FormationType { COLUMN, LINE, WEDGE, DIAMOND }
 
 signal health_changed(current_hp: int, max_hp: int)
@@ -35,6 +35,9 @@ const STONE_SCENE: PackedScene = preload("res://scenes/combat/stone.tscn")
 @export var combat_style: CombatStyle = CombatStyle.MELEE
 @export var can_attack: bool = true
 @export var can_build: bool = false
+@export var can_gather: bool = false
+@export var is_civilian: bool = false
+@export var unit_type_id: String = ""
 @export var build_range: float = 58.0
 @export var build_power: float = 1.0
 @export var attack_damage: int = 15
@@ -51,8 +54,14 @@ var attack_target_building: Building = null
 var garrisoned_building: Building = null
 var garrison_approach_target: Building = null
 var construction_target: Building = null
+var gather_target: ResourceNode = null
+var gather_building: Building = null
+var recruitment_building: Building = null
+var recruitment_type_id: String = ""
 
 var _ground_layer: TinyTilesMap
+var _gather_timer: float = 0.0
+const GATHER_TIME_AT_NODE := 2.5
 var _was_on_water := false
 var _unit_state: UnitState = UnitState.IDLE
 var _attack_cooldown_remaining: float = 0.0
@@ -138,6 +147,92 @@ func _setup_sprite_frames() -> void:
 		return
 	animated_sprite.sprite_frames = frames
 	animated_sprite.play(&"idle")
+
+
+func rebuild_visuals() -> void:
+	_setup_sprite_frames()
+	health_changed.emit(hp, max_hp)
+
+
+func is_busy() -> bool:
+	return _unit_state in [
+		UnitState.MOVING,
+		UnitState.CONSTRUCTING,
+		UnitState.GATHERING,
+		UnitState.DEPOSITING,
+		UnitState.RECRUITING,
+		UnitState.CHASING,
+		UnitState.ATTACKING,
+	]
+
+
+func clear_gather_job() -> void:
+	gather_target = null
+	gather_building = null
+	_gather_timer = 0.0
+	if _unit_state in [UnitState.GATHERING, UnitState.DEPOSITING]:
+		_unit_state = UnitState.IDLE
+
+
+func assign_gather_at_node(node: ResourceNode) -> void:
+	if not can_gather or not is_instance_valid(node):
+		return
+	if garrisoned_building != null:
+		exit_garrison()
+	attack_target = null
+	attack_target_building = null
+	construction_target = null
+	gather_target = node
+	gather_building = null
+	recruitment_building = null
+	_unit_state = UnitState.GATHERING
+	_gather_timer = 0.0
+	_is_attack_animating = false
+	navigation_agent.target_desired_distance = 4.0
+	navigation_agent.target_position = node.global_position
+
+
+func assign_deposit_at_building(building: Building) -> void:
+	if not is_instance_valid(building):
+		return
+	gather_building = building
+	gather_target = null
+	_unit_state = UnitState.DEPOSITING
+	_gather_timer = 0.0
+	navigation_agent.target_desired_distance = 4.0
+	navigation_agent.target_position = building.get_approach_point(global_position)
+
+
+func begin_recruitment(building: Building, target_type_id: String) -> void:
+	if not is_civilian or not is_instance_valid(building):
+		return
+	clear_gather_job()
+	release_construction()
+	attack_target = null
+	attack_target_building = null
+	recruitment_building = building
+	recruitment_type_id = target_type_id
+	_unit_state = UnitState.RECRUITING
+	navigation_agent.target_desired_distance = 4.0
+	navigation_agent.target_position = building.get_approach_point(global_position)
+
+
+func transform_to_unit_type(type_id: String) -> void:
+	UnitDatabase.apply_definition_to_unit(self, type_id)
+	is_civilian = false
+	can_gather = false
+	recruitment_building = null
+	recruitment_type_id = ""
+	_unit_state = UnitState.IDLE
+	construction_target = null
+	gather_target = null
+	gather_building = null
+
+
+func release_construction() -> void:
+	construction_target = null
+	if _unit_state == UnitState.CONSTRUCTING:
+		_unit_state = UnitState.IDLE
 
 
 func _setup_shadow() -> void:
@@ -345,6 +440,11 @@ func intersects_world_rect(world_rect: Rect2) -> bool:
 func move_to(target: Vector2) -> void:
 	if garrisoned_building != null:
 		exit_garrison()
+	var job_manager := get_tree().get_first_node_in_group("job_manager")
+	if job_manager is JobManager:
+		(job_manager as JobManager).on_villager_manual_move(self)
+	release_construction()
+	clear_gather_job()
 	attack_target = null
 	attack_target_building = null
 	construction_target = null
@@ -394,10 +494,14 @@ func attack_target_building_node(target: Building) -> void:
 
 
 func approach_garrison(building: Building) -> void:
-	if not can_attack or not is_instance_valid(building) or not building.can_enter_garrison(self):
+	if not is_instance_valid(building) or not building.can_enter_garrison(self):
 		return
 	if garrisoned_building != null:
 		return
+
+	var job_manager := get_tree().get_first_node_in_group("job_manager")
+	if job_manager is JobManager:
+		(job_manager as JobManager).release_unit_job(self)
 
 	attack_target = null
 	attack_target_building = null
@@ -412,6 +516,9 @@ func approach_garrison(building: Building) -> void:
 func assign_construction(site: Building) -> void:
 	if not can_build or not is_instance_valid(site) or site.building_state != Building.BuildingState.CONSTRUCTING:
 		return
+	var job_manager := get_tree().get_first_node_in_group("job_manager")
+	if job_manager is JobManager:
+		(job_manager as JobManager).release_unit_job(self)
 	if garrisoned_building != null:
 		exit_garrison()
 	attack_target = null
@@ -707,6 +814,18 @@ func _physics_process(delta: float) -> void:
 		_process_garrison_approach(delta)
 		return
 
+	if _unit_state == UnitState.RECRUITING and recruitment_building != null:
+		_process_recruitment(delta)
+		return
+
+	if _unit_state == UnitState.GATHERING and gather_target != null:
+		_process_gathering(delta)
+		return
+
+	if _unit_state == UnitState.DEPOSITING and gather_building != null:
+		_process_depositing(delta)
+		return
+
 	if _unit_state == UnitState.CONSTRUCTING and construction_target != null:
 		_process_construction(delta)
 		return
@@ -726,6 +845,9 @@ func _physics_process(delta: float) -> void:
 		navigation_agent.target_position = global_position
 		_play_idle()
 		_update_terrain_feedback(delta)
+		var job_manager := get_tree().get_first_node_in_group("job_manager")
+		if job_manager is JobManager:
+			(job_manager as JobManager).on_villager_move_completed(self)
 		return
 
 	if _unit_state != UnitState.MOVING:
@@ -906,6 +1028,7 @@ func _process_construction(delta: float) -> void:
 	var site := construction_target
 	if site == null:
 		_unit_state = UnitState.IDLE
+		_notify_construction_finished()
 		return
 
 	var approach := site.get_approach_point(global_position)
@@ -917,7 +1040,94 @@ func _process_construction(delta: float) -> void:
 	velocity = Vector2.ZERO
 	_play_build_animation()
 	var progress_rate := (1.0 / maxf(site.build_time_total, 0.1)) * build_power * delta
+	var prev_progress := site.construction_progress
 	site.add_construction_progress(progress_rate)
+	if site.building_state != Building.BuildingState.CONSTRUCTING and prev_progress < 1.0:
+		_notify_construction_finished()
+
+
+func _notify_construction_finished() -> void:
+	construction_target = null
+	if _unit_state == UnitState.CONSTRUCTING:
+		_unit_state = UnitState.IDLE
+	var job_manager := get_tree().get_first_node_in_group("job_manager")
+	if job_manager is JobManager:
+		(job_manager as JobManager).on_construction_finished(self)
+
+
+func _process_gathering(delta: float) -> void:
+	var node := gather_target
+	if node == null or not is_instance_valid(node) or not node.has_resources():
+		_finish_gather_job()
+		return
+
+	var distance := global_position.distance_to(node.global_position)
+	if distance > build_range:
+		_follow_navigation_toward(node.global_position, 4.0, delta)
+		return
+
+	velocity = Vector2.ZERO
+	_play_idle()
+	_gather_timer += delta
+	if _gather_timer >= GATHER_TIME_AT_NODE:
+		_gather_timer = 0.0
+		_unit_state = UnitState.DEPOSITING
+		var job_manager := get_tree().get_first_node_in_group("job_manager")
+		if job_manager is JobManager:
+			var building: Building = (job_manager as JobManager).get_worker_building(self)
+			if building != null:
+				assign_deposit_at_building(building)
+			else:
+				_finish_gather_job()
+
+
+func _process_depositing(delta: float) -> void:
+	var building := gather_building
+	if building == null or not is_instance_valid(building):
+		_finish_gather_job()
+		return
+
+	var approach := building.get_approach_point(global_position)
+	var distance := global_position.distance_to(approach)
+	if distance > build_range:
+		_follow_navigation_toward(approach, 4.0, delta)
+		return
+
+	velocity = Vector2.ZERO
+	_play_idle()
+	var job_manager := get_tree().get_first_node_in_group("job_manager")
+	if job_manager is JobManager:
+		(job_manager as JobManager).on_unit_reached_deposit_building(self, building)
+
+
+func _process_recruitment(delta: float) -> void:
+	var building := recruitment_building
+	if building == null or not is_instance_valid(building):
+		_unit_state = UnitState.IDLE
+		return
+
+	var approach := building.get_approach_point(global_position)
+	var distance := global_position.distance_to(approach)
+	if distance > build_range:
+		_follow_navigation_toward(approach, 4.0, delta)
+		return
+
+	velocity = Vector2.ZERO
+	var target_type := recruitment_type_id
+	transform_to_unit_type(target_type)
+	recruitment_building = null
+	recruitment_type_id = ""
+
+
+func _finish_gather_job() -> void:
+	gather_target = null
+	gather_building = null
+	_gather_timer = 0.0
+	_unit_state = UnitState.IDLE
+	var job_manager := get_tree().get_first_node_in_group("job_manager")
+	if job_manager is JobManager:
+		(job_manager as JobManager).release_unit_job(self)
+		(job_manager as JobManager).try_assign_idle_villager(self)
 
 
 func _play_build_animation() -> void:

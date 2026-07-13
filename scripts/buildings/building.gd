@@ -113,6 +113,7 @@ func _setup_texture() -> void:
 	if sprite.texture != null:
 		sprite.offset = Vector2(0.0, -sprite.texture.get_height() * 0.5 + 64.0)
 		sprite_offset = sprite.offset
+		sprite.modulate = _definition.get("tint", Color.WHITE)
 		if damage_overlay != null:
 			damage_overlay.texture = sprite.texture
 			damage_overlay.offset = sprite.offset
@@ -441,7 +442,7 @@ func can_enter_garrison(unit: Unit) -> bool:
 		and get_garrison_space() > 0
 		and unit != null
 		and is_instance_valid(unit)
-		and unit.can_attack
+		and (unit.can_attack or unit.is_civilian)
 		and not garrisoned_units.has(unit)
 	)
 
@@ -513,6 +514,22 @@ func add_construction_progress(amount: float) -> void:
 		_complete_construction()
 
 
+func get_display_name() -> String:
+	return _definition.get("name", building_type_id)
+
+
+func is_core_building() -> bool:
+	return _definition.get("is_core", false) or building_type_id == "town_center"
+
+
+func get_production_items() -> Array[String]:
+	var produces: Array = _definition.get("produces", [])
+	var result: Array[String] = []
+	for item in produces:
+		result.append(String(item))
+	return result
+
+
 func _complete_construction() -> void:
 	building_state = BuildingState.ACTIVE
 	hp = max_hp
@@ -522,7 +539,20 @@ func _complete_construction() -> void:
 	_update_visual_damage()
 	health_changed.emit(hp, max_hp)
 	construction_completed.emit()
+	_notify_building_ready()
 	_request_nav_rebuild()
+
+
+func _notify_building_ready() -> void:
+	var job_manager := get_tree().get_first_node_in_group("job_manager")
+	if job_manager is JobManager:
+		(job_manager as JobManager).on_building_completed(self)
+	var population_manager := get_tree().get_first_node_in_group("population_manager")
+	if population_manager is PopulationManager:
+		(population_manager as PopulationManager).recalculate_cap_from_buildings()
+	var production_manager := get_tree().get_first_node_in_group("production_manager")
+	if production_manager is ProductionManager:
+		(production_manager as ProductionManager).register_producer(self)
 
 
 func take_damage(amount: int, attacker: Unit = null) -> void:
@@ -638,6 +668,15 @@ func get_nav_block_outline() -> PackedVector2Array:
 
 func _destroy() -> void:
 	building_state = BuildingState.DESTROYED
+	var job_manager := get_tree().get_first_node_in_group("job_manager")
+	if job_manager is JobManager:
+		(job_manager as JobManager).on_building_destroyed(self)
+	var production_manager := get_tree().get_first_node_in_group("production_manager")
+	if production_manager is ProductionManager:
+		(production_manager as ProductionManager).unregister_producer(self)
+	var population_manager := get_tree().get_first_node_in_group("population_manager")
+	if population_manager is PopulationManager:
+		(population_manager as PopulationManager).recalculate_cap_from_buildings()
 	var units_to_kill := garrisoned_units.duplicate()
 	garrisoned_units.clear()
 	for unit in units_to_kill:

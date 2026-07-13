@@ -49,7 +49,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_spawn_debug_enemy_at_cursor()
 			get_viewport().set_input_as_handled()
 			return
-		if key_event.keycode in UnitDatabase.SPAWN_HOTKEYS:
+		if OS.is_debug_build() and key_event.keycode in UnitDatabase.SPAWN_HOTKEYS:
 			_start_spawn_mode(UnitDatabase.SPAWN_HOTKEYS[key_event.keycode])
 			get_viewport().set_input_as_handled()
 			return
