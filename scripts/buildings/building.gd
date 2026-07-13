@@ -539,9 +539,23 @@ func take_damage(amount: int, attacker: Unit = null) -> void:
 	health_changed.emit(hp, max_hp)
 	_update_visual_damage()
 	_play_hit_effect(attacker)
+	_try_garrison_self_defense(attacker)
 
 	if hp <= 0:
 		_destroy()
+
+
+func _try_garrison_self_defense(attacker: Unit) -> void:
+	if team_id != Team.PLAYER:
+		return
+	if not is_garrison_occupied():
+		return
+	if attacker == null or not is_instance_valid(attacker) or attacker._is_dying or attacker.hp <= 0:
+		return
+	if not Team.are_hostile(team_id, attacker.team_id):
+		return
+
+	order_garrison_attack_unit(attacker)
 
 
 func _play_hit_effect(attacker: Unit = null) -> void:

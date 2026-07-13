@@ -9,6 +9,7 @@ signal health_changed(current_hp: int, max_hp: int)
 signal died
 
 const HEALTH_BAR_VISIBLE_MS := 3000
+const ALLY_DEFEND_RADIUS := 450.0
 const PERSONAL_SPACE_RADIUS := 28.0
 const NAV_AGENT_RADIUS := 16.0
 const STUCK_TIME_SECONDS := 0.4
@@ -520,6 +521,58 @@ func take_damage(amount: int, attacker: Unit = null) -> void:
 
 	if hp <= 0:
 		_die()
+		return
+
+	_handle_auto_defense(attacker)
+
+
+func _handle_auto_defense(attacker: Unit) -> void:
+	if team_id != Team.PLAYER:
+		return
+	if attacker == null or not is_instance_valid(attacker) or attacker._is_dying or attacker.hp <= 0:
+		return
+	if not is_hostile_to(attacker):
+		return
+
+	_try_self_defense(attacker)
+	_alert_nearby_allies(attacker)
+
+
+func _try_self_defense(attacker: Unit) -> void:
+	if not can_attack or garrisoned_building != null:
+		return
+	attack_target_unit(attacker)
+
+
+func _can_help_defend_ally() -> bool:
+	if not can_attack or garrisoned_building != null or _is_dying or hp <= 0:
+		return false
+	if attack_target != null or attack_target_building != null:
+		return false
+	if construction_target != null or garrison_approach_target != null:
+		return false
+	if _unit_state == UnitState.MOVING:
+		return false
+	return true
+
+
+func _alert_nearby_allies(attacker: Unit) -> void:
+	var radius_sq := ALLY_DEFEND_RADIUS * ALLY_DEFEND_RADIUS
+	var victim_pos := global_position
+
+	for node in get_tree().get_nodes_in_group("units"):
+		if node == self or not node is Unit:
+			continue
+
+		var ally := node as Unit
+		if ally.team_id != team_id:
+			continue
+		if ally.global_position.distance_squared_to(victim_pos) > radius_sq:
+			continue
+		if not ally._can_help_defend_ally():
+			continue
+
+		ally.attack_target_unit(attacker)
 
 
 func _play_hit_reaction(attacker: Unit = null) -> void:
