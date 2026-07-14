@@ -308,6 +308,18 @@ static func get_cost(type_id: String) -> Dictionary:
 	}
 
 
+static func get_repair_cost(type_id: String, current_hp: int, max_hp: int) -> Dictionary:
+	if max_hp <= 0 or current_hp >= max_hp:
+		return {"wood": 0, "gold": 0, "food": 0}
+	var base_cost := get_cost(type_id)
+	var missing_ratio := 1.0 - float(current_hp) / float(max_hp)
+	return {
+		"wood": int(round(float(base_cost.get("wood", 0)) * missing_ratio)),
+		"gold": int(round(float(base_cost.get("gold", 0)) * missing_ratio)),
+		"food": int(round(float(base_cost.get("food", 0)) * missing_ratio)),
+	}
+
+
 static func is_buildable(type_id: String) -> bool:
 	var def := get_definition(type_id)
 	return def.get("buildable", true)

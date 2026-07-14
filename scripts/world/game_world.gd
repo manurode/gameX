@@ -30,6 +30,7 @@ func _ready() -> void:
 	population_manager.add_to_group("population_manager")
 	job_manager.add_to_group("job_manager")
 	production_manager.add_to_group("production_manager")
+	resource_manager.add_to_group("resource_manager")
 
 
 func on_ground_ready(ground: TinyTilesMap) -> void:

@@ -256,6 +256,11 @@ func on_construction_finished(unit: Unit) -> void:
 	try_assign_idle_villager(unit)
 
 
+func on_repair_finished(unit: Unit) -> void:
+	release_unit_job(unit)
+	try_assign_idle_villager(unit)
+
+
 func alert_nearby_builders(site: Building) -> void:
 	if site == null or not is_instance_valid(site):
 		return
@@ -289,7 +294,7 @@ func _can_auto_build(villager: Unit) -> bool:
 		return false
 	if villager.garrisoned_building != null or villager.garrison_approach_target != null:
 		return false
-	if villager.construction_target != null:
+	if villager.construction_target != null or villager.repair_target != null:
 		return false
 	return true
 

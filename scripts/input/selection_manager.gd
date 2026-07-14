@@ -147,6 +147,8 @@ func _handle_building_command(building: Building, world_point: Vector2, force_at
 				unit.move_to(building.get_approach_point(unit.global_position))
 			else:
 				unit.move_to(world_point)
+		elif unit.can_build and building.can_be_repaired():
+			unit.assign_repair(building)
 		elif unit.is_civilian and building.can_enter_garrison(unit):
 			unit.approach_garrison(building)
 		elif unit.can_build:

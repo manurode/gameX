@@ -30,6 +30,8 @@ var garrison_capacity: int = 3
 var garrison_attack_multiplier: float = 1.5
 var garrison_weapon: String = "stone"
 var upgrade_level: int = 0
+var repair_in_progress: bool = false
+var repair_paid: bool = false
 var can_garrison: bool = true
 var blocks_navigation: bool = true
 var pick_half_size := Vector2(55.0, 50.0)
@@ -44,6 +46,8 @@ var _last_damage_time: int = 0
 var _definition: Dictionary = {}
 var _footprint := Vector2(70.0, 45.0)
 var _wall_vertical: bool = false
+var _repair_start_hp: int = 0
+var _repair_progress: float = 0.0
 
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var damage_overlay: Sprite2D = $DamageOverlay
@@ -386,6 +390,75 @@ func can_be_upgraded() -> bool:
 		building_state == BuildingState.ACTIVE
 		and BuildingDatabase.can_upgrade(building_type_id, upgrade_level)
 	)
+
+
+func needs_repair() -> bool:
+	return building_state == BuildingState.ACTIVE and hp < max_hp
+
+
+func can_be_repaired() -> bool:
+	return needs_repair() and team_id == Team.PLAYER
+
+
+func get_repair_cost() -> Dictionary:
+	return BuildingDatabase.get_repair_cost(building_type_id, hp, max_hp)
+
+
+func get_repair_work_duration() -> float:
+	if not needs_repair():
+		return 0.0
+	var missing_hp := max_hp - hp
+	if repair_in_progress:
+		missing_hp = max_hp - _repair_start_hp
+	return build_time_total * (float(maxi(1, missing_hp)) / float(maxi(1, max_hp)))
+
+
+func try_start_repair(resource_manager: ResourceManager) -> bool:
+	if not can_be_repaired() or resource_manager == null:
+		return false
+	if repair_paid:
+		return true
+
+	var cost := get_repair_cost()
+	if not resource_manager.can_afford(cost):
+		return false
+	if not resource_manager.spend(cost):
+		return false
+
+	repair_paid = true
+	repair_in_progress = true
+	_repair_start_hp = hp
+	_repair_progress = 0.0
+	return true
+
+
+func add_repair_progress(amount: float) -> void:
+	if not repair_in_progress or not needs_repair():
+		return
+
+	var missing_hp := max_hp - _repair_start_hp
+	if missing_hp <= 0:
+		_complete_repair()
+		return
+
+	_repair_progress = clampf(_repair_progress + amount, 0.0, 1.0)
+	hp = _repair_start_hp + int(_repair_progress * float(missing_hp))
+	hp = mini(hp, max_hp)
+	health_changed.emit(hp, max_hp)
+	_update_visual_damage()
+
+	if _repair_progress >= 1.0 or hp >= max_hp:
+		_complete_repair()
+
+
+func _complete_repair() -> void:
+	hp = max_hp
+	repair_in_progress = false
+	repair_paid = false
+	_repair_start_hp = 0
+	_repair_progress = 0.0
+	health_changed.emit(hp, max_hp)
+	_update_visual_damage()
 
 
 func get_upgrade_cost() -> Dictionary:

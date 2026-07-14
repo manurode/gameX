@@ -2,7 +2,7 @@ class_name Unit
 extends CharacterBody2D
 
 enum CombatStyle { MELEE, RANGED }
-enum UnitState { IDLE, MOVING, CHASING, ATTACKING, CONSTRUCTING, GARRISON_APPROACH, GATHERING, DEPOSITING, RECRUITING, DYING }
+enum UnitState { IDLE, MOVING, CHASING, ATTACKING, CONSTRUCTING, REPAIRING, GARRISON_APPROACH, GATHERING, DEPOSITING, RECRUITING, DYING }
 enum FormationType { COLUMN, LINE, WEDGE, DIAMOND }
 
 signal health_changed(current_hp: int, max_hp: int)
@@ -62,6 +62,7 @@ var attack_target_building: Building = null
 var garrisoned_building: Building = null
 var garrison_approach_target: Building = null
 var construction_target: Building = null
+var repair_target: Building = null
 var gather_target: ResourceNode = null
 var gather_building: Building = null
 var recruitment_building: Building = null
@@ -172,6 +173,7 @@ func is_busy() -> bool:
 	return _unit_state in [
 		UnitState.MOVING,
 		UnitState.CONSTRUCTING,
+		UnitState.REPAIRING,
 		UnitState.GATHERING,
 		UnitState.DEPOSITING,
 		UnitState.RECRUITING,
@@ -197,6 +199,7 @@ func assign_gather_at_node(node: ResourceNode) -> void:
 	attack_target = null
 	attack_target_building = null
 	construction_target = null
+	repair_target = null
 	gather_target = node
 	gather_building = null
 	recruitment_building = null
@@ -228,6 +231,7 @@ func begin_recruitment(
 		return
 	clear_gather_job()
 	release_construction()
+	release_repair()
 	attack_target = null
 	attack_target_building = null
 	recruitment_building = building
@@ -247,6 +251,7 @@ func transform_to_unit_type(type_id: String) -> void:
 	recruitment_type_id = ""
 	_unit_state = UnitState.IDLE
 	construction_target = null
+	repair_target = null
 	gather_target = null
 	gather_building = null
 
@@ -254,6 +259,12 @@ func transform_to_unit_type(type_id: String) -> void:
 func release_construction() -> void:
 	construction_target = null
 	if _unit_state == UnitState.CONSTRUCTING:
+		_unit_state = UnitState.IDLE
+
+
+func release_repair() -> void:
+	repair_target = null
+	if _unit_state == UnitState.REPAIRING:
 		_unit_state = UnitState.IDLE
 
 
@@ -468,10 +479,12 @@ func move_to(target: Vector2) -> void:
 	if job_manager is JobManager:
 		(job_manager as JobManager).on_villager_manual_move(self)
 	release_construction()
+	release_repair()
 	clear_gather_job()
 	attack_target = null
 	attack_target_building = null
 	construction_target = null
+	repair_target = null
 	_unit_state = UnitState.MOVING
 	_is_attack_animating = false
 	_move_destination = target
@@ -494,6 +507,7 @@ func attack_target_unit(target: Unit) -> void:
 	garrison_approach_target = null
 	attack_target_building = null
 	construction_target = null
+	repair_target = null
 	attack_target = target
 	_unit_state = UnitState.CHASING if garrisoned_building == null else UnitState.IDLE
 	_is_attack_animating = false
@@ -510,6 +524,7 @@ func attack_target_building_node(target: Building) -> void:
 	garrison_approach_target = null
 	attack_target = null
 	construction_target = null
+	repair_target = null
 	attack_target_building = target
 	_unit_state = UnitState.CHASING if garrisoned_building == null else UnitState.IDLE
 	_is_attack_animating = false
@@ -530,6 +545,7 @@ func approach_garrison(building: Building) -> void:
 	attack_target = null
 	attack_target_building = null
 	construction_target = null
+	repair_target = null
 	garrison_approach_target = building
 	_unit_state = UnitState.GARRISON_APPROACH
 	_is_attack_animating = false
@@ -540,6 +556,7 @@ func approach_garrison(building: Building) -> void:
 
 func assign_construction(site: Building) -> void:
 	cancel_recruitment()
+	release_repair()
 	if not can_build or not is_instance_valid(site) or site.building_state != Building.BuildingState.CONSTRUCTING:
 		return
 	var job_manager := get_tree().get_first_node_in_group("job_manager")
@@ -555,6 +572,27 @@ func assign_construction(site: Building) -> void:
 	_reset_navigation_recovery()
 	navigation_agent.target_desired_distance = 4.0
 	navigation_agent.target_position = site.get_approach_point(global_position)
+
+
+func assign_repair(target: Building) -> void:
+	cancel_recruitment()
+	release_construction()
+	if not can_build or not is_instance_valid(target) or not target.can_be_repaired():
+		return
+	var job_manager := get_tree().get_first_node_in_group("job_manager")
+	if job_manager is JobManager:
+		(job_manager as JobManager).release_unit_job(self)
+	if garrisoned_building != null:
+		exit_garrison()
+	attack_target = null
+	attack_target_building = null
+	construction_target = null
+	repair_target = target
+	_unit_state = UnitState.REPAIRING
+	_is_attack_animating = false
+	_reset_navigation_recovery()
+	navigation_agent.target_desired_distance = 4.0
+	navigation_agent.target_position = target.get_approach_point(global_position)
 
 
 func enter_garrison(building: Building) -> void:
@@ -574,6 +612,7 @@ func on_entered_garrison(building: Building) -> void:
 	garrisoned_building = building
 	garrison_approach_target = null
 	construction_target = null
+	repair_target = null
 	_unit_state = UnitState.IDLE
 	_is_attack_animating = false
 	velocity = Vector2.ZERO
@@ -693,7 +732,7 @@ func _can_auto_attack_nearby_enemies() -> bool:
 		return false
 	if attack_target != null or attack_target_building != null:
 		return false
-	if construction_target != null or garrison_approach_target != null:
+	if construction_target != null or garrison_approach_target != null or repair_target != null:
 		return false
 	if gather_target != null or gather_building != null:
 		return false
@@ -740,7 +779,7 @@ func _can_help_defend_ally() -> bool:
 		return false
 	if attack_target != null or attack_target_building != null:
 		return false
-	if construction_target != null or garrison_approach_target != null:
+	if construction_target != null or garrison_approach_target != null or repair_target != null:
 		return false
 	if _unit_state == UnitState.MOVING:
 		return false
@@ -893,6 +932,14 @@ func _physics_process(delta: float) -> void:
 		if _unit_state == UnitState.CONSTRUCTING:
 			_unit_state = UnitState.IDLE
 
+	if repair_target != null and (
+		not is_instance_valid(repair_target)
+		or not repair_target.can_be_repaired()
+	):
+		repair_target = null
+		if _unit_state == UnitState.REPAIRING:
+			_unit_state = UnitState.IDLE
+
 	if garrison_approach_target != null and (
 		not is_instance_valid(garrison_approach_target)
 		or not garrison_approach_target.can_enter_garrison(self)
@@ -919,6 +966,10 @@ func _physics_process(delta: float) -> void:
 
 	if _unit_state == UnitState.CONSTRUCTING and construction_target != null:
 		_process_construction(delta)
+		return
+
+	if _unit_state == UnitState.REPAIRING and repair_target != null:
+		_process_repair(delta)
 		return
 
 	if _unit_state == UnitState.ATTACKING or _is_attack_animating:
@@ -1297,6 +1348,55 @@ func _notify_construction_finished() -> void:
 	var job_manager := get_tree().get_first_node_in_group("job_manager")
 	if job_manager is JobManager:
 		(job_manager as JobManager).on_construction_finished(self)
+
+
+func _process_repair(delta: float) -> void:
+	var target := repair_target
+	if target == null:
+		_unit_state = UnitState.IDLE
+		_notify_repair_finished()
+		return
+
+	var day_night := get_tree().get_first_node_in_group("day_night_manager")
+	if day_night is DayNightManager and not (day_night as DayNightManager).is_construction_allowed():
+		velocity = Vector2.ZERO
+		_play_idle()
+		return
+
+	var approach := target.get_approach_point(global_position)
+	var distance := global_position.distance_to(approach)
+	if distance > build_range:
+		_follow_navigation_toward(approach, 4.0, delta)
+		return
+
+	var resource_manager := get_tree().get_first_node_in_group("resource_manager")
+	if resource_manager is ResourceManager and not target.repair_paid:
+		if not target.try_start_repair(resource_manager as ResourceManager):
+			_notify_repair_finished()
+			return
+
+	velocity = Vector2.ZERO
+	_play_build_animation()
+	var work_multiplier := 1.0
+	var population_manager := get_tree().get_first_node_in_group("population_manager")
+	if population_manager is PopulationManager:
+		work_multiplier = (population_manager as PopulationManager).get_civilian_work_multiplier()
+
+	var repair_time := target.get_repair_work_duration()
+	var progress_rate := (1.0 / maxf(repair_time, 0.1)) * build_power * work_multiplier * delta
+	var prev_needs_repair := target.needs_repair()
+	target.add_repair_progress(progress_rate)
+	if prev_needs_repair and not target.needs_repair():
+		_notify_repair_finished()
+
+
+func _notify_repair_finished() -> void:
+	repair_target = null
+	if _unit_state == UnitState.REPAIRING:
+		_unit_state = UnitState.IDLE
+	var job_manager := get_tree().get_first_node_in_group("job_manager")
+	if job_manager is JobManager:
+		(job_manager as JobManager).on_repair_finished(self)
 
 
 func _process_gathering(delta: float) -> void:
