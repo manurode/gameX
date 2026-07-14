@@ -697,4 +697,4 @@ func _destroy() -> void:
 func _request_nav_rebuild() -> void:
 	var world := get_tree().get_first_node_in_group("game_world")
 	if world != null and world.has_method("rebuild_navigation"):
-		world.call_deferred("rebuild_navigation")
+		world.call_deferred("rebuild_navigation", self)

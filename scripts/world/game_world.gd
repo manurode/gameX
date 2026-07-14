@@ -83,13 +83,18 @@ func on_ground_ready(ground: TinyTilesMap) -> void:
 
 
 func _spawn_starting_settlement(ground: TinyTilesMap) -> void:
-	var center_cell := Vector2i(7, 6)
+	var center_cell := ground.get_town_center_cell()
 	_town_center = _spawn_building("town_center", center_cell, ground, Building.BuildingState.ACTIVE, 1.0)
 
+	var villager_offsets: Array[Vector2i] = [
+		Vector2i(-1, 0),
+		Vector2i(1, 0),
+		Vector2i(0, -1),
+	]
 	var villager_cells: Array[Vector2i] = [
-		Vector2i(6, 6),
-		Vector2i(8, 6),
-		Vector2i(7, 5),
+		center_cell + villager_offsets[0],
+		center_cell + villager_offsets[1],
+		center_cell + villager_offsets[2],
 	]
 	for i in villager_cells.size():
 		_spawn_villager(ground, villager_cells[i], i)
@@ -148,7 +153,7 @@ func _on_spawn_mode_changed(active: bool, _type_id: String) -> void:
 		build_manager.call("cancel_build_mode")
 
 
-func rebuild_navigation() -> void:
+func rebuild_navigation(changed_node: Node2D = null) -> void:
 	var obstacle_list: Array = []
 	if decorations.has_method("get_obstacles"):
 		obstacle_list = decorations.call("get_obstacles")
@@ -158,12 +163,8 @@ func rebuild_navigation() -> void:
 		if child is Building:
 			building_list.append(child)
 
-	navigation_region.rebuild_navigation(obstacle_list, building_list)
-	_refresh_unit_navigation()
-
-
-func _refresh_unit_navigation() -> void:
-	for unit in units.get_children():
-		if unit is Unit:
-			var spawned_unit := unit as Unit
-			spawned_unit.navigation_agent.target_position = spawned_unit.global_position
+	if changed_node == null:
+		navigation_region.rebuild_navigation(obstacle_list, building_list)
+		return
+	navigation_region.update_sources(obstacle_list, building_list)
+	navigation_region.request_rebuild_at(changed_node.global_position)

@@ -2,6 +2,8 @@ extends TileMapLayer
 
 class_name TinyTilesMap
 
+signal terrain_generated(seed: int)
+
 enum GroundTile {
 	GRASS_A,
 	GRASS_B,
@@ -12,35 +14,24 @@ enum GroundTile {
 }
 
 const TILE_SIZE := Vector2i(256, 128)
-const MAP_SIZE := Vector2i(14, 12)
 
-const GROUND_LAYOUT: Array[String] = [
-	"aaaaaaaaaaaaaa",
-	"aaabbbaaaaabaa",
-	"aaabbwwwwbbbaa",
-	"aaaabwwwwbbbaa",
-	"aaaaaabbbbbaaa",
-	"aaacccaaaabbba",
-	"aaacccaaaabbba",
-	"aaaaaaaddddaaa",
-	"aaaaaaaddddaaa",
-	"aaaaaaaaaaaaaa",
-	"aaaaaaaaaaaaaa",
-	"aaaaaaaaaaaaaa",
-]
-
-const WATER_CELLS: Array[Vector2i] = [
-	Vector2i(5, 2), Vector2i(6, 2), Vector2i(7, 2), Vector2i(8, 2),
-	Vector2i(5, 3), Vector2i(6, 3), Vector2i(7, 3), Vector2i(8, 3),
-]
+@export var fixed_seed: int = 0
 
 var _pressed_cells: Dictionary = {}
+var _map_size := ProceduralMapGenerator.DEFAULT_MAP_SIZE
+var _world_seed := 0
+var _town_center_cell := Vector2i.ZERO
+var _ground_tiles: Array[int] = []
+var _water_cells: Array[Vector2i] = []
+var _water_set: Dictionary = {}
+var _resource_placements: Array[Dictionary] = []
+var _decoration_placements: Array[Dictionary] = []
 
 
 func _ready() -> void:
 	tile_set = _build_tileset()
 	y_sort_enabled = false
-	_paint_ground()
+	regenerate(fixed_seed)
 	call_deferred("_notify_world_ready")
 
 
@@ -80,38 +71,35 @@ func _build_tileset() -> TileSet:
 	return tileset
 
 
-func _paint_ground() -> void:
-	for y in GROUND_LAYOUT.size():
-		var row := GROUND_LAYOUT[y]
-		for x in row.length():
-			var symbol: String = row[x]
-			var source_id := _symbol_to_source(symbol)
-			if source_id >= 0:
-				set_cell(Vector2i(x, y), source_id, Vector2i.ZERO)
+func regenerate(seed_override: int = 0) -> void:
+	var generator := ProceduralMapGenerator.new()
+	var result := generator.generate(seed_override)
+	_map_size = result["map_size"]
+	_world_seed = result["seed"]
+	_town_center_cell = result["town_center_cell"]
+	_ground_tiles.assign(result["ground_tiles"])
+	_water_cells.assign(result["water_cells"])
+	_water_set = result["water_set"].duplicate()
+	_resource_placements.assign(result["resource_placements"])
+	_decoration_placements.assign(result["decoration_placements"])
+	_pressed_cells.clear()
+	clear()
+	_paint_generated_ground()
+	terrain_generated.emit(_world_seed)
 
 
-func _symbol_to_source(symbol: String) -> int:
-	match symbol:
-		"a":
-			return GroundTile.GRASS_A
-		"b":
-			return GroundTile.GRASS_B
-		"c":
-			return GroundTile.GRASS_C
-		"d":
-			return GroundTile.GRASS_D
-		"w":
-			return GroundTile.WATER
-		"m":
-			return GroundTile.MAIN
-		_:
-			return -1
+func _paint_generated_ground() -> void:
+	for y in _map_size.y:
+		for x in _map_size.x:
+			var cell := Vector2i(x, y)
+			var source_id := _ground_tiles[_cell_index(cell)]
+			set_cell(cell, source_id, Vector2i.ZERO)
 
 
 func get_map_bounds() -> Rect2:
 	var used := get_used_rect()
 	if used.size == Vector2i.ZERO:
-		return Rect2(Vector2.ZERO, Vector2(MAP_SIZE) * Vector2(TILE_SIZE) * 0.5)
+		return Rect2(Vector2.ZERO, Vector2(_map_size) * Vector2(TILE_SIZE) * 0.5)
 
 	var corners: Array[Vector2] = [
 		map_to_local(used.position),
@@ -134,19 +122,26 @@ func get_cell_at_world(world_pos: Vector2) -> Vector2i:
 
 func get_ground_type_at(world_pos: Vector2) -> GroundTile:
 	var cell := get_cell_at_world(world_pos)
-	var source_id := get_cell_source_id(cell)
-	if source_id == GroundTile.WATER:
+	if cell in _water_set:
 		return GroundTile.WATER
 	return GroundTile.GRASS_A
 
 
 func is_water_at(world_pos: Vector2) -> bool:
-	return get_cell_source_id(get_cell_at_world(world_pos)) == GroundTile.WATER
+	return get_cell_at_world(world_pos) in _water_set
+
+
+func is_walkable_cell(cell: Vector2i) -> bool:
+	return is_cell_in_bounds(cell) and cell not in _water_set
+
+
+func is_cell_in_bounds(cell: Vector2i) -> bool:
+	return cell.x >= 0 and cell.y >= 0 and cell.x < _map_size.x and cell.y < _map_size.y
 
 
 func press_grass_at(world_pos: Vector2) -> void:
 	var cell := get_cell_at_world(world_pos)
-	if get_cell_source_id(cell) == GroundTile.WATER:
+	if not is_walkable_cell(cell):
 		return
 
 	if cell in _pressed_cells:
@@ -177,11 +172,50 @@ func release_grass_at_cell(cell: Vector2i) -> void:
 
 
 func get_water_cells() -> Array[Vector2i]:
+	return _water_cells.duplicate()
+
+
+func get_map_size() -> Vector2i:
+	return _map_size
+
+
+func get_world_seed() -> int:
+	return _world_seed
+
+
+func get_town_center_cell() -> Vector2i:
+	return _town_center_cell
+
+
+func get_resource_placements() -> Array[Dictionary]:
+	return _resource_placements.duplicate(true)
+
+
+func get_decoration_placements() -> Array[Dictionary]:
+	return _decoration_placements.duplicate(true)
+
+
+func get_walkable_edge_cells() -> Array[Vector2i]:
 	var cells: Array[Vector2i] = []
-	for cell in WATER_CELLS:
-		if get_cell_source_id(cell) == GroundTile.WATER:
-			cells.append(cell)
+	for x in _map_size.x:
+		var top := Vector2i(x, 0)
+		var bottom := Vector2i(x, _map_size.y - 1)
+		if is_walkable_cell(top):
+			cells.append(top)
+		if bottom != top and is_walkable_cell(bottom):
+			cells.append(bottom)
+	for y in range(1, _map_size.y - 1):
+		var left := Vector2i(0, y)
+		var right := Vector2i(_map_size.x - 1, y)
+		if is_walkable_cell(left):
+			cells.append(left)
+		if right != left and is_walkable_cell(right):
+			cells.append(right)
 	return cells
+
+
+func _cell_index(cell: Vector2i) -> int:
+	return cell.y * _map_size.x + cell.x
 
 
 func _notify_world_ready() -> void:

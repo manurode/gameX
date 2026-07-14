@@ -6,7 +6,6 @@ const ENEMY_SCENE: PackedScene = preload("res://scenes/units/unit_enemy.tscn")
 const MIN_ENEMIES := 6
 const MAX_ENEMIES := 20
 const EDGE_MARGIN := 48.0
-const WALKABLE_SEARCH_RADIUS := 96.0
 
 var _day_night: DayNightManager
 var _units_container: Node2D
@@ -58,44 +57,14 @@ func _despawn_all() -> void:
 
 
 func _get_edge_spawn_points(count: int) -> Array[Vector2]:
-	var bounds := _ground.get_map_bounds()
-	var sides: Array[String] = ["top", "bottom", "left", "right"]
 	var points: Array[Vector2] = []
-
+	var edge_cells := _ground.get_walkable_edge_cells()
+	if edge_cells.is_empty():
+		return points
+	edge_cells.shuffle()
+	var town_position := _ground.map_to_local(_ground.get_town_center_cell())
 	for i in count:
-		var side: String = sides[i % sides.size()]
-		var edge_point := _point_on_edge(bounds, side)
-		points.append(_find_walkable_near(edge_point))
-
+		var edge_position := _ground.map_to_local(edge_cells[i % edge_cells.size()])
+		var inward := edge_position.direction_to(town_position) * EDGE_MARGIN
+		points.append(edge_position + inward)
 	return points
-
-
-func _point_on_edge(bounds: Rect2, side: String) -> Vector2:
-	var center := bounds.get_center()
-	var jitter := randf_range(-bounds.size.x * 0.2, bounds.size.x * 0.2)
-
-	match side:
-		"top":
-			return Vector2(center.x + jitter, bounds.position.y + EDGE_MARGIN)
-		"bottom":
-			return Vector2(center.x + jitter, bounds.end.y - EDGE_MARGIN)
-		"left":
-			return Vector2(bounds.position.x + EDGE_MARGIN, center.y + jitter)
-		"right":
-			return Vector2(bounds.end.x - EDGE_MARGIN, center.y + jitter)
-		_:
-			return center
-
-
-func _find_walkable_near(origin: Vector2) -> Vector2:
-	if _ground != null and not _ground.is_water_at(origin):
-		return origin
-
-	for radius in range(16, int(WALKABLE_SEARCH_RADIUS), 16):
-		for angle_idx in 8:
-			var angle := TAU * float(angle_idx) / 8.0
-			var candidate := origin + Vector2(cos(angle), sin(angle)) * float(radius)
-			if _ground != null and not _ground.is_water_at(candidate):
-				return candidate
-
-	return origin

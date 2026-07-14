@@ -314,15 +314,15 @@ func _try_place_building(world_pos: Vector2) -> void:
 
 	_assign_nearest_villager(building)
 
-	_request_nav_rebuild()
+	_request_nav_rebuild(building)
 
 
 
 
 
-func _on_building_completed(_building: Building) -> void:
+func _on_building_completed(building: Building) -> void:
 
-	_request_nav_rebuild()
+	_request_nav_rebuild(building)
 
 
 
@@ -486,13 +486,13 @@ func _has_gather_node_nearby(world_pos: Vector2, type_id: String) -> bool:
 
 
 
-func _request_nav_rebuild() -> void:
+func _request_nav_rebuild(changed_building: Building = null) -> void:
 
 	var world := get_tree().get_first_node_in_group("game_world")
 
 	if world != null and world.has_method("rebuild_navigation"):
 
-		world.call_deferred("rebuild_navigation")
+		world.call_deferred("rebuild_navigation", changed_building)
 
 
 

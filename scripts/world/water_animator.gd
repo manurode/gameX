@@ -2,10 +2,12 @@ extends Node
 
 @export var pulse_strength := 0.12
 @export var pulse_speed := 1.8
+@export_range(0.05, 1.0, 0.05) var update_interval := 0.12
 
 var _ground_layer: TinyTilesMap
 var _overlays: Array[Sprite2D] = []
 var _time := 0.0
+var _update_accumulator := 0.0
 var _night_mode := false
 var _base_pulse_strength := 0.12
 
@@ -15,6 +17,7 @@ func _ready() -> void:
 
 
 func setup(ground_layer: TinyTilesMap) -> void:
+	_clear_overlays()
 	_ground_layer = ground_layer
 	_create_water_overlays()
 
@@ -28,11 +31,12 @@ func _create_water_overlays() -> void:
 	if _ground_layer == null:
 		return
 
+	var water_texture: Texture2D = load(
+		"res://assets/tilesets/tiny_tiles/Environment/Terrain/Main/env_terrain_water.png"
+	)
 	for cell in _ground_layer.get_water_cells():
 		var sprite := Sprite2D.new()
-		sprite.texture = load(
-			"res://assets/tilesets/tiny_tiles/Environment/Terrain/Main/env_terrain_water.png"
-		)
+		sprite.texture = water_texture
 		sprite.centered = true
 		sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 		sprite.position = _ground_layer.map_to_local(cell)
@@ -43,6 +47,10 @@ func _create_water_overlays() -> void:
 
 func _process(delta: float) -> void:
 	_time += delta
+	_update_accumulator += delta
+	if _update_accumulator < update_interval:
+		return
+	_update_accumulator = 0.0
 	var shimmer := 0.85 + sin(_time * pulse_speed) * pulse_strength
 	var alpha_base := 0.28 if _night_mode else 0.38
 	for overlay in _overlays:
@@ -53,3 +61,10 @@ func _process(delta: float) -> void:
 				1.0,
 				alpha_base + sin(_time * pulse_speed + 0.5) * 0.08
 			)
+
+
+func _clear_overlays() -> void:
+	_overlays.clear()
+	for child in get_children():
+		remove_child(child)
+		child.queue_free()
