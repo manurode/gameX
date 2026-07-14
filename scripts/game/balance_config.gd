@@ -30,6 +30,10 @@ const SQUAD_FOOD_COST := 120
 const SQUAD_GOLD_COST := 40
 const SQUAD_TRAIN_TIME := 6.0
 
+const GARRISON_SOLDIER_DAMAGE_WEIGHT := 1.0
+const GARRISON_CIVILIAN_DAMAGE_WEIGHT := 0.35
+const GARRISON_CIVILIAN_ATTACK_COOLDOWN := 1.6
+
 
 static func get_gather_rate(resource_key: String) -> float:
 	match resource_key:

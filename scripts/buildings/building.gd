@@ -210,13 +210,25 @@ func get_garrison_count() -> int:
 	return count
 
 
+func get_garrison_combat_weight() -> float:
+	var weight := 0.0
+	for unit in garrisoned_units:
+		if not is_instance_valid(unit) or unit._is_dying:
+			continue
+		if unit.can_attack:
+			weight += BalanceConfig.GARRISON_SOLDIER_DAMAGE_WEIGHT
+		elif unit.is_civilian:
+			weight += BalanceConfig.GARRISON_CIVILIAN_DAMAGE_WEIGHT
+	return weight
+
+
 func get_garrison_attack_damage() -> int:
-	var occupants := get_garrison_count()
-	if occupants <= 0:
+	var combat_weight := get_garrison_combat_weight()
+	if combat_weight <= 0.0:
 		return 0
 	var weapon_stats: Dictionary = get_weapon_stats()
 	var base: int = weapon_stats.get("damage", 4)
-	return int(round(float(base) * garrison_attack_multiplier * float(occupants)))
+	return maxi(1, int(round(float(base) * garrison_attack_multiplier * combat_weight)))
 
 
 func get_garrison_attack_range() -> float:
@@ -274,7 +286,7 @@ func _process_garrison_combat(delta: float) -> void:
 	shooter.fire_garrison_shot()
 	var weapon_stats: Dictionary = get_weapon_stats()
 	var cooldown_mult: float = weapon_stats.get("cooldown_mult", 1.0)
-	_garrison_attack_cooldown = maxf(0.45, shooter.attack_cooldown * cooldown_mult)
+	_garrison_attack_cooldown = maxf(0.45, _get_garrison_shooter_cooldown(shooter) * cooldown_mult)
 
 
 func _process_automatic_defense(delta: float) -> void:
@@ -335,10 +347,21 @@ func _is_garrison_in_attack_range() -> bool:
 
 
 func _get_garrison_shooter_unit() -> Unit:
+	var civilian_shooter: Unit = null
 	for unit in garrisoned_units:
-		if is_instance_valid(unit) and unit.can_attack and not unit._is_dying:
+		if not is_instance_valid(unit) or unit._is_dying:
+			continue
+		if unit.can_attack:
 			return unit
-	return null
+		if unit.is_civilian and civilian_shooter == null:
+			civilian_shooter = unit
+	return civilian_shooter
+
+
+func _get_garrison_shooter_cooldown(shooter: Unit) -> float:
+	if shooter.is_civilian and not shooter.can_attack:
+		return BalanceConfig.GARRISON_CIVILIAN_ATTACK_COOLDOWN
+	return shooter.attack_cooldown
 
 
 func has_enemy_garrison(unit: Unit) -> bool:
