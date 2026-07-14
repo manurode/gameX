@@ -3,6 +3,7 @@ extends Node
 
 const GATHER_CARRY_AMOUNT := 10
 const GATHER_TIME_AT_NODE := 2.5
+const AUTO_BUILD_RADIUS := 450.0
 
 var _resource_manager: ResourceManager
 var _population_manager: PopulationManager
@@ -59,6 +60,9 @@ func try_assign_idle_villager(villager: Unit) -> void:
 		if is_instance_valid(remembered) and _can_assign_to_building(villager, remembered):
 			_assign_villager_to_building(villager, remembered)
 			return
+
+	if _try_assign_nearby_construction(villager):
+		return
 
 	var best_building := _find_best_gather_building_for_villager(villager)
 	if best_building != null:
@@ -207,6 +211,74 @@ func on_unit_reached_deposit_building(unit: Unit, building: Building) -> void:
 func on_construction_finished(unit: Unit) -> void:
 	release_unit_job(unit)
 	try_assign_idle_villager(unit)
+
+
+func alert_nearby_builders(site: Building) -> void:
+	if site == null or not is_instance_valid(site):
+		return
+	if site.building_state != Building.BuildingState.CONSTRUCTING:
+		return
+
+	var radius_sq := AUTO_BUILD_RADIUS * AUTO_BUILD_RADIUS
+	var site_pos := site.global_position
+
+	for node in get_tree().get_nodes_in_group("units"):
+		if not node is Unit:
+			continue
+
+		var villager := node as Unit
+		if villager.global_position.distance_squared_to(site_pos) > radius_sq:
+			continue
+		if not _can_auto_build(villager):
+			continue
+
+		villager.assign_construction(site)
+
+
+func _can_auto_build(villager: Unit) -> bool:
+	if not villager.can_build or not villager.is_civilian:
+		return false
+	if villager.team_id != Team.PLAYER:
+		return false
+	if villager.is_busy():
+		return false
+	if villager._is_dying or villager.hp <= 0:
+		return false
+	if villager.garrisoned_building != null or villager.garrison_approach_target != null:
+		return false
+	if villager.construction_target != null:
+		return false
+	return true
+
+
+func _try_assign_nearby_construction(villager: Unit) -> bool:
+	if not _can_auto_build(villager):
+		return false
+
+	var radius_sq := AUTO_BUILD_RADIUS * AUTO_BUILD_RADIUS
+	var villager_pos := villager.global_position
+	var best_site: Building = null
+	var best_dist := INF
+
+	for node in get_tree().get_nodes_in_group("buildings"):
+		if not node is Building:
+			continue
+		var building := node as Building
+		if building.building_state != Building.BuildingState.CONSTRUCTING:
+			continue
+		var dist_sq := villager_pos.distance_squared_to(building.global_position)
+		if dist_sq > radius_sq:
+			continue
+		if dist_sq < best_dist:
+			best_dist = dist_sq
+			best_site = building
+
+	if best_site == null:
+		return false
+
+	release_unit_job(villager)
+	villager.assign_construction(best_site)
+	return true
 
 
 func _can_assign_to_building(villager: Unit, building: Building) -> bool:

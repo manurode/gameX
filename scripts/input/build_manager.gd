@@ -204,7 +204,8 @@ func _place_single_building(world_pos: Vector2, vertical: bool) -> Building:
 	_buildings_container.add_child(building)
 	building.global_position = world_pos
 	building.construction_completed.connect(_on_building_completed.bind(building))
-	_assign_nearest_villager(building)
+	if _job_manager != null:
+		_job_manager.alert_nearby_builders(building)
 	_request_nav_rebuild(building)
 	return building
 
@@ -375,29 +376,6 @@ func _can_afford_wall_line(segment_count: int) -> bool:
 
 func _on_building_completed(building: Building) -> void:
 	_request_nav_rebuild(building)
-
-
-func _assign_nearest_villager(site: Building) -> void:
-	var best: Unit = null
-	var best_dist := INF
-	for node in get_tree().get_nodes_in_group("units"):
-		if not node is Unit:
-			continue
-		var unit := node as Unit
-		if not unit.can_build or not unit.is_civilian:
-			continue
-		if unit.is_busy():
-			continue
-		if unit._is_dying or unit.hp <= 0:
-			continue
-		var dist := unit.global_position.distance_squared_to(site.global_position)
-		if dist < best_dist:
-			best_dist = dist
-			best = unit
-	if best != null:
-		if _job_manager != null:
-			_job_manager.release_unit_job(best)
-		best.assign_construction(site)
 
 
 func _has_gather_node_nearby(world_pos: Vector2, type_id: String) -> bool:
