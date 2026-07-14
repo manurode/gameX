@@ -12,8 +12,13 @@ const HEALTH_BAR_VISIBLE_MS := 3000
 const ALLY_DEFEND_RADIUS := 450.0
 const PERSONAL_SPACE_RADIUS := 28.0
 const NAV_AGENT_RADIUS := 16.0
-const STUCK_TIME_SECONDS := 0.4
+const STUCK_TIME_SECONDS := 0.35
 const STUCK_MOVE_EPSILON_SQ := 2.0
+const STUCK_REPATH_MAX := 8
+const BLOCKED_SPEED_RATIO := 0.35
+const TARGET_PROGRESS_MIN := 2.5
+const OBSTACLE_PROBE_DISTANCE := 44.0
+const REPATH_WAYPOINT_REACHED := 18.0
 const MELEE_DAMAGE_FRAME := 5
 const RANGED_DAMAGE_FRAME := 6
 const DEATH_LINGER_SECONDS := 2.8
@@ -75,6 +80,7 @@ var _hit_flash_tween: Tween
 var _stuck_timer := 0.0
 var _stuck_check_position := Vector2.ZERO
 var _nav_repath_attempts := 0
+var _nav_repath_waypoint := Vector2.INF
 
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var navigation_agent: NavigationAgent2D = $NavigationAgent2D
@@ -298,6 +304,7 @@ func reset_navigation() -> void:
 	navigation_agent.target_position = global_position
 	velocity = Vector2.ZERO
 	_unit_state = UnitState.IDLE
+	_reset_navigation_recovery()
 
 
 static func compute_formation_positions(
@@ -451,8 +458,7 @@ func move_to(target: Vector2) -> void:
 	_unit_state = UnitState.MOVING
 	_is_attack_animating = false
 	_move_destination = target
-	_reset_stuck_tracking()
-	_nav_repath_attempts = 0
+	_reset_navigation_recovery()
 	navigation_agent.target_desired_distance = PERSONAL_SPACE_RADIUS * 0.85
 	navigation_agent.target_position = target
 
@@ -473,8 +479,7 @@ func attack_target_unit(target: Unit) -> void:
 	attack_target = target
 	_unit_state = UnitState.CHASING if garrisoned_building == null else UnitState.IDLE
 	_is_attack_animating = false
-	_reset_stuck_tracking()
-	_nav_repath_attempts = 0
+	_reset_navigation_recovery()
 
 
 func attack_target_building_node(target: Building) -> void:
@@ -489,8 +494,7 @@ func attack_target_building_node(target: Building) -> void:
 	attack_target_building = target
 	_unit_state = UnitState.CHASING if garrisoned_building == null else UnitState.IDLE
 	_is_attack_animating = false
-	_reset_stuck_tracking()
-	_nav_repath_attempts = 0
+	_reset_navigation_recovery()
 
 
 func approach_garrison(building: Building) -> void:
@@ -509,6 +513,7 @@ func approach_garrison(building: Building) -> void:
 	garrison_approach_target = building
 	_unit_state = UnitState.GARRISON_APPROACH
 	_is_attack_animating = false
+	_reset_navigation_recovery()
 	navigation_agent.target_desired_distance = 4.0
 	navigation_agent.target_position = building.get_entry_approach_point(global_position)
 
@@ -526,6 +531,7 @@ func assign_construction(site: Building) -> void:
 	construction_target = site
 	_unit_state = UnitState.CONSTRUCTING
 	_is_attack_animating = false
+	_reset_navigation_recovery()
 	navigation_agent.target_desired_distance = 4.0
 	navigation_agent.target_position = site.get_approach_point(global_position)
 
@@ -861,41 +867,173 @@ func _physics_process(delta: float) -> void:
 	_update_terrain_feedback(delta)
 
 
-func _reset_stuck_tracking() -> void:
+func _reset_navigation_recovery() -> void:
+	_reset_stuck_tracking()
+	_nav_repath_attempts = 0
+	_nav_repath_waypoint = Vector2.INF
+
+
+func _reset_stuck_tracking(target: Vector2 = Vector2.INF) -> void:
 	_stuck_timer = 0.0
 	_stuck_check_position = global_position
 
 
-func _is_stuck_moving(delta: float) -> bool:
-	if global_position.distance_squared_to(_stuck_check_position) > STUCK_MOVE_EPSILON_SQ:
-		_reset_stuck_tracking()
+func _is_stuck_moving(delta: float, target: Vector2) -> bool:
+	var progress := _stuck_check_position.distance_to(target) - global_position.distance_to(target)
+	var moved_sq := global_position.distance_squared_to(_stuck_check_position)
+
+	if moved_sq > STUCK_MOVE_EPSILON_SQ and progress > TARGET_PROGRESS_MIN:
+		_reset_stuck_tracking(target)
 		return false
 
 	_stuck_timer += delta
 	return _stuck_timer >= STUCK_TIME_SECONDS
 
 
+func _sync_navigation_target(target: Vector2) -> void:
+	if _nav_repath_waypoint != Vector2.INF:
+		if global_position.distance_to(_nav_repath_waypoint) > REPATH_WAYPOINT_REACHED:
+			if navigation_agent.target_position.distance_squared_to(_nav_repath_waypoint) > 4.0:
+				navigation_agent.target_position = _nav_repath_waypoint
+			return
+		_nav_repath_waypoint = Vector2.INF
+		_nav_repath_attempts = 0
+
+	if navigation_agent.target_position.distance_squared_to(target) > 4.0:
+		navigation_agent.target_position = target
+
+
 func _force_navigation_repath(target: Vector2) -> void:
 	_nav_repath_attempts += 1
-	_reset_stuck_tracking()
+	_reset_stuck_tracking(target)
+
+	var repath_target := target
+	if _nav_repath_attempts > 1:
+		repath_target = _get_stuck_repath_waypoint(target)
+
 	var map_rid := navigation_agent.get_navigation_map()
 	if map_rid.is_valid():
-		var reachable := NavigationServer2D.map_get_closest_point(map_rid, target)
-		navigation_agent.target_position = reachable
-	navigation_agent.target_position = target
+		repath_target = NavigationServer2D.map_get_closest_point(map_rid, repath_target)
+
+	_nav_repath_waypoint = repath_target
+	navigation_agent.target_position = global_position
+	navigation_agent.target_position = repath_target
+
+
+func _get_stuck_repath_waypoint(target: Vector2) -> Vector2:
+	var to_target := global_position.direction_to(target)
+	if to_target == Vector2.ZERO:
+		to_target = Vector2.DOWN
+	var side := Vector2(-to_target.y, to_target.x)
+	var side_sign := 1.0 if _nav_repath_attempts % 2 == 0 else -1.0
+	var offset_dist := 40.0 + float(_nav_repath_attempts) * 28.0
+	return global_position + side * offset_dist * side_sign
+
+
+func _move_with_obstacle_avoidance(preferred_direction: Vector2, target: Vector2, delta: float) -> bool:
+	if preferred_direction == Vector2.ZERO:
+		velocity = Vector2.ZERO
+		return false
+
+	var speed := _get_effective_move_speed()
+	var before := global_position
+	var dist_before := before.distance_to(target)
+
+	velocity = preferred_direction.normalized() * speed
+	move_and_slide()
+
+	var moved := global_position.distance_to(before)
+	var progress := dist_before - global_position.distance_to(target)
+	if _did_move_well(moved, progress, speed, delta):
+		_reset_stuck_tracking(target)
+		_play_walk_animation(preferred_direction)
+		return true
+
+	var recovery := _get_obstacle_recovery_direction(preferred_direction, target)
+	if recovery != Vector2.ZERO and recovery.angle_to(preferred_direction) > 0.05:
+		var before_recovery := global_position
+		var dist_before_recovery := before_recovery.distance_to(target)
+		velocity = recovery * speed
+		move_and_slide()
+		moved = global_position.distance_to(before_recovery)
+		progress = dist_before_recovery - global_position.distance_to(target)
+		if _did_move_well(moved, progress, speed, delta):
+			_reset_stuck_tracking(target)
+			_play_walk_animation(recovery)
+			return true
+
+	return false
+
+
+func _did_move_well(moved: float, progress: float, speed: float, delta: float) -> bool:
+	return moved >= speed * delta * BLOCKED_SPEED_RATIO and progress >= TARGET_PROGRESS_MIN * delta
+
+
+func _get_obstacle_recovery_direction(preferred_direction: Vector2, target: Vector2) -> Vector2:
+	var wall_normal := _get_blocking_collision_normal()
+	if wall_normal != Vector2.ZERO:
+		var tangent_a := Vector2(-wall_normal.y, wall_normal.x)
+		var tangent_b := -tangent_a
+		var to_target := global_position.direction_to(target)
+		if to_target == Vector2.ZERO:
+			return tangent_a
+		return tangent_a if tangent_a.dot(to_target) >= tangent_b.dot(to_target) else tangent_b
+
+	return _probe_avoidance_direction(preferred_direction, target)
+
+
+func _get_blocking_collision_normal() -> Vector2:
+	var combined := Vector2.ZERO
+	for i in get_slide_collision_count():
+		combined += get_slide_collision(i).get_normal()
+	if combined.length_squared() < 0.001:
+		return Vector2.ZERO
+	return combined.normalized()
+
+
+func _probe_avoidance_direction(preferred_direction: Vector2, target: Vector2) -> Vector2:
+	var space_state := get_world_2d().direct_space_state
+	var origin := global_position
+	var to_target := origin.direction_to(target)
+	if to_target == Vector2.ZERO:
+		to_target = preferred_direction
+	var base_angle := preferred_direction.angle()
+	var best_dir := Vector2.ZERO
+	var best_score := -INF
+
+	for offset_deg in [0.0, 40.0, -40.0, 75.0, -75.0, 110.0, -110.0, 145.0, -145.0]:
+		var dir := Vector2.from_angle(base_angle + deg_to_rad(offset_deg))
+		if _is_direction_blocked(dir, space_state, origin):
+			continue
+		var score := dir.dot(to_target)
+		if score > best_score:
+			best_score = score
+			best_dir = dir
+
+	return best_dir if best_dir != Vector2.ZERO else preferred_direction
+
+
+func _is_direction_blocked(direction: Vector2, space_state: PhysicsDirectSpaceState2D, origin: Vector2) -> bool:
+	var params := PhysicsRayQueryParameters2D.create(
+		origin,
+		origin + direction.normalized() * OBSTACLE_PROBE_DISTANCE,
+		collision_mask
+	)
+	params.exclude = [get_rid()]
+	return not space_state.intersect_ray(params).is_empty()
 
 
 func _follow_navigation_toward(target: Vector2, desired_distance: float, delta: float) -> void:
 	var remaining := global_position.distance_to(target)
 	if remaining <= desired_distance:
 		velocity = Vector2.ZERO
-		_reset_stuck_tracking()
+		_reset_stuck_tracking(target)
+		_nav_repath_waypoint = Vector2.INF
 		_play_idle()
 		return
 
 	navigation_agent.target_desired_distance = desired_distance
-	if navigation_agent.target_position.distance_squared_to(target) > 4.0:
-		navigation_agent.target_position = target
+	_sync_navigation_target(target)
 
 	var direction := _get_navigation_direction(target)
 	if direction == Vector2.ZERO:
@@ -903,15 +1041,16 @@ func _follow_navigation_toward(target: Vector2, desired_distance: float, delta: 
 		_play_idle()
 		return
 
-	var before := global_position
-	velocity = direction * _get_effective_move_speed()
-	move_and_slide()
+	if _move_with_obstacle_avoidance(direction, target, delta):
+		return
 
-	if global_position.distance_squared_to(before) >= STUCK_MOVE_EPSILON_SQ:
-		_reset_stuck_tracking()
-		_play_walk_animation(direction)
-	elif _is_stuck_moving(delta):
-		_force_navigation_repath(target)
+	if _is_stuck_moving(delta, target):
+		if _nav_repath_attempts < STUCK_REPATH_MAX:
+			_force_navigation_repath(target)
+		else:
+			var recovery := _probe_avoidance_direction(direction, target)
+			_move_with_obstacle_avoidance(recovery, target, delta)
+			_reset_navigation_recovery()
 		_play_idle()
 	else:
 		_play_idle()
@@ -959,7 +1098,7 @@ func _process_combat(_delta: float) -> void:
 	_update_terrain_feedback(_delta)
 
 
-func _chase_melee_unit_direct(_delta: float) -> void:
+func _chase_melee_unit_direct(delta: float) -> void:
 	var target_point := attack_target.get_sprite_center()
 	var direction := global_position.direction_to(target_point)
 	if direction == Vector2.ZERO:
@@ -967,9 +1106,19 @@ func _chase_melee_unit_direct(_delta: float) -> void:
 		_play_idle()
 		return
 
-	velocity = direction * _get_effective_move_speed()
-	move_and_slide()
-	_play_walk_animation(direction)
+	if _move_with_obstacle_avoidance(direction, target_point, delta):
+		return
+
+	if _is_stuck_moving(delta, target_point):
+		if _nav_repath_attempts < STUCK_REPATH_MAX:
+			_force_navigation_repath(target_point)
+		else:
+			var recovery := _probe_avoidance_direction(direction, target_point)
+			_move_with_obstacle_avoidance(recovery, target_point, delta)
+			_reset_navigation_recovery()
+		_play_idle()
+	else:
+		_play_idle()
 
 
 func _get_chase_navigation_target() -> Vector2:
