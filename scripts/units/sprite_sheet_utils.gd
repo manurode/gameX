@@ -14,7 +14,9 @@ static func build_character_frames(
 	walk_fps: float = 10.0,
 	attack_fps: float = 12.0,
 	death_fps: float = 7.0,
-	death_frame_count: int = -1
+	death_frame_count: int = -1,
+	gather_sheet: Texture2D = null,
+	gather_fps: float = 9.0
 ) -> SpriteFrames:
 	var frames := SpriteFrames.new()
 
@@ -48,6 +50,8 @@ static func build_character_frames(
 			false,
 			death_frame_count
 		)
+	if gather_sheet != null:
+		_add_horizontal_frames(frames, &"gather", gather_sheet, frame_size, gather_fps, true)
 
 	if not frames.has_animation(&"idle"):
 		if frames.has_animation(&"walk_down"):

@@ -36,6 +36,7 @@ const STONE_SCENE: PackedScene = preload("res://scenes/combat/stone.tscn")
 @export var walk_down_sheet: Texture2D
 @export var attack_up_sheet: Texture2D
 @export var attack_down_sheet: Texture2D
+@export var gather_sheet: Texture2D
 @export var death_up_sheet: Texture2D
 @export var death_down_sheet: Texture2D
 @export var sprite_offset := Vector2(0.0, -36.0)
@@ -152,7 +153,9 @@ func _setup_sprite_frames() -> void:
 		10.0,
 		12.0,
 		7.0,
-		DEATH_FRAME_COUNT if death_up_sheet != null or death_down_sheet != null else -1
+		DEATH_FRAME_COUNT if death_up_sheet != null or death_down_sheet != null else -1,
+		gather_sheet,
+		9.0
 	)
 	if frames.get_animation_names().is_empty():
 		return
@@ -1309,7 +1312,7 @@ func _process_gathering(delta: float) -> void:
 		return
 
 	velocity = Vector2.ZERO
-	_play_idle()
+	_play_gather_animation()
 	_gather_timer += delta
 	var gather_duration := GATHER_TIME_AT_NODE
 	var job_manager := get_tree().get_first_node_in_group("job_manager")
@@ -1427,12 +1430,34 @@ func _finish_gather_job() -> void:
 func _play_build_animation() -> void:
 	if _is_attack_animating:
 		return
+	_reset_sprite_motion()
 	if animated_sprite.sprite_frames.has_animation(&"idle"):
 		if animated_sprite.animation != &"idle":
 			animated_sprite.play(&"idle")
 	# Subtle hammer bounce while building
 	var bounce := sin(Time.get_ticks_msec() * 0.012) * 2.0
 	animated_sprite.position = Vector2(0.0, bounce)
+
+
+func _play_gather_animation() -> void:
+	if _is_attack_animating:
+		return
+	if animated_sprite.sprite_frames.has_animation(&"gather"):
+		if animated_sprite.animation != &"gather":
+			animated_sprite.play(&"gather")
+		_reset_sprite_motion()
+		return
+	if animated_sprite.sprite_frames.has_animation(&"idle"):
+		if animated_sprite.animation != &"idle":
+			animated_sprite.play(&"idle")
+	var swing := sin(Time.get_ticks_msec() * 0.018)
+	animated_sprite.rotation_degrees = swing * 10.0
+	animated_sprite.position = Vector2(swing * 1.5, absf(swing) * 2.5)
+
+
+func _reset_sprite_motion() -> void:
+	animated_sprite.rotation_degrees = 0.0
+	animated_sprite.position = Vector2.ZERO
 
 
 func _should_stop_move_order() -> bool:
@@ -1800,7 +1825,7 @@ func _freeze_death_pose() -> void:
 func _play_idle() -> void:
 	if _is_attack_animating:
 		return
-	animated_sprite.position = Vector2.ZERO
+	_reset_sprite_motion()
 	if animated_sprite.animation != &"idle" and animated_sprite.sprite_frames.has_animation(&"idle"):
 		animated_sprite.play(&"idle")
 
@@ -1811,7 +1836,7 @@ func _play_idle_facing_target() -> void:
 	var direction := _direction_to_target()
 	if direction != Vector2.ZERO:
 		_last_facing_direction = direction
-	animated_sprite.position = Vector2.ZERO
+	_reset_sprite_motion()
 	if animated_sprite.animation != &"idle" and animated_sprite.sprite_frames.has_animation(&"idle"):
 		animated_sprite.play(&"idle")
 
@@ -1860,6 +1885,7 @@ func _play_walk_animation(direction: Vector2) -> void:
 
 	if animated_sprite.animation != animation_name:
 		animated_sprite.play(animation_name)
+	_reset_sprite_motion()
 
 
 func _update_terrain_feedback(_delta: float) -> void:

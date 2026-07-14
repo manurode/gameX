@@ -333,6 +333,8 @@ func _can_assign_to_building(villager: Unit, building: Building) -> bool:
 
 
 func _assign_villager_to_resource(villager: Unit, building: Building, resource_node: ResourceNode) -> void:
+	if not _can_assign_to_building(villager, building):
+		return
 	release_unit_job(villager)
 	if not _building_workers.has(building):
 		_building_workers[building] = []
