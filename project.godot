@@ -12,9 +12,13 @@ config_version=5
 
 config/name="gameX"
 config/description="RTS isométrico adorable estilo AoE con Tiny Tiles"
-run/main_scene="res://scenes/main.tscn"
+run/main_scene="res://scenes/ui/main_menu.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
+
+[autoload]
+
+GameSettings="*res://scripts/game/game_settings.gd"
 
 [display]
 

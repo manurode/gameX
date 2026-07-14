@@ -73,6 +73,7 @@ func _build_tileset() -> TileSet:
 
 func regenerate(seed_override: int = 0) -> void:
 	var generator := ProceduralMapGenerator.new()
+	generator.map_size = GameSettings.get_map_size()
 	var result := generator.generate(seed_override)
 	_map_size = result["map_size"]
 	_world_seed = result["seed"]

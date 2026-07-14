@@ -2,8 +2,13 @@ class_name ProceduralMapGenerator
 extends RefCounted
 
 const DEFAULT_MAP_SIZE := Vector2i(64, 64)
-const TOWN_CLEAR_RADIUS := 7.5
-const CONTENT_CLEAR_RADIUS := 9.0
+const BASE_MAP_AREA := 64 * 64
+const BASE_TOWN_CLEAR_RADIUS := 7.5
+const BASE_CONTENT_CLEAR_RADIUS := 9.0
+const BASE_TERRAIN_FREQUENCY := 0.055
+const BASE_TREE_COUNT := 52
+const BASE_GOLD_COUNT := 18
+const BASE_HILL_COUNT := 34
 const WATER_THRESHOLD := 0.38
 
 const GRASS_A := 0
@@ -26,7 +31,7 @@ func generate(requested_seed: int = 0) -> Dictionary:
 	var terrain_noise := FastNoiseLite.new()
 	terrain_noise.seed = world_seed
 	terrain_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	terrain_noise.frequency = 0.055
+	terrain_noise.frequency = BASE_TERRAIN_FREQUENCY * (64.0 / float(map_size.x))
 	terrain_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
 	terrain_noise.fractal_octaves = 4
 
@@ -46,7 +51,7 @@ func generate(requested_seed: int = 0) -> Dictionary:
 			var cell := Vector2i(x, y)
 			var distance_to_town := Vector2(cell - town_center_cell).length()
 			var water_value := terrain_noise.get_noise_2d(float(x), float(y))
-			var is_water := distance_to_town > TOWN_CLEAR_RADIUS and water_value > WATER_THRESHOLD
+			var is_water := distance_to_town > _get_town_clear_radius() and water_value > WATER_THRESHOLD
 			var tile := WATER if is_water else _pick_grass_tile(detail_noise, cell)
 			ground_tiles[_cell_index(cell)] = tile
 			if is_water:
@@ -96,12 +101,12 @@ func _generate_resources(
 	occupied: Dictionary
 ) -> Array[Dictionary]:
 	var placements: Array[Dictionary] = []
-	_append_random_placements(placements, rng, town_center, water_set, reachable_set, occupied, 52, {
+	_append_random_placements(placements, rng, town_center, water_set, reachable_set, occupied, _scaled_count(BASE_TREE_COUNT), {
 		"kind": "wood",
 		"variant_count": 2,
 		"amount": BalanceConfig.TREE_CAPACITY,
 	})
-	_append_random_placements(placements, rng, town_center, water_set, reachable_set, occupied, 18, {
+	_append_random_placements(placements, rng, town_center, water_set, reachable_set, occupied, _scaled_count(BASE_GOLD_COUNT), {
 		"kind": "gold",
 		"variant_count": 2,
 		"amount": BalanceConfig.GOLD_VEIN_CAPACITY,
@@ -117,7 +122,7 @@ func _generate_decorations(
 	occupied: Dictionary
 ) -> Array[Dictionary]:
 	var placements: Array[Dictionary] = []
-	_append_random_placements(placements, rng, town_center, water_set, reachable_set, occupied, 34, {
+	_append_random_placements(placements, rng, town_center, water_set, reachable_set, occupied, _scaled_count(BASE_HILL_COUNT), {
 		"kind": "hill",
 		"variant_count": 2,
 		"blocks": true,
@@ -140,11 +145,14 @@ func _append_random_placements(
 	var max_attempts := count * 80
 	while placed < count and attempts < max_attempts:
 		attempts += 1
+		var margin := maxi(1, map_size.x / 16)
+		var max_x := maxi(margin, map_size.x - margin - 1)
+		var max_y := maxi(margin, map_size.y - margin - 1)
 		var cell := Vector2i(
-			rng.randi_range(2, map_size.x - 3),
-			rng.randi_range(2, map_size.y - 3)
+			rng.randi_range(margin, max_x),
+			rng.randi_range(margin, max_y)
 		)
-		if Vector2(cell - town_center).length() <= CONTENT_CLEAR_RADIUS:
+		if Vector2(cell - town_center).length() <= _get_content_clear_radius():
 			continue
 		if cell in water_set or cell not in reachable_set or cell in occupied:
 			continue
@@ -244,3 +252,19 @@ func _is_in_bounds(cell: Vector2i) -> bool:
 
 func _cell_index(cell: Vector2i) -> int:
 	return cell.y * map_size.x + cell.x
+
+
+func _get_scale() -> float:
+	return float(map_size.x * map_size.y) / float(BASE_MAP_AREA)
+
+
+func _get_town_clear_radius() -> float:
+	return BASE_TOWN_CLEAR_RADIUS * float(map_size.x) / 64.0
+
+
+func _get_content_clear_radius() -> float:
+	return BASE_CONTENT_CLEAR_RADIUS * float(map_size.x) / 64.0
+
+
+func _scaled_count(base_count: int) -> int:
+	return maxi(2, int(round(float(base_count) * _get_scale())))

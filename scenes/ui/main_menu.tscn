@@ -1,0 +1,73 @@
+[gd_scene format=3 uid="uid://cmainmenu001"]
+
+[ext_resource type="Script" path="res://scripts/ui/main_menu.gd" id="1_menu"]
+
+[node name="MainMenu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_menu")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.2, 0.35, 0.18, 1)
+
+[node name="CenterContainer" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CenterContainer"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="TitleLabel" type="Label" parent="CenterContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.92, 0.75, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.5)
+theme_override_constants/shadow_offset_x = 2
+theme_override_constants/shadow_offset_y = 2
+theme_override_font_sizes/font_size = 36
+text = "gameX"
+horizontal_alignment = 1
+
+[node name="SubtitleLabel" type="Label" parent="CenterContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.88, 0.8, 0.9)
+theme_override_font_sizes/font_size = 16
+text = "Elige el tamaño del mapa"
+horizontal_alignment = 1
+
+[node name="Spacer" type="Control" parent="CenterContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 12)
+layout_mode = 2
+
+[node name="LargeButton" type="Button" parent="CenterContainer/VBoxContainer"]
+custom_minimum_size = Vector2(280, 44)
+layout_mode = 2
+text = "Grande (64×64)"
+
+[node name="MediumButton" type="Button" parent="CenterContainer/VBoxContainer"]
+custom_minimum_size = Vector2(280, 44)
+layout_mode = 2
+text = "Mediano (32×32)"
+
+[node name="SmallButton" type="Button" parent="CenterContainer/VBoxContainer"]
+custom_minimum_size = Vector2(280, 44)
+layout_mode = 2
+text = "Pequeño (16×16)"
+
+[connection signal="pressed" from="CenterContainer/VBoxContainer/LargeButton" to="." method="_on_large_pressed"]
+[connection signal="pressed" from="CenterContainer/VBoxContainer/MediumButton" to="." method="_on_medium_pressed"]
+[connection signal="pressed" from="CenterContainer/VBoxContainer/SmallButton" to="." method="_on_small_pressed"]
