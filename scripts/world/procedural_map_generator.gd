@@ -106,13 +106,6 @@ func _generate_resources(
 		"variant_count": 2,
 		"amount": BalanceConfig.GOLD_VEIN_CAPACITY,
 	})
-	_append_random_placements(placements, rng, town_center, water_set, reachable_set, occupied, 14, {
-		"kind": "food",
-		"variant_count": 2,
-		"amount": 220,
-		"columns": 3,
-		"rows": 2,
-	})
 	return placements
 
 

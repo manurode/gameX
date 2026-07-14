@@ -49,11 +49,7 @@ func get_food_upkeep_label() -> String:
 	var income := 0.0
 	var job_manager := get_tree().get_first_node_in_group("job_manager")
 	if job_manager is JobManager:
-		income = (
-			float((job_manager as JobManager).get_active_worker_count("food"))
-			* BalanceConfig.FOOD_PER_SECOND
-			* get_civilian_work_multiplier()
-		)
+		income = (job_manager as JobManager).get_food_income_per_second()
 	var net := income - get_food_upkeep_per_second()
 	return "%.2f/s · balance %+.2f/s" % [get_food_upkeep_per_second(), net]
 

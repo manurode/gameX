@@ -16,13 +16,16 @@ const WHEAT_PATHS: Array[String] = [
 	"res://assets/tilesets/tiny_tiles/Environment/Terrain/Wheat/env_wheat_a.png",
 	"res://assets/tilesets/tiny_tiles/Environment/Terrain/Wheat/env_wheat_b.png",
 ]
-
+const MILL_WHEAT_COLUMNS := 3
+const MILL_WHEAT_ROWS := 2
+const MILL_WHEAT_OFFSET := Vector2(0.0, 32.0)
 var _ground_layer: TileMapLayer
 var _obstacles: Array[TerrainObstacle] = []
 var _resource_nodes: Array[ResourceNode] = []
 
 
 func setup(ground_layer: TinyTilesMap) -> void:
+	add_to_group("world_decorations")
 	_clear_generated_content()
 	_ground_layer = ground_layer
 	y_sort_enabled = true
@@ -38,6 +41,39 @@ func get_resource_nodes() -> Array[ResourceNode]:
 	return _resource_nodes
 
 
+func spawn_mill_wheat_for_building(building: Building) -> ResourceNode:
+	if building == null or not is_instance_valid(building):
+		return null
+	if building.has_meta("mill_wheat_node"):
+		var existing = building.get_meta("mill_wheat_node")
+		if existing is ResourceNode and is_instance_valid(existing):
+			return existing
+
+	var textures: Array[Texture2D] = []
+	for path in WHEAT_PATHS:
+		textures.append(load(path))
+
+	var world_pos := building.get_base_center() + MILL_WHEAT_OFFSET
+	var node := ResourceNode.new()
+	node.setup_crop_field(world_pos, textures, MILL_WHEAT_COLUMNS, MILL_WHEAT_ROWS)
+	add_child(node)
+	_resource_nodes.append(node)
+	building.set_meta("mill_wheat_node", node)
+	return node
+
+
+func remove_mill_wheat_for_building(building: Building) -> void:
+	if building == null or not building.has_meta("mill_wheat_node"):
+		return
+	var node = building.get_meta("mill_wheat_node")
+	if not node is ResourceNode or not is_instance_valid(node):
+		building.remove_meta("mill_wheat_node")
+		return
+	_resource_nodes.erase(node)
+	node.queue_free()
+	building.remove_meta("mill_wheat_node")
+
+
 func _spawn_resources(placements: Array[Dictionary]) -> void:
 	if _ground_layer == null:
 		return
@@ -46,9 +82,6 @@ func _spawn_resources(placements: Array[Dictionary]) -> void:
 		var kind: String = placement.get("kind", "")
 		var cell: Vector2i = placement.get("cell", Vector2i.ZERO)
 		var world_pos := _ground_layer.map_to_local(cell)
-		if kind == "food":
-			_spawn_crop_field(placement, world_pos)
-			continue
 
 		var paths := TREE_PATHS if kind == "wood" else GOLD_VEIN_PATHS
 		var variant := clampi(placement.get("variant", 0), 0, paths.size() - 1)
@@ -65,22 +98,6 @@ func _spawn_resources(placements: Array[Dictionary]) -> void:
 		node.setup(texture, world_pos, resource_kind, placement.get("amount", 100), offset)
 		add_child(node)
 		_resource_nodes.append(node)
-
-
-func _spawn_crop_field(placement: Dictionary, world_pos: Vector2) -> void:
-	var textures: Array[Texture2D] = []
-	for path in WHEAT_PATHS:
-		textures.append(load(path))
-	var node := ResourceNode.new()
-	node.setup_crop_field(
-		world_pos,
-		textures,
-		placement.get("columns", 3),
-		placement.get("rows", 2),
-		placement.get("amount", 200)
-	)
-	add_child(node)
-	_resource_nodes.append(node)
 
 
 func _spawn_decorations(placements: Array[Dictionary]) -> void:

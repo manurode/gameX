@@ -33,12 +33,11 @@ func setup_crop_field(
 	center_pos: Vector2,
 	textures: Array[Texture2D],
 	columns: int,
-	rows: int,
-	total_amount: int
+	rows: int
 ) -> void:
 	resource_kind = ResourceKind.FOOD
-	amount_remaining = total_amount
-	_initial_amount = total_amount
+	amount_remaining = 0
+	_initial_amount = 0
 	is_infinite = true
 	global_position = center_pos
 
@@ -56,8 +55,6 @@ func setup_crop_field(
 			var sprite_offset := Vector2(0.0, -texture.get_height() * 0.5 + 64.0)
 			_add_sprite(texture, offset, sprite_offset, 0.92 + float(row) * 0.01)
 
-	_add_field_base(columns, rows, spacing, start)
-
 
 func _add_sprite(texture: Texture2D, local_pos: Vector2, sprite_offset: Vector2, scale_factor: float = 1.0) -> void:
 	var sprite := Sprite2D.new()
@@ -70,23 +67,6 @@ func _add_sprite(texture: Texture2D, local_pos: Vector2, sprite_offset: Vector2,
 	_sprites.append(sprite)
 
 
-func _add_field_base(columns: int, rows: int, spacing: Vector2, start: Vector2) -> void:
-	var width := float(columns) * spacing.x + 24.0
-	var height := float(rows) * spacing.y + 16.0
-	var poly := Polygon2D.new()
-	poly.color = Color(0.42, 0.58, 0.22, 0.55)
-	poly.z_index = -1
-	var ox := start.x - 12.0
-	var oy := start.y + spacing.y * float(rows - 1) * 0.35
-	poly.polygon = PackedVector2Array([
-		Vector2(ox, oy),
-		Vector2(ox + width, oy),
-		Vector2(ox + width, oy + height * 0.55),
-		Vector2(ox, oy + height * 0.55),
-	])
-	add_child(poly)
-
-
 func get_resource_key() -> String:
 	match resource_kind:
 		ResourceKind.WOOD:
@@ -96,6 +76,21 @@ func get_resource_key() -> String:
 		ResourceKind.GOLD:
 			return "gold"
 	return ""
+
+
+func get_work_position(from_position: Vector2) -> Vector2:
+	if _sprites.is_empty():
+		return global_position
+	var best_pos := to_global(_sprites[0].position + _sprites[0].offset)
+	var best_dist := from_position.distance_squared_to(best_pos)
+	for i in range(1, _sprites.size()):
+		var sprite := _sprites[i]
+		var pos := to_global(sprite.position + sprite.offset)
+		var dist := from_position.distance_squared_to(pos)
+		if dist < best_dist:
+			best_dist = dist
+			best_pos = pos
+	return best_pos
 
 
 func contains_point(world_point: Vector2) -> bool:

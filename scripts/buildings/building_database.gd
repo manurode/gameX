@@ -133,6 +133,7 @@ const DEFINITIONS: Dictionary = {
 		"footprint": Vector2(85.0, 50.0),
 		"pick_half_size": Vector2(65.0, 55.0),
 		"gather_type": "food",
+		"spawns_gather_source": true,
 		"gather_radius_cells": 3,
 		"gather_rate": BalanceConfig.FOOD_PER_SECOND,
 		"max_workers": BalanceConfig.MILL_MAX_WORKERS,
@@ -319,3 +320,7 @@ static func is_gather_building(type_id: String) -> bool:
 
 static func get_gather_type(type_id: String) -> String:
 	return get_definition(type_id).get("gather_type", "")
+
+
+static func spawns_gather_source(type_id: String) -> bool:
+	return get_definition(type_id).get("spawns_gather_source", false)

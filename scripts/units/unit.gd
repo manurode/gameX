@@ -201,7 +201,7 @@ func assign_gather_at_node(node: ResourceNode) -> void:
 	_gather_timer = 0.0
 	_is_attack_animating = false
 	navigation_agent.target_desired_distance = 4.0
-	navigation_agent.target_position = node.global_position
+	navigation_agent.target_position = node.get_work_position(global_position)
 
 
 func assign_deposit_at_building(building: Building) -> void:
@@ -1302,9 +1302,10 @@ func _process_gathering(delta: float) -> void:
 		_finish_gather_job()
 		return
 
-	var distance := global_position.distance_to(node.global_position)
+	var work_pos := node.get_work_position(global_position)
+	var distance := global_position.distance_to(work_pos)
 	if distance > build_range:
-		_follow_navigation_toward(node.global_position, 4.0, delta)
+		_follow_navigation_toward(work_pos, 4.0, delta)
 		return
 
 	velocity = Vector2.ZERO
@@ -1316,13 +1317,15 @@ func _process_gathering(delta: float) -> void:
 		gather_duration = (job_manager as JobManager).get_gather_duration(self)
 	if _gather_timer >= gather_duration:
 		_gather_timer = 0.0
-		_unit_state = UnitState.DEPOSITING
 		if job_manager is JobManager:
 			var building: Building = (job_manager as JobManager).get_worker_building(self)
+			if building != null and _is_mill_field_node(building, node):
+				(job_manager as JobManager).on_unit_reached_deposit_building(self, building)
+				return
 			if building != null:
 				assign_deposit_at_building(building)
-			else:
-				_finish_gather_job()
+				return
+		_finish_gather_job()
 
 
 func _process_depositing(delta: float) -> void:
@@ -1334,14 +1337,24 @@ func _process_depositing(delta: float) -> void:
 	var approach := building.get_approach_point(global_position)
 	var distance := global_position.distance_to(approach)
 	if distance > build_range:
+		_gather_timer = 0.0
 		_follow_navigation_toward(approach, 4.0, delta)
 		return
 
 	velocity = Vector2.ZERO
 	_play_idle()
+	if _gather_timer > 0.0:
+		return
+	_gather_timer = 1.0
 	var job_manager := get_tree().get_first_node_in_group("job_manager")
 	if job_manager is JobManager:
 		(job_manager as JobManager).on_unit_reached_deposit_building(self, building)
+
+
+func _is_mill_field_node(building: Building, node: ResourceNode) -> bool:
+	if not building.has_meta("mill_wheat_node"):
+		return false
+	return building.get_meta("mill_wheat_node") == node
 
 
 func _process_recruitment(delta: float) -> void:

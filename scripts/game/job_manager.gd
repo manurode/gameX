@@ -26,12 +26,16 @@ func setup(
 func on_building_completed(building: Building) -> void:
 	if not BuildingDatabase.is_gather_building(building.building_type_id):
 		return
+	if BuildingDatabase.spawns_gather_source(building.building_type_id):
+		_spawn_gather_source_for_building(building)
 	register_gather_building(building)
 	if _population_manager != null:
 		_population_manager.recalculate_cap_from_buildings()
 
 
 func on_building_destroyed(building: Building) -> void:
+	if BuildingDatabase.spawns_gather_source(building.building_type_id):
+		_remove_gather_source_for_building(building)
 	_release_building_workers(building)
 
 
@@ -174,6 +178,31 @@ func get_gather_duration(unit: Unit) -> float:
 	if _population_manager != null:
 		work_multiplier = _population_manager.get_civilian_work_multiplier()
 	return float(GATHER_CARRY_AMOUNT) / maxf(rate * work_multiplier, 0.01)
+
+
+func get_food_income_per_second() -> float:
+	var income := 0.0
+	for job in _unit_jobs.values():
+		var building: Building = job.get("building")
+		if not is_instance_valid(building):
+			continue
+		if BuildingDatabase.get_gather_type(building.building_type_id) != "food":
+			continue
+		var node: ResourceNode = job.get("node")
+		if node == null or not node.has_resources():
+			continue
+		var work_multiplier := 1.0
+		if _population_manager != null:
+			work_multiplier = _population_manager.get_civilian_work_multiplier()
+		var cycle_time := float(GATHER_CARRY_AMOUNT) / maxf(
+			BalanceConfig.FOOD_PER_SECOND * work_multiplier,
+			0.01
+		)
+		if BuildingDatabase.spawns_gather_source(building.building_type_id):
+			income += float(GATHER_CARRY_AMOUNT) / cycle_time
+		else:
+			income += float(GATHER_CARRY_AMOUNT) / (cycle_time * 2.0)
+	return income
 
 
 func get_active_worker_count(resource_key: String) -> int:
@@ -453,3 +482,17 @@ func _release_building_workers(building: Building) -> void:
 			release_unit_job(worker)
 			try_assign_idle_villager(worker)
 	_building_workers.erase(building)
+
+
+func _spawn_gather_source_for_building(building: Building) -> void:
+	for node in get_tree().get_nodes_in_group("world_decorations"):
+		if node.has_method("spawn_mill_wheat_for_building"):
+			node.spawn_mill_wheat_for_building(building)
+			return
+
+
+func _remove_gather_source_for_building(building: Building) -> void:
+	for node in get_tree().get_nodes_in_group("world_decorations"):
+		if node.has_method("remove_mill_wheat_for_building"):
+			node.remove_mill_wheat_for_building(building)
+			return

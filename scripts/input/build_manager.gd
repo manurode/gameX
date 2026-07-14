@@ -363,7 +363,10 @@ func _is_valid_placement_at(world_pos: Vector2, type_id: String, vertical: bool)
 		return false
 
 	if BuildingDatabase.is_gather_building(type_id):
-		if not _has_gather_node_nearby(world_pos, type_id):
+		if (
+			not BuildingDatabase.spawns_gather_source(type_id)
+			and not _has_gather_node_nearby(world_pos, type_id)
+		):
 			return false
 
 	return true
