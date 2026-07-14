@@ -13,6 +13,10 @@ const HEALTH_BAR_VISIBLE_MS := 4000
 const CONSTRUCTION_ALPHA := 0.55
 const ENTRY_RANGE := 42.0
 const GARRISON_ATTACK_RANGE := 220.0
+const COLLISION_BODY_SHRINK := Vector2(0.82, 0.38)
+const COLLISION_BODY_CENTER_Y := 0.62
+const WALL_COLLISION_SHRINK := Vector2(0.94, 0.48)
+const WALL_COLLISION_CENTER_Y := 0.42
 
 @export var building_type_id: String = "house_small"
 @export var team_id: int = Team.PLAYER
@@ -153,11 +157,30 @@ func _setup_collision() -> void:
 	if collision_shape == null:
 		return
 	var shape := RectangleShape2D.new()
-	shape.size = _footprint
+	var body_size := _get_collision_body_size()
+	shape.size = body_size
 	collision_shape.shape = shape
-	collision_shape.position = Vector2(0.0, -_footprint.y * 0.25)
+	collision_shape.position = get_collision_center() - global_position
 	# Under construction: no physical collision so builders can reach the site
 	set_collision_layer_value(1, building_state == BuildingState.ACTIVE)
+
+
+func _get_collision_body_size() -> Vector2:
+	if building_type_id == "wall":
+		return Vector2(
+			_footprint.x * WALL_COLLISION_SHRINK.x,
+			_footprint.y * WALL_COLLISION_SHRINK.y
+		)
+	return Vector2(
+		_footprint.x * COLLISION_BODY_SHRINK.x,
+		_footprint.y * COLLISION_BODY_SHRINK.y
+	)
+
+
+func _get_collision_center_y_factor() -> float:
+	if building_type_id == "wall":
+		return WALL_COLLISION_CENTER_Y
+	return COLLISION_BODY_CENTER_Y
 
 
 func _apply_upgrade_weapon() -> void:
@@ -353,11 +376,11 @@ func _apply_upgrade_visual() -> void:
 
 
 func get_collision_center() -> Vector2:
-	return global_position + Vector2(0.0, -_footprint.y * 0.25)
+	return global_position + Vector2(0.0, -_footprint.y * _get_collision_center_y_factor())
 
 
 func get_collision_half_size() -> Vector2:
-	return _footprint * 0.5
+	return _get_collision_body_size() * 0.5
 
 
 func get_approach_point(from_position: Vector2, margin: float = 2.0) -> Vector2:
