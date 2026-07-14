@@ -23,13 +23,21 @@ func setup(
 	selection_manager: Node = null,
 	day_night_manager: DayNightManager = null,
 	population_manager: PopulationManager = null,
-	production_manager: ProductionManager = null
+	production_manager: ProductionManager = null,
+	curfew_manager: CurfewManager = null
 ) -> void:
 	_build_manager = build_manager
 	_day_night_manager = day_night_manager
 
 	if game_hub != null and game_hub.has_method("setup"):
-		game_hub.setup(resource_manager, build_manager, selection_manager, population_manager, production_manager)
+		game_hub.setup(
+			resource_manager,
+			build_manager,
+			selection_manager,
+			population_manager,
+			production_manager,
+			curfew_manager
+		)
 	if _build_manager != null and _build_manager.has_signal("build_mode_changed"):
 		_build_manager.build_mode_changed.connect(_on_build_mode_changed)
 

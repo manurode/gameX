@@ -71,6 +71,7 @@ const MIN_FORMATION_UNITS := 2
 @onready var _build_grid: GridContainer = $MarginContainer/HBoxContainer/CommandArea/BuildGrid
 @onready var _formation_grid: GridContainer = $MarginContainer/HBoxContainer/CommandArea/FormationGrid
 @onready var _status_label: Label = $MarginContainer/HBoxContainer/CommandArea/StatusColumn/StatusLabel
+@onready var _status_column: VBoxContainer = $MarginContainer/HBoxContainer/CommandArea/StatusColumn
 
 var _production_box: VBoxContainer
 var _production_title: Label
@@ -85,6 +86,8 @@ var _build_manager: Node
 var _selection_manager: Node
 var _population_manager: PopulationManager
 var _production_manager: ProductionManager
+var _curfew_manager: CurfewManager
+var _curfew_button: Button
 var _resource_labels: Dictionary = {}
 var _build_slots: Dictionary = {}
 var _formation_slots: Dictionary = {}
@@ -107,16 +110,19 @@ func setup(
 	build_manager: Node,
 	selection_manager: Node = null,
 	population_manager: PopulationManager = null,
-	production_manager: ProductionManager = null
+	production_manager: ProductionManager = null,
+	curfew_manager: CurfewManager = null
 ) -> void:
 	_resource_manager = resource_manager
 	_build_manager = build_manager
 	_selection_manager = selection_manager
 	_population_manager = population_manager
 	_production_manager = production_manager
+	_curfew_manager = curfew_manager
 	_build_resource_rows()
 	_build_command_grid()
 	_build_formation_grid()
+	_build_curfew_button()
 	_ensure_production_box()
 	if _resource_manager != null:
 		_resource_manager.resources_changed.connect(_on_resources_changed)
@@ -139,6 +145,9 @@ func setup(
 		_on_food_upkeep_changed(_population_manager.get_food_upkeep_per_second())
 	if _production_manager != null:
 		_production_manager.queue_changed.connect(_on_production_queue_changed)
+	if _curfew_manager != null:
+		_curfew_manager.curfew_changed.connect(_on_curfew_changed)
+		_refresh_curfew_button()
 	_update_status(false, "")
 
 
@@ -242,6 +251,47 @@ func _build_formation_grid() -> void:
 		var slot := _create_formation_slot(formation, i + 1)
 		_formation_grid.add_child(slot)
 		_formation_slots[formation] = slot
+
+
+func _build_curfew_button() -> void:
+	if _status_column == null:
+		return
+	_curfew_button = Button.new()
+	_curfew_button.text = "Toque de queda"
+	_curfew_button.tooltip_text = (
+		"Toque de queda\n"
+		+ "Los aldeanos buscan refugio en el edificio más cercano con espacio.\n"
+		+ "Los soldados permanecen fuera.\n\n"
+		+ "Desactivado: los aldeanos siguen con sus tareas."
+	)
+	_curfew_button.focus_mode = Control.FOCUS_NONE
+	_curfew_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_curfew_button.custom_minimum_size = Vector2(100, 36)
+	_curfew_button.pressed.connect(_on_curfew_button_pressed)
+	_status_column.add_child(_curfew_button)
+	_status_column.move_child(_curfew_button, 0)
+
+
+func _on_curfew_button_pressed() -> void:
+	if _curfew_manager != null:
+		_curfew_manager.toggle()
+
+
+func _on_curfew_changed(_active: bool) -> void:
+	_refresh_curfew_button()
+
+
+func _refresh_curfew_button() -> void:
+	if _curfew_button == null or _curfew_manager == null:
+		return
+	var active := _curfew_manager.is_active
+	_curfew_button.text = "Toque de queda: ON" if active else "Toque de queda"
+	if active:
+		_curfew_button.add_theme_color_override("font_color", Color(1.0, 0.82, 0.45))
+	else:
+		_curfew_button.add_theme_color_override("font_color", Color(0.85, 0.82, 0.72))
+	if _status_label != null and not _formation_mode and _active_build_type.is_empty() and _selected_building == null:
+		_status_label.text = "Aldeanos refugiándose" if active else "Construcción"
 
 
 func _create_build_slot(type_id: String, hotkey: int) -> Button:

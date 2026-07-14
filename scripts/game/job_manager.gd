@@ -52,6 +52,10 @@ func register_gather_building(building: Building) -> void:
 func try_assign_idle_villager(villager: Unit) -> void:
 	if not is_instance_valid(villager) or not villager.is_civilian:
 		return
+	var curfew := get_tree().get_first_node_in_group("curfew_manager")
+	if curfew is CurfewManager and (curfew as CurfewManager).is_active:
+		(curfew as CurfewManager).send_villager_to_shelter(villager)
+		return
 	if villager.is_busy():
 		return
 	if _return_buildings.has(villager):
@@ -81,6 +85,10 @@ func on_villager_manual_move(unit: Unit) -> void:
 
 func on_villager_move_completed(unit: Unit) -> void:
 	if not unit.is_civilian or unit.is_busy():
+		return
+	var curfew := get_tree().get_first_node_in_group("curfew_manager")
+	if curfew is CurfewManager and (curfew as CurfewManager).is_active:
+		(curfew as CurfewManager).send_villager_to_shelter(unit)
 		return
 	try_assign_idle_villager(unit)
 

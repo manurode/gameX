@@ -1,4 +1,4 @@
-[gd_scene load_steps=16 format=3 uid="uid://cworld001"]
+[gd_scene load_steps=17 format=3 uid="uid://cworld001"]
 
 [ext_resource type="Script" path="res://scripts/world/game_world.gd" id="1_world"]
 [ext_resource type="Script" path="res://scripts/camera/rts_camera.gd" id="2_camera"]
@@ -16,6 +16,7 @@
 [ext_resource type="Script" path="res://scripts/game/game_state_manager.gd" id="14_game_state"]
 [ext_resource type="Script" path="res://scripts/world/day_night_manager.gd" id="15_day_night"]
 [ext_resource type="Script" path="res://scripts/world/night_wave_manager.gd" id="16_night_wave"]
+[ext_resource type="Script" path="res://scripts/game/curfew_manager.gd" id="17_curfew"]
 
 [node name="GameWorld" type="Node2D"]
 script = ExtResource("1_world")
@@ -75,3 +76,6 @@ script = ExtResource("15_day_night")
 
 [node name="NightWaveManager" type="Node" parent="."]
 script = ExtResource("16_night_wave")
+
+[node name="CurfewManager" type="Node" parent="."]
+script = ExtResource("17_curfew")

@@ -18,6 +18,7 @@ extends Node2D
 @onready var day_night_modulate: CanvasModulate = $DayNightModulate
 @onready var day_night_manager: DayNightManager = $DayNightManager
 @onready var night_wave_manager: NightWaveManager = $NightWaveManager
+@onready var curfew_manager: CurfewManager = $CurfewManager
 
 const BUILDING_SCENE: PackedScene = preload("res://scenes/buildings/building.tscn")
 const VILLAGER_SCENE: PackedScene = preload("res://scenes/units/unit_villager.tscn")
@@ -42,6 +43,7 @@ func on_ground_ready(ground: TinyTilesMap) -> void:
 
 	population_manager.setup(resource_manager)
 	job_manager.setup(resource_manager, population_manager, ground)
+	curfew_manager.setup(job_manager)
 	production_manager.setup(
 		resource_manager,
 		population_manager,
@@ -79,7 +81,8 @@ func on_ground_ready(ground: TinyTilesMap) -> void:
 			selection_manager,
 			day_night_manager,
 			population_manager,
-			production_manager
+			production_manager,
+			curfew_manager
 		)
 
 
