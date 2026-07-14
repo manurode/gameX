@@ -10,6 +10,8 @@ signal died
 
 const HEALTH_BAR_VISIBLE_MS := 3000
 const ALLY_DEFEND_RADIUS := 450.0
+const TARGET_SCAN_INTERVAL := 0.35
+const PLAYER_AGGRO_RANGE := 300.0
 const PERSONAL_SPACE_RADIUS := 28.0
 const NAV_AGENT_RADIUS := 16.0
 const STUCK_TIME_SECONDS := 0.35
@@ -81,6 +83,7 @@ var _stuck_timer := 0.0
 var _stuck_check_position := Vector2.ZERO
 var _nav_repath_attempts := 0
 var _nav_repath_waypoint := Vector2.INF
+var _scan_timer := 0.0
 
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var navigation_agent: NavigationAgent2D = $NavigationAgent2D
@@ -657,6 +660,63 @@ func _try_self_defense(attacker: Unit) -> void:
 	attack_target_unit(attacker)
 
 
+func _get_action_area_radius() -> float:
+	match combat_style:
+		CombatStyle.RANGED:
+			return attack_range_max
+		_:
+			return maxf(melee_range, PLAYER_AGGRO_RANGE)
+
+
+func _can_auto_attack_nearby_enemies() -> bool:
+	if team_id != Team.PLAYER or not can_attack:
+		return false
+	if garrisoned_building != null or _is_dying or hp <= 0:
+		return false
+	if attack_target != null or attack_target_building != null:
+		return false
+	if construction_target != null or garrison_approach_target != null:
+		return false
+	if gather_target != null or gather_building != null:
+		return false
+	if recruitment_building != null:
+		return false
+	if _unit_state == UnitState.MOVING:
+		return false
+	return true
+
+
+func _evaluate_nearby_enemies() -> void:
+	if not _can_auto_attack_nearby_enemies():
+		return
+
+	var nearby := _find_nearest_hostile_unit(_get_action_area_radius())
+	if nearby != null:
+		attack_target_unit(nearby)
+
+
+func _find_nearest_hostile_unit(max_range: float) -> Unit:
+	var best_unit: Unit = null
+	var best_distance := max_range
+
+	for node in get_tree().get_nodes_in_group("enemies"):
+		if not node is Unit:
+			continue
+
+		var enemy := node as Unit
+		if enemy._is_dying or enemy.hp <= 0:
+			continue
+		if not is_hostile_to(enemy):
+			continue
+
+		var distance := global_position.distance_to(enemy.global_position)
+		if distance < best_distance:
+			best_distance = distance
+			best_unit = enemy
+
+	return best_unit
+
+
 func _can_help_defend_ally() -> bool:
 	if not can_attack or garrisoned_building != null or _is_dying or hp <= 0:
 		return false
@@ -780,6 +840,12 @@ func _remove_from_selection() -> void:
 func _physics_process(delta: float) -> void:
 	if _is_dying or hp <= 0:
 		return
+
+	if team_id == Team.PLAYER and can_attack and garrisoned_building == null:
+		_scan_timer -= delta
+		if _scan_timer <= 0.0:
+			_scan_timer = TARGET_SCAN_INTERVAL
+			_evaluate_nearby_enemies()
 
 	if garrisoned_building != null:
 		_process_garrisoned_combat(delta)

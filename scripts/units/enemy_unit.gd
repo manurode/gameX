@@ -2,7 +2,6 @@ class_name EnemyUnit
 extends Unit
 
 const UNIT_AGGRO_RANGE := 180.0
-const TARGET_SCAN_INTERVAL := 0.35
 const PRIORITY_BUILDING_TYPES: Array[String] = [
 	"town_center",
 	"mill",
@@ -11,9 +10,6 @@ const PRIORITY_BUILDING_TYPES: Array[String] = [
 	"house_small",
 	"house_big",
 ]
-
-var _scan_timer := 0.0
-
 
 func _ready() -> void:
 	team_id = Team.ENEMY
