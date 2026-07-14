@@ -39,6 +39,7 @@ var _garrison_attack_cooldown: float = 0.0
 var _last_damage_time: int = 0
 var _definition: Dictionary = {}
 var _footprint := Vector2(70.0, 45.0)
+var _wall_vertical: bool = false
 
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var damage_overlay: Sprite2D = $DamageOverlay
@@ -68,9 +69,17 @@ func configure(type_id: String, state: BuildingState = BuildingState.ACTIVE, pro
 	building_type_id = type_id
 	building_state = state
 	construction_progress = progress
+	_wall_vertical = false
 	_apply_definition()
 	_update_visual_damage()
 	_update_construction_visual()
+
+
+func set_wall_vertical(vertical: bool) -> void:
+	if building_type_id != "wall":
+		return
+	_wall_vertical = vertical
+	_apply_wall_orientation()
 
 
 func _apply_definition() -> void:
@@ -104,7 +113,8 @@ func _setup_texture() -> void:
 		return
 
 	if _definition.get("procedural", false):
-		sprite.texture = _create_wall_texture()
+		sprite.texture = WallTexture.get_texture()
+		_apply_wall_orientation()
 	else:
 		var texture_path: String = _definition.get("texture", "")
 		if not texture_path.is_empty():
@@ -119,17 +129,24 @@ func _setup_texture() -> void:
 			damage_overlay.offset = sprite.offset
 
 
-func _create_wall_texture() -> Texture2D:
-	var image := Image.create(128, 64, false, Image.FORMAT_RGBA8)
-	for y in 64:
-		for x in 128:
-			var noise := sin(float(x) * 0.35) * 0.08 + cos(float(y) * 0.5) * 0.06
-			var base := 0.42 + noise
-			var alpha := 1.0
-			if y < 6 or y > 57:
-				base *= 0.75
-			image.set_pixel(x, y, Color(base * 0.55, base * 0.52, base * 0.48, alpha))
-	return ImageTexture.create_from_image(image)
+func _apply_wall_orientation() -> void:
+	if building_type_id != "wall" or sprite == null:
+		return
+	if _wall_vertical:
+		sprite.rotation_degrees = 90.0
+		_footprint = Vector2(30.0, 80.0)
+		pick_half_size = Vector2(25.0, 50.0)
+	else:
+		sprite.rotation_degrees = 0.0
+		_footprint = Vector2(80.0, 30.0)
+		pick_half_size = Vector2(50.0, 25.0)
+	if damage_overlay != null:
+		damage_overlay.rotation_degrees = sprite.rotation_degrees
+	_setup_collision()
+
+
+func _wall_base_rotation() -> float:
+	return 90.0 if _wall_vertical else 0.0
 
 
 func _setup_collision() -> void:
@@ -611,6 +628,25 @@ func _update_visual_damage() -> void:
 		return
 
 	sprite.modulate = Color.WHITE
+	if building_type_id == "wall":
+		sprite.rotation_degrees = _wall_base_rotation()
+		sprite.position = Vector2.ZERO
+		if damage_overlay != null:
+			damage_overlay.rotation_degrees = _wall_base_rotation()
+		if ratio > 0.66:
+			if damage_overlay != null:
+				damage_overlay.visible = false
+		elif ratio > 0.33:
+			sprite.modulate = Color(0.82, 0.78, 0.74, 1.0)
+			if damage_overlay != null:
+				damage_overlay.visible = true
+				damage_overlay.modulate = Color(0.3, 0.2, 0.15, 0.35)
+		else:
+			sprite.modulate = Color(0.62, 0.55, 0.5, 1.0)
+			if damage_overlay != null:
+				damage_overlay.visible = true
+				damage_overlay.modulate = Color(0.2, 0.12, 0.1, 0.55)
+		return
 	if ratio > 0.66:
 		sprite.rotation_degrees = 0.0
 		sprite.position = Vector2.ZERO
@@ -649,7 +685,10 @@ func _update_construction_visual() -> void:
 	var alpha := lerpf(0.45, 1.0, ratio)
 	var warmth := lerpf(0.72, 1.0, ratio)
 	sprite.modulate = Color(warmth, warmth * 0.95, warmth * 0.88, alpha)
-	sprite.rotation_degrees = lerpf(-3.0, 0.0, ratio)
+	if building_type_id == "wall":
+		sprite.rotation_degrees = _wall_base_rotation()
+	else:
+		sprite.rotation_degrees = lerpf(-3.0, 0.0, ratio)
 
 
 func get_nav_block_outline() -> PackedVector2Array:

@@ -421,23 +421,11 @@ func _draw_dot(image: Image, center: Vector2, size: int, color: Color) -> void:
 func _get_building_icon(type_id: String) -> Texture2D:
 	var def := BuildingDatabase.get_definition(type_id)
 	if def.get("procedural", false):
-		return _create_wall_icon()
+		return WallTexture.get_texture(64, 32)
 	var texture_path: String = def.get("texture", "")
 	if texture_path.is_empty():
 		return null
 	return load(texture_path)
-
-
-func _create_wall_icon() -> Texture2D:
-	var image := Image.create(64, 32, false, Image.FORMAT_RGBA8)
-	for y in 32:
-		for x in 64:
-			var noise := sin(float(x) * 0.35) * 0.08 + cos(float(y) * 0.5) * 0.06
-			var base := 0.42 + noise
-			if y < 3 or y > 28:
-				base *= 0.75
-			image.set_pixel(x, y, Color(base * 0.55, base * 0.52, base * 0.48, 1.0))
-	return ImageTexture.create_from_image(image)
 
 
 func _make_icon_atlas(texture_path: String, variant_index: int = 0) -> AtlasTexture:
