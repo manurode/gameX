@@ -3,10 +3,12 @@ extends Node2D
 
 signal depleted
 
-enum ResourceKind { WOOD, FOOD, STONE }
+enum ResourceKind { WOOD, FOOD, GOLD }
 
 @export var resource_kind: ResourceKind = ResourceKind.WOOD
 @export var amount_remaining: int = 100
+var is_infinite: bool = false
+var _initial_amount: int = 100
 
 const PICK_RADIUS := 72.0
 
@@ -21,6 +23,8 @@ func _ready() -> void:
 func setup(texture: Texture2D, world_pos: Vector2, kind: ResourceKind, amount: int, sprite_offset: Vector2) -> void:
 	resource_kind = kind
 	amount_remaining = amount
+	_initial_amount = amount
+	is_infinite = false
 	global_position = world_pos
 	_add_sprite(texture, Vector2.ZERO, sprite_offset)
 
@@ -34,6 +38,8 @@ func setup_crop_field(
 ) -> void:
 	resource_kind = ResourceKind.FOOD
 	amount_remaining = total_amount
+	_initial_amount = total_amount
+	is_infinite = true
 	global_position = center_pos
 
 	var spacing := Vector2(38.0, 22.0)
@@ -87,8 +93,8 @@ func get_resource_key() -> String:
 			return "wood"
 		ResourceKind.FOOD:
 			return "food"
-		ResourceKind.STONE:
-			return "stone"
+		ResourceKind.GOLD:
+			return "gold"
 	return ""
 
 
@@ -97,6 +103,8 @@ func contains_point(world_point: Vector2) -> bool:
 
 
 func harvest(amount: int) -> int:
+	if is_infinite:
+		return maxi(0, amount)
 	if amount_remaining <= 0:
 		return 0
 	var gathered := mini(amount, amount_remaining)
@@ -109,11 +117,11 @@ func harvest(amount: int) -> int:
 
 
 func has_resources() -> bool:
-	return amount_remaining > 0
+	return is_infinite or amount_remaining > 0
 
 
 func _update_field_visual() -> void:
-	var ratio := clampf(float(amount_remaining) / 80.0, 0.2, 1.0)
+	var ratio := clampf(float(amount_remaining) / float(maxi(1, _initial_amount)), 0.2, 1.0)
 	for i in _sprites.size():
 		var sprite := _sprites[i]
 		if ratio < 0.5 and i % 2 == 1:

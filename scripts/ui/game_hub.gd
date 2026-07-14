@@ -2,7 +2,7 @@ extends PanelContainer
 
 const BUILD_ORDER: Array[String] = [
 	"house_small", "house_big", "lumber_camp", "mill",
-	"mine", "stable", "tower", "wall",
+	"mine", "stable", "barracks", "tower", "wall",
 ]
 
 const FORMATION_ORDER: Array[Unit.FormationType] = [
@@ -58,7 +58,7 @@ const FORMATION_INFO: Dictionary = {
 }
 
 const TEX_WOOD := "res://assets/tilesets/tiny_tiles/UI/Icons/UI_icon_resources_wood.png"
-const TEX_STONE := "res://assets/tilesets/tiny_tiles/UI/Icons/UI_icon_resources_stone.png"
+const TEX_GOLD := "res://assets/tilesets/tiny_tiles/UI/Icons/UI_icon_resources_stone.png"
 const TEX_FOOD := "res://assets/tilesets/tiny_tiles/UI/Icons/UI_icon_resources_wheat.png"
 const TEX_HAMMER := "res://assets/tilesets/tiny_tiles/UI/Icons/UI_icon_hammer.png"
 
@@ -120,7 +120,7 @@ func setup(
 	_ensure_production_box()
 	if _resource_manager != null:
 		_resource_manager.resources_changed.connect(_on_resources_changed)
-		_on_resources_changed(_resource_manager.wood, _resource_manager.stone, _resource_manager.food)
+		_on_resources_changed(_resource_manager.wood, _resource_manager.gold, _resource_manager.food)
 	if _build_manager != null and _build_manager.has_signal("build_mode_changed"):
 		_build_manager.build_mode_changed.connect(_on_build_mode_changed)
 	if _selection_manager != null:
@@ -145,7 +145,7 @@ func setup(
 func _build_resource_rows() -> void:
 	var entries: Array[Dictionary] = [
 		{"key": "wood", "texture": TEX_WOOD, "label": "Madera"},
-		{"key": "stone", "texture": TEX_STONE, "label": "Piedra"},
+		{"key": "gold", "texture": TEX_GOLD, "label": "Oro"},
 		{"key": "food", "texture": TEX_FOOD, "label": "Comida"},
 	]
 	for entry in entries:
@@ -302,7 +302,11 @@ func _create_build_slot(type_id: String, hotkey: int) -> Button:
 	button.add_child(hotkey_label)
 
 	var cost := BuildingDatabase.get_cost(type_id)
-	button.tooltip_text = _format_cost_tooltip(def.get("name", type_id), cost)
+	button.tooltip_text = _format_cost_tooltip(
+		def.get("name", type_id),
+		cost,
+		def.get("build_time", 0.0)
+	)
 	button.set_meta("style", style)
 	button.set_meta("icon", icon)
 	return button
@@ -435,17 +439,18 @@ func _make_icon_atlas(texture_path: String, variant_index: int = 0) -> AtlasText
 	return atlas
 
 
-func _format_cost_tooltip(name: String, cost: Dictionary) -> String:
+func _format_cost_tooltip(name: String, cost: Dictionary, duration: float = 0.0) -> String:
 	var parts: PackedStringArray = []
 	if cost.get("wood", 0) > 0:
 		parts.append("%d madera" % cost.wood)
-	if cost.get("stone", 0) > 0:
-		parts.append("%d piedra" % cost.stone)
+	if cost.get("gold", 0) > 0:
+		parts.append("%d oro" % cost.gold)
 	if cost.get("food", 0) > 0:
 		parts.append("%d comida" % cost.food)
-	if parts.is_empty():
-		return name
-	return "%s\n%s" % [name, " · ".join(parts)]
+	var details := " · ".join(parts) if not parts.is_empty() else "Gratis"
+	if duration > 0.0:
+		details += " · %.0f s" % duration
+	return "%s\n%s" % [name, details]
 
 
 func _on_build_slot_pressed(type_id: String) -> void:
@@ -463,11 +468,11 @@ func _on_formation_slot_pressed(formation: Unit.FormationType) -> void:
 	_refresh_formation_highlight()
 
 
-func _on_resources_changed(wood: int, stone: int, food: int) -> void:
+func _on_resources_changed(wood: int, gold: int, food: int) -> void:
 	if _resource_labels.has("wood"):
 		_resource_labels.wood.text = str(wood)
-	if _resource_labels.has("stone"):
-		_resource_labels.stone.text = str(stone)
+	if _resource_labels.has("gold"):
+		_resource_labels.gold.text = str(gold)
 	if _resource_labels.has("food"):
 		_resource_labels.food.text = str(food)
 	_refresh_affordability()
@@ -497,7 +502,7 @@ func _on_food_shortage(active: bool) -> void:
 	if _status_label == null:
 		return
 	if active and not _formation_mode:
-		_status_label.text = "Sin comida: recolectores, colas y reclutamiento pausados"
+		_status_label.text = "Sin comida: civiles al 50% y soldados pierden vida"
 	elif not _formation_mode and _selected_building == null:
 		_update_status(_active_build_type != "", _active_build_type)
 
@@ -513,6 +518,8 @@ func _on_production_queue_changed(building: Building) -> void:
 
 
 func _process(_delta: float) -> void:
+	if _population_manager != null:
+		_on_food_upkeep_changed(_population_manager.get_food_upkeep_per_second())
 	if _production_box == null or not _production_box.visible:
 		return
 	_update_production_progress_label()
@@ -562,15 +569,15 @@ func _rebuild_production_item_buttons(items: Array[String]) -> void:
 		var cost_parts: PackedStringArray = []
 		if cost.get("wood", 0) > 0:
 			cost_parts.append("%d madera" % cost.wood)
-		if cost.get("stone", 0) > 0:
-			cost_parts.append("%d piedra" % cost.stone)
+		if cost.get("gold", 0) > 0:
+			cost_parts.append("%d oro" % cost.gold)
 		if cost.get("food", 0) > 0:
 			cost_parts.append("%d comida" % cost.food)
 		var cost_text := ", ".join(cost_parts) if not cost_parts.is_empty() else "Gratis"
 
 		var button := Button.new()
 		button.text = def.get("name", item_id)
-		button.tooltip_text = cost_text
+		button.tooltip_text = "%s · %.0f s" % [cost_text, def.get("train_time", 0.0)]
 		button.focus_mode = Control.FOCUS_NONE
 		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 		button.pressed.connect(_on_production_pressed.bind(item_id))

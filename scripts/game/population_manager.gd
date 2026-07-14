@@ -6,14 +6,16 @@ signal food_upkeep_changed(upkeep_per_second: float)
 signal food_shortage(active: bool)
 
 const BASE_POPULATION_CAP := 5
-const FOOD_UPKEEP_PER_UNIT := 0.5
 
 var population: int = 0
 var population_cap: int = BASE_POPULATION_CAP
+var reserved_population: int = 0
 var food_shortage_active: bool = false
 
 var _resource_manager: ResourceManager
 var _upkeep_accumulator: float = 0.0
+var _starvation_damage_accumulator: float = 0.0
+var _registered_units: Dictionary = {}
 
 
 func setup(resource_manager: ResourceManager) -> void:
@@ -21,52 +23,123 @@ func setup(resource_manager: ResourceManager) -> void:
 
 
 func get_food_upkeep_per_second() -> float:
-	return FOOD_UPKEEP_PER_UNIT * float(population)
+	var civilian_count := 0
+	var squad_ids: Dictionary = {}
+	var military_without_squad := 0
+	for unit in _registered_units.keys():
+		if not is_instance_valid(unit) or unit.hp <= 0:
+			continue
+		if unit.is_civilian:
+			civilian_count += 1
+		else:
+			var squad_id: String = unit.get_meta("squad_id", "")
+			if squad_id.is_empty():
+				military_without_squad += 1
+			else:
+				squad_ids[squad_id] = true
+	var upkeep := float(civilian_count) * BalanceConfig.VILLAGER_FOOD_PER_SECOND
+	if _is_night():
+		upkeep += float(squad_ids.size() + military_without_squad) * BalanceConfig.SQUAD_FOOD_PER_SECOND_AT_NIGHT
+	return upkeep
 
 
 func get_food_upkeep_label() -> String:
 	if population <= 0:
 		return "Sin consumo"
-	return "%.1f comida/s (%d habitantes × %.1f)" % [
-		get_food_upkeep_per_second(),
-		population,
-		FOOD_UPKEEP_PER_UNIT,
-	]
+	var income := 0.0
+	var job_manager := get_tree().get_first_node_in_group("job_manager")
+	if job_manager is JobManager:
+		income = (
+			float((job_manager as JobManager).get_active_worker_count("food"))
+			* BalanceConfig.FOOD_PER_SECOND
+			* get_civilian_work_multiplier()
+		)
+	var net := income - get_food_upkeep_per_second()
+	return "%.2f/s · balance %+.2f/s" % [get_food_upkeep_per_second(), net]
 
 
 func _process(delta: float) -> void:
 	if _resource_manager == null or population <= 0:
 		return
 
-	_upkeep_accumulator += FOOD_UPKEEP_PER_UNIT * float(population) * delta
+	_cleanup_invalid_units()
+	_upkeep_accumulator += get_food_upkeep_per_second() * delta
 	if _upkeep_accumulator < 1.0:
+		if food_shortage_active:
+			_apply_starvation_damage(delta)
 		return
 
 	var food_cost := int(_upkeep_accumulator)
 	_upkeep_accumulator -= float(food_cost)
-	if _resource_manager.try_spend_food(food_cost):
+	var consumed := _resource_manager.consume_food_up_to(food_cost)
+	if consumed >= food_cost:
 		if food_shortage_active:
 			food_shortage_active = false
 			food_shortage.emit(false)
 	elif not food_shortage_active:
 		food_shortage_active = true
 		food_shortage.emit(true)
+	if food_shortage_active:
+		_apply_starvation_damage(delta)
 
 
-func register_unit(_unit: Unit) -> void:
+func register_unit(unit: Unit) -> void:
+	_registered_units[unit] = true
 	population += 1
 	population_changed.emit(population, population_cap)
 	food_upkeep_changed.emit(get_food_upkeep_per_second())
 
 
-func unregister_unit(_unit: Unit) -> void:
+func unregister_unit(unit: Unit) -> void:
+	_registered_units.erase(unit)
 	population = maxi(0, population - 1)
 	population_changed.emit(population, population_cap)
 	food_upkeep_changed.emit(get_food_upkeep_per_second())
 
 
 func can_add_population() -> bool:
-	return population < population_cap
+	return population + reserved_population < population_cap
+
+
+func can_reserve_population(amount: int) -> bool:
+	return population + reserved_population + amount <= population_cap
+
+
+func reserve_population(amount: int) -> bool:
+	if not can_reserve_population(amount):
+		return false
+	reserved_population += amount
+	return true
+
+
+func release_reserved_population(amount: int) -> void:
+	reserved_population = maxi(0, reserved_population - amount)
+
+
+func get_civilian_work_multiplier() -> float:
+	return BalanceConfig.STARVATION_WORK_MULTIPLIER if food_shortage_active else 1.0
+
+
+func _is_night() -> bool:
+	var manager := get_tree().get_first_node_in_group("day_night_manager")
+	return manager is DayNightManager and (manager as DayNightManager).is_night()
+
+
+func _apply_starvation_damage(delta: float) -> void:
+	_starvation_damage_accumulator += BalanceConfig.STARVATION_DAMAGE_PER_SECOND * delta
+	if _starvation_damage_accumulator < 1.0:
+		return
+	var damage := int(_starvation_damage_accumulator)
+	_starvation_damage_accumulator -= float(damage)
+	for unit in _registered_units.keys():
+		if is_instance_valid(unit) and not unit.is_civilian and unit.hp > 0:
+			unit.take_damage(damage)
+
+
+func _cleanup_invalid_units() -> void:
+	for unit in _registered_units.keys():
+		if not is_instance_valid(unit):
+			_registered_units.erase(unit)
 
 
 func recalculate_cap_from_buildings() -> void:

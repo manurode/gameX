@@ -54,6 +54,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif key_event.keycode == KEY_U:
 			_try_upgrade_building_at_cursor()
 			get_viewport().set_input_as_handled()
+		elif key_event.keycode == KEY_Q:
+			_expand_selection_to_squads()
+			get_viewport().set_input_as_handled()
 
 
 func _handle_mouse_button(event: InputEventMouseButton) -> void:
@@ -255,6 +258,28 @@ func get_movable_selected_count() -> int:
 
 func _notify_selection_changed() -> void:
 	selection_changed.emit(selected_units)
+
+
+func _expand_selection_to_squads() -> void:
+	var squad_ids: Dictionary = {}
+	for unit in selected_units:
+		if is_instance_valid(unit):
+			var squad_id: String = unit.get_meta("squad_id", "")
+			if not squad_id.is_empty():
+				squad_ids[squad_id] = true
+	if squad_ids.is_empty():
+		return
+	for node in get_tree().get_nodes_in_group("units"):
+		if not node is Unit:
+			continue
+		var unit := node as Unit
+		if unit.team_id != Team.PLAYER:
+			continue
+		var squad_id: String = unit.get_meta("squad_id", "")
+		if squad_ids.has(squad_id) and not selected_units.has(unit):
+			unit.select()
+			selected_units.append(unit)
+	_notify_selection_changed()
 
 
 func _attack_selected_units(target: Unit) -> void:

@@ -17,6 +17,12 @@ scale_max = 0.7
 color = Color(0.55, 0.78, 1, 0.85)
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_empty"]
+animations = [{
+"frames": [],
+"loop": true,
+"name": &"idle",
+"speed": 5.0
+}]
 
 [node name="Unit" type="CharacterBody2D"]
 y_sort_enabled = true

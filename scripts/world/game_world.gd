@@ -90,12 +90,12 @@ func _spawn_starting_settlement(ground: TinyTilesMap) -> void:
 		Vector2i(-1, 0),
 		Vector2i(1, 0),
 		Vector2i(0, -1),
+		Vector2i(-1, 1),
+		Vector2i(1, 1),
 	]
-	var villager_cells: Array[Vector2i] = [
-		center_cell + villager_offsets[0],
-		center_cell + villager_offsets[1],
-		center_cell + villager_offsets[2],
-	]
+	var villager_cells: Array[Vector2i] = []
+	for offset in villager_offsets:
+		villager_cells.append(center_cell + offset)
 	for i in villager_cells.size():
 		_spawn_villager(ground, villager_cells[i], i)
 
@@ -125,6 +125,32 @@ func register_player_unit(unit: Unit) -> void:
 		return
 	unit.set_meta("player_unit_registered", true)
 	unit.died.connect(_on_player_unit_died.bind(unit))
+
+
+func spawn_squad_members(
+	leader: Unit,
+	unit_type_id: String,
+	extra_count: int,
+	squad_id: String
+) -> void:
+	var scene := UnitDatabase.get_scene(unit_type_id)
+	if scene == null:
+		population_manager.release_reserved_population(extra_count)
+		return
+	for i in extra_count:
+		var member: Unit = scene.instantiate()
+		units.add_child(member)
+		var angle := TAU * float(i) / float(maxi(1, extra_count))
+		member.global_position = leader.global_position + Vector2(cos(angle), sin(angle)) * 24.0
+		member.set_ground_layer(ground_layer)
+		member.reset_navigation()
+		if not squad_id.is_empty():
+			member.set_meta("squad_id", squad_id)
+		population_manager.register_unit(member)
+		register_player_unit(member)
+		if day_night_manager.is_night():
+			member.apply_cycle_visuals(true)
+	population_manager.release_reserved_population(extra_count)
 
 
 func _spawn_villager(ground: TinyTilesMap, cell: Vector2i, index: int) -> void:

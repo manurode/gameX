@@ -2,7 +2,6 @@ class_name JobManager
 extends Node
 
 const GATHER_CARRY_AMOUNT := 10
-const GATHER_TIME_AT_NODE := 2.5
 const AUTO_BUILD_RADIUS := 800.0
 
 var _resource_manager: ResourceManager
@@ -51,9 +50,6 @@ func try_assign_idle_villager(villager: Unit) -> void:
 		return
 	if villager.is_busy():
 		return
-	if _population_manager != null and _population_manager.food_shortage_active:
-		return
-
 	if _return_buildings.has(villager):
 		var remembered: Building = _return_buildings[villager]
 		_return_buildings.erase(villager)
@@ -168,6 +164,27 @@ func get_worker_building(unit: Unit) -> Building:
 	return _unit_jobs[unit].get("building")
 
 
+func get_gather_duration(unit: Unit) -> float:
+	var building := get_worker_building(unit)
+	if building == null:
+		return 1.0
+	var resource_key := BuildingDatabase.get_gather_type(building.building_type_id)
+	var rate := BalanceConfig.get_gather_rate(resource_key)
+	var work_multiplier := 1.0
+	if _population_manager != null:
+		work_multiplier = _population_manager.get_civilian_work_multiplier()
+	return float(GATHER_CARRY_AMOUNT) / maxf(rate * work_multiplier, 0.01)
+
+
+func get_active_worker_count(resource_key: String) -> int:
+	var count := 0
+	for job in _unit_jobs.values():
+		var building: Building = job.get("building")
+		if is_instance_valid(building) and BuildingDatabase.get_gather_type(building.building_type_id) == resource_key:
+			count += 1
+	return count
+
+
 func release_unit_job(unit: Unit) -> void:
 	if not _unit_jobs.has(unit):
 		return
@@ -184,9 +201,6 @@ func release_unit_job(unit: Unit) -> void:
 func on_unit_reached_deposit_building(unit: Unit, building: Building) -> void:
 	if not _unit_jobs.has(unit):
 		return
-	if _population_manager != null and _population_manager.food_shortage_active:
-		return
-
 	var job: Dictionary = _unit_jobs[unit]
 	var node: ResourceNode = job.get("node")
 	if node == null or not node.has_resources():
@@ -196,7 +210,7 @@ func on_unit_reached_deposit_building(unit: Unit, building: Building) -> void:
 	var gather_type: String = BuildingDatabase.get_gather_type(building.building_type_id)
 	var gathered := node.harvest(GATHER_CARRY_AMOUNT)
 	if gathered > 0 and _resource_manager != null:
-		var amounts := {"wood": 0, "stone": 0, "food": 0}
+		var amounts := {"wood": 0, "gold": 0, "food": 0}
 		amounts[gather_type] = gathered
 		_resource_manager.add_resources(amounts)
 
@@ -290,6 +304,7 @@ func _can_assign_to_building(villager: Unit, building: Building) -> bool:
 
 
 func _assign_villager_to_resource(villager: Unit, building: Building, resource_node: ResourceNode) -> void:
+	release_unit_job(villager)
 	if not _building_workers.has(building):
 		_building_workers[building] = []
 
@@ -297,7 +312,6 @@ func _assign_villager_to_resource(villager: Unit, building: Building, resource_n
 	if not workers.has(villager):
 		workers.append(villager)
 
-	release_unit_job(villager)
 	_unit_jobs[villager] = {
 		"building": building,
 		"node": resource_node,

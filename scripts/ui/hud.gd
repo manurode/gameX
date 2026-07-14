@@ -12,7 +12,7 @@ var _game_over_label: Label
 
 func _ready() -> void:
 	if cycle_button != null:
-		cycle_button.pressed.connect(_on_cycle_button_pressed)
+		cycle_button.disabled = true
 	_create_game_over_overlay()
 
 
@@ -35,7 +35,12 @@ func setup(
 
 	if _day_night_manager != null:
 		_day_night_manager.cycle_changed.connect(_on_cycle_changed)
+		_day_night_manager.phase_time_changed.connect(_on_phase_time_changed)
 		_update_cycle_ui(_day_night_manager.current_phase)
+	var wave_manager := get_tree().get_first_node_in_group("night_wave_manager")
+	if wave_manager is NightWaveManager:
+		(wave_manager as NightWaveManager).wave_warning.connect(_on_wave_warning)
+		(wave_manager as NightWaveManager).wave_started.connect(_on_wave_started)
 
 	var world := get_tree().get_first_node_in_group("game_world")
 	if world != null:
@@ -64,16 +69,7 @@ func _on_game_over() -> void:
 
 
 func _on_cycle_button_pressed() -> void:
-	if _day_night_manager != null:
-		_day_night_manager.toggle_cycle()
-		return
-
-	var manager := get_tree().get_first_node_in_group("day_night_manager")
-	if manager is DayNightManager:
-		_day_night_manager = manager
-		_day_night_manager.cycle_changed.connect(_on_cycle_changed)
-		_day_night_manager.toggle_cycle()
-		_update_cycle_ui(_day_night_manager.current_phase)
+	pass
 
 
 func _on_build_mode_changed(active: bool, type_id: String) -> void:
@@ -97,16 +93,44 @@ func _on_cycle_changed(phase: DayNightManager.CyclePhase) -> void:
 func _update_cycle_ui(phase: DayNightManager.CyclePhase) -> void:
 	if cycle_button == null:
 		return
-	if phase == DayNightManager.CyclePhase.NIGHT:
-		cycle_button.text = "☾ Noche"
-	else:
-		cycle_button.text = "☀ Día"
+	var icon := "☾" if phase == DayNightManager.CyclePhase.NIGHT else "☀"
+	var seconds := ceili(_day_night_manager.seconds_remaining)
+	cycle_button.text = "%s Día %d · %s %02d:%02d" % [
+		icon,
+		_day_night_manager.cycle_number,
+		_day_night_manager.get_phase_display_name(),
+		seconds / 60,
+		seconds % 60,
+	]
+
+
+func _on_phase_time_changed(_seconds_remaining: float) -> void:
+	if _day_night_manager != null:
+		_update_cycle_ui(_day_night_manager.current_phase)
+
+
+func _on_wave_warning(direction_name: String) -> void:
+	if help_label != null:
+		help_label.set_deferred("text", "CUERNO — La horda se aproxima por el %s" % direction_name)
+
+
+func _on_wave_started(enemy_count: int) -> void:
+	if help_label != null:
+		help_label.set_deferred(
+			"text",
+			"NOCHE — %d enemigos atacan. La construcción está bloqueada." % enemy_count
+		)
 
 
 func _update_help_for_cycle() -> void:
 	if help_label == null or _day_night_manager == null:
 		return
-	if _day_night_manager.current_phase == DayNightManager.CyclePhase.NIGHT:
-		help_label.text = "NOCHE — ¡Protege el Centro Urbano y tus molinos!"
-	else:
-		help_label.text = "DÍA — Construye aserraderos y recluta antes del anochecer  |  1-8: construir  |  U: mejorar"
+	match _day_night_manager.current_phase:
+		DayNightManager.CyclePhase.NIGHT:
+			help_label.text = "NOCHE — Protege el Centro Urbano. Construcción bloqueada."
+		DayNightManager.CyclePhase.DUSK:
+			help_label.text = "ATARDECER — Últimos 30 segundos para preparar defensas."
+		DayNightManager.CyclePhase.DAWN:
+			help_label.text = "AMANECER — Reorganiza trabajadores y repara la base."
+		_:
+			help_label.text = "DÍA — Recolecta y fortifica  |  1-9: construir  |  Q: seleccionar escuadrón"

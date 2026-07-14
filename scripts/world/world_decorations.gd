@@ -4,7 +4,7 @@ const TREE_PATHS: Array[String] = [
 	"res://assets/tilesets/tiny_tiles/Environment/Terrain/Trees/env_trees_oaks.png",
 	"res://assets/tilesets/tiny_tiles/Environment/Terrain/Trees/env_trees_pines.png",
 ]
-const STONE_PATHS: Array[String] = [
+const GOLD_VEIN_PATHS: Array[String] = [
 	"res://assets/tilesets/tiny_tiles/Environment/Terrain/Mountains/env_mountains_a.png",
 	"res://assets/tilesets/tiny_tiles/Environment/Terrain/Mountains/env_mountains_b.png",
 ]
@@ -50,7 +50,7 @@ func _spawn_resources(placements: Array[Dictionary]) -> void:
 			_spawn_crop_field(placement, world_pos)
 			continue
 
-		var paths := TREE_PATHS if kind == "wood" else STONE_PATHS
+		var paths := TREE_PATHS if kind == "wood" else GOLD_VEIN_PATHS
 		var variant := clampi(placement.get("variant", 0), 0, paths.size() - 1)
 		var texture: Texture2D = load(paths[variant])
 		if texture == null:
@@ -60,7 +60,7 @@ func _spawn_resources(placements: Array[Dictionary]) -> void:
 		var resource_kind := (
 			ResourceNode.ResourceKind.WOOD
 			if kind == "wood"
-			else ResourceNode.ResourceKind.STONE
+			else ResourceNode.ResourceKind.GOLD
 		)
 		node.setup(texture, world_pos, resource_kind, placement.get("amount", 100), offset)
 		add_child(node)

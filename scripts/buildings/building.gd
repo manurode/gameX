@@ -65,7 +65,11 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	if building_state == BuildingState.ACTIVE and is_garrison_occupied():
+	if building_state != BuildingState.ACTIVE:
+		return
+	if _definition.get("automatic_defense", false):
+		_process_automatic_defense(delta)
+	elif is_garrison_occupied():
 		_process_garrison_combat(delta)
 
 
@@ -271,6 +275,31 @@ func _process_garrison_combat(delta: float) -> void:
 	var weapon_stats: Dictionary = get_weapon_stats()
 	var cooldown_mult: float = weapon_stats.get("cooldown_mult", 1.0)
 	_garrison_attack_cooldown = maxf(0.45, shooter.attack_cooldown * cooldown_mult)
+
+
+func _process_automatic_defense(delta: float) -> void:
+	_garrison_attack_cooldown = maxf(0.0, _garrison_attack_cooldown - delta)
+	if _garrison_attack_cooldown > 0.0:
+		return
+	var nearest: Unit = null
+	var nearest_distance := INF
+	var attack_range := get_garrison_attack_range()
+	for node in get_tree().get_nodes_in_group("enemies"):
+		if not node is Unit:
+			continue
+		var enemy := node as Unit
+		if enemy._is_dying or enemy.hp <= 0:
+			continue
+		var distance := get_attack_point().distance_to(enemy.get_sprite_center())
+		if distance <= attack_range and distance < nearest_distance:
+			nearest = enemy
+			nearest_distance = distance
+	if nearest == null:
+		return
+	var weapon_stats := get_weapon_stats()
+	nearest.take_damage(weapon_stats.get("damage", 14))
+	CombatEffects.spawn_ranged_impact(get_parent(), nearest.get_sprite_center())
+	_garrison_attack_cooldown = maxf(0.45, weapon_stats.get("cooldown_mult", 1.0))
 
 
 func _validate_garrison_attack_targets() -> void:

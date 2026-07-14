@@ -65,6 +65,8 @@ var gather_target: ResourceNode = null
 var gather_building: Building = null
 var recruitment_building: Building = null
 var recruitment_type_id: String = ""
+var recruitment_squad_size: int = 1
+var recruitment_squad_id: String = ""
 
 var _ground_layer: TinyTilesMap
 var _gather_timer: float = 0.0
@@ -186,6 +188,7 @@ func clear_gather_job() -> void:
 func assign_gather_at_node(node: ResourceNode) -> void:
 	if not can_gather or not is_instance_valid(node):
 		return
+	cancel_recruitment()
 	if garrisoned_building != null:
 		exit_garrison()
 	attack_target = null
@@ -212,7 +215,12 @@ func assign_deposit_at_building(building: Building) -> void:
 	navigation_agent.target_position = building.get_approach_point(global_position)
 
 
-func begin_recruitment(building: Building, target_type_id: String) -> void:
+func begin_recruitment(
+	building: Building,
+	target_type_id: String,
+	squad_size: int = 1,
+	squad_id: String = ""
+) -> void:
 	if not is_civilian or not is_instance_valid(building):
 		return
 	clear_gather_job()
@@ -221,6 +229,8 @@ func begin_recruitment(building: Building, target_type_id: String) -> void:
 	attack_target_building = null
 	recruitment_building = building
 	recruitment_type_id = target_type_id
+	recruitment_squad_size = squad_size
+	recruitment_squad_id = squad_id
 	_unit_state = UnitState.RECRUITING
 	navigation_agent.target_desired_distance = 4.0
 	navigation_agent.target_position = building.get_approach_point(global_position)
@@ -448,6 +458,7 @@ func intersects_world_rect(world_rect: Rect2) -> bool:
 
 
 func move_to(target: Vector2) -> void:
+	cancel_recruitment()
 	if garrisoned_building != null:
 		exit_garrison()
 	var job_manager := get_tree().get_first_node_in_group("job_manager")
@@ -471,6 +482,7 @@ func attack_target_unit(target: Unit) -> void:
 		if not garrisoned_building:
 			move_to(target.global_position if is_instance_valid(target) else global_position)
 		return
+	cancel_recruitment()
 	if not is_hostile_to(target):
 		if not garrisoned_building:
 			move_to(target.global_position)
@@ -486,6 +498,7 @@ func attack_target_unit(target: Unit) -> void:
 
 
 func attack_target_building_node(target: Building) -> void:
+	cancel_recruitment()
 	if not can_attack or not is_instance_valid(target) or not target.can_be_damaged():
 		if garrisoned_building == null and is_instance_valid(target):
 			move_to(target.global_position)
@@ -501,6 +514,7 @@ func attack_target_building_node(target: Building) -> void:
 
 
 func approach_garrison(building: Building) -> void:
+	cancel_recruitment()
 	if not is_instance_valid(building) or not building.can_enter_garrison(self):
 		return
 	if garrisoned_building != null:
@@ -522,6 +536,7 @@ func approach_garrison(building: Building) -> void:
 
 
 func assign_construction(site: Building) -> void:
+	cancel_recruitment()
 	if not can_build or not is_instance_valid(site) or site.building_state != Building.BuildingState.CONSTRUCTING:
 		return
 	var job_manager := get_tree().get_first_node_in_group("job_manager")
@@ -772,6 +787,7 @@ func _die() -> void:
 	if _is_dying:
 		return
 
+	cancel_recruitment()
 	_is_dying = true
 	attack_target = null
 	_unit_state = UnitState.DYING
@@ -1246,6 +1262,12 @@ func _process_construction(delta: float) -> void:
 		_notify_construction_finished()
 		return
 
+	var day_night := get_tree().get_first_node_in_group("day_night_manager")
+	if day_night is DayNightManager and not (day_night as DayNightManager).is_construction_allowed():
+		velocity = Vector2.ZERO
+		_play_idle()
+		return
+
 	var approach := site.get_approach_point(global_position)
 	var distance := global_position.distance_to(approach)
 	if distance > build_range:
@@ -1254,7 +1276,11 @@ func _process_construction(delta: float) -> void:
 
 	velocity = Vector2.ZERO
 	_play_build_animation()
-	var progress_rate := (1.0 / maxf(site.build_time_total, 0.1)) * build_power * delta
+	var work_multiplier := 1.0
+	var population_manager := get_tree().get_first_node_in_group("population_manager")
+	if population_manager is PopulationManager:
+		work_multiplier = (population_manager as PopulationManager).get_civilian_work_multiplier()
+	var progress_rate := (1.0 / maxf(site.build_time_total, 0.1)) * build_power * work_multiplier * delta
 	var prev_progress := site.construction_progress
 	site.add_construction_progress(progress_rate)
 	if site.building_state != Building.BuildingState.CONSTRUCTING and prev_progress < 1.0:
@@ -1284,10 +1310,13 @@ func _process_gathering(delta: float) -> void:
 	velocity = Vector2.ZERO
 	_play_idle()
 	_gather_timer += delta
-	if _gather_timer >= GATHER_TIME_AT_NODE:
+	var gather_duration := GATHER_TIME_AT_NODE
+	var job_manager := get_tree().get_first_node_in_group("job_manager")
+	if job_manager is JobManager:
+		gather_duration = (job_manager as JobManager).get_gather_duration(self)
+	if _gather_timer >= gather_duration:
 		_gather_timer = 0.0
 		_unit_state = UnitState.DEPOSITING
-		var job_manager := get_tree().get_first_node_in_group("job_manager")
 		if job_manager is JobManager:
 			var building: Building = (job_manager as JobManager).get_worker_building(self)
 			if building != null:
@@ -1317,7 +1346,12 @@ func _process_depositing(delta: float) -> void:
 
 func _process_recruitment(delta: float) -> void:
 	var building := recruitment_building
-	if building == null or not is_instance_valid(building):
+	if (
+		building == null
+		or not is_instance_valid(building)
+		or building.building_state != Building.BuildingState.ACTIVE
+	):
+		_release_recruitment_reservation()
 		_unit_state = UnitState.IDLE
 		return
 
@@ -1329,9 +1363,41 @@ func _process_recruitment(delta: float) -> void:
 
 	velocity = Vector2.ZERO
 	var target_type := recruitment_type_id
+	var squad_size := recruitment_squad_size
+	var squad_id := recruitment_squad_id
 	transform_to_unit_type(target_type)
+	if not squad_id.is_empty():
+		set_meta("squad_id", squad_id)
+	var world := get_tree().get_first_node_in_group("game_world")
+	if world != null and world.has_method("spawn_squad_members"):
+		world.call("spawn_squad_members", self, target_type, maxi(0, squad_size - 1), squad_id)
 	recruitment_building = null
 	recruitment_type_id = ""
+	recruitment_squad_size = 1
+	recruitment_squad_id = ""
+
+
+func _release_recruitment_reservation() -> void:
+	var extra_population := maxi(0, recruitment_squad_size - 1)
+	var population_manager := get_tree().get_first_node_in_group("population_manager")
+	if population_manager is PopulationManager:
+		(population_manager as PopulationManager).release_reserved_population(extra_population)
+	recruitment_building = null
+	recruitment_type_id = ""
+	recruitment_squad_size = 1
+	recruitment_squad_id = ""
+
+
+func cancel_recruitment() -> void:
+	if recruitment_building == null and recruitment_squad_size <= 1:
+		return
+	_release_recruitment_reservation()
+	if _unit_state == UnitState.RECRUITING:
+		_unit_state = UnitState.IDLE
+
+
+func _exit_tree() -> void:
+	cancel_recruitment()
 
 
 func _finish_gather_job() -> void:

@@ -9,8 +9,9 @@ const BUILD_HOTKEYS: Dictionary = {
 	KEY_4: "mill",
 	KEY_5: "mine",
 	KEY_6: "stable",
-	KEY_7: "tower",
-	KEY_8: "wall",
+	KEY_7: "barracks",
+	KEY_8: "tower",
+	KEY_9: "wall",
 }
 
 var build_mode_active: bool = false
@@ -153,6 +154,8 @@ func start_build_mode(type_id: String) -> void:
 func _start_build_mode(type_id: String) -> void:
 	if not BuildingDatabase.is_buildable(type_id):
 		return
+	if not _is_construction_allowed():
+		return
 	_stop_wall_drag()
 	selected_building_type = type_id
 	build_mode_active = true
@@ -187,15 +190,18 @@ func _update_ghost_texture() -> void:
 
 
 func _try_place_building(world_pos: Vector2) -> void:
-	if not ghost_valid:
+	if not ghost_valid or not _is_construction_allowed():
 		return
 	_place_single_building(world_pos, false)
 
 
-func _place_single_building(world_pos: Vector2, vertical: bool) -> Building:
-	var cost := BuildingDatabase.get_cost(selected_building_type)
-	if _resource_manager == null or not _resource_manager.spend(cost):
+func _place_single_building(world_pos: Vector2, vertical: bool, charge_resources: bool = true) -> Building:
+	if not _is_construction_allowed():
 		return null
+	if charge_resources:
+		var cost := BuildingDatabase.get_cost(selected_building_type)
+		if _resource_manager == null or not _resource_manager.spend(cost):
+			return null
 
 	var building: Building = _building_scene.instantiate()
 	building.configure(selected_building_type, Building.BuildingState.CONSTRUCTING, 0.0)
@@ -211,6 +217,8 @@ func _place_single_building(world_pos: Vector2, vertical: bool) -> Building:
 
 
 func _place_wall_line(start_pos: Vector2, end_pos: Vector2) -> void:
+	if not _is_construction_allowed():
+		return
 	var segments := _compute_wall_segments(start_pos, end_pos)
 	if segments.is_empty():
 		return
@@ -227,7 +235,7 @@ func _place_wall_line(start_pos: Vector2, end_pos: Vector2) -> void:
 		return
 
 	for segment in segments:
-		_place_single_building(segment["pos"], segment["vertical"])
+		_place_single_building(segment["pos"], segment["vertical"], false)
 
 
 func _compute_wall_segments(start_pos: Vector2, end_pos: Vector2) -> Array[Dictionary]:
@@ -323,6 +331,8 @@ func _is_valid_placement(world_pos: Vector2) -> bool:
 
 
 func _is_valid_placement_at(world_pos: Vector2, type_id: String, vertical: bool) -> bool:
+	if not _is_construction_allowed():
+		return false
 	if _ground_layer == null:
 		return false
 	if _ground_layer.is_water_at(world_pos):
@@ -362,9 +372,14 @@ func _is_valid_placement_at(world_pos: Vector2, type_id: String, vertical: bool)
 func _multiply_cost(cost: Dictionary, count: int) -> Dictionary:
 	return {
 		"wood": cost.get("wood", 0) * count,
-		"stone": cost.get("stone", 0) * count,
+		"gold": cost.get("gold", 0) * count,
 		"food": cost.get("food", 0) * count,
 	}
+
+
+func _is_construction_allowed() -> bool:
+	var manager := get_tree().get_first_node_in_group("day_night_manager")
+	return not (manager is DayNightManager) or (manager as DayNightManager).is_construction_allowed()
 
 
 func _can_afford_wall_line(segment_count: int) -> bool:

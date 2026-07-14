@@ -41,8 +41,6 @@ func _process(delta: float) -> void:
 			continue
 		if building.building_state != Building.BuildingState.ACTIVE:
 			continue
-		if _population_manager != null and _population_manager.food_shortage_active:
-			continue
 		_advance_queue(building, delta)
 
 	_process_pending_recruitment()
@@ -54,6 +52,14 @@ func register_producer(building: Building) -> void:
 
 
 func unregister_producer(building: Building) -> void:
+	if _population_manager != null:
+		for entry in _queues.get(building, []):
+			_population_manager.release_reserved_population(entry.get("reserved_population", 0))
+		for entry in _pending_recruitment.get(building, []):
+			_population_manager.release_reserved_population(entry.get("reserved_population", 0))
+	for node in get_tree().get_nodes_in_group("units"):
+		if node is Unit and (node as Unit).recruitment_building == building:
+			(node as Unit).cancel_recruitment()
 	_queues.erase(building)
 	_pending_recruitment.erase(building)
 
@@ -69,6 +75,14 @@ func enqueue(building: Building, item_id: String, batch_count: int = 1) -> bool:
 		return false
 
 	var cost: Dictionary = def.get("cost", {})
+	var squad_size: int = def.get("squad_size", 1)
+	var reserved_per_item := maxi(0, squad_size - 1)
+	var total_reserved := reserved_per_item * batch_count
+	if total_reserved > 0 and (
+		_population_manager == null
+		or not _population_manager.reserve_population(total_reserved)
+	):
+		return false
 	register_producer(building)
 	var queue: Array = _queues[building]
 	for _i in batch_count:
@@ -78,6 +92,7 @@ func enqueue(building: Building, item_id: String, batch_count: int = 1) -> bool:
 			"time_total": def.get("train_time", 10.0),
 			"cost": cost.duplicate(),
 			"paid": false,
+			"reserved_population": reserved_per_item,
 		})
 	queue_changed.emit(building)
 	return true
@@ -144,11 +159,11 @@ func _advance_queue(building: Building, delta: float) -> void:
 
 	queue.remove_at(0)
 	queue_changed.emit(building)
-	_on_item_completed(building, item_id)
+	_on_item_completed(building, item_id, current.get("reserved_population", 0))
 	production_completed.emit(building, item_id)
 
 
-func _on_item_completed(building: Building, item_id: String) -> void:
+func _on_item_completed(building: Building, item_id: String, reserved_population: int = 0) -> void:
 	var def := EquipmentDatabase.get_definition(item_id)
 	var transforms_to: String = def.get("transforms_to", "")
 	if transforms_to.is_empty():
@@ -161,6 +176,9 @@ func _on_item_completed(building: Building, item_id: String) -> void:
 	pending_queue.append({
 		"item_id": item_id,
 		"transforms_to": transforms_to,
+		"squad_size": def.get("squad_size", 1),
+		"reserved_population": reserved_population,
+		"squad_id": "%d-%d-%d" % [building.get_instance_id(), Time.get_ticks_msec(), randi()],
 	})
 	queue_changed.emit(building)
 
@@ -171,7 +189,13 @@ func _process_pending_recruitment() -> void:
 
 	for building in _pending_recruitment.keys():
 		if not is_instance_valid(building):
+			if _population_manager != null:
+				for entry in _pending_recruitment.get(building, []):
+					_population_manager.release_reserved_population(entry.get("reserved_population", 0))
 			_pending_recruitment.erase(building)
+			continue
+		if building.building_state != Building.BuildingState.ACTIVE:
+			unregister_producer(building)
 			continue
 
 		var pending_queue: Array = _pending_recruitment[building]
@@ -184,7 +208,12 @@ func _process_pending_recruitment() -> void:
 			var villager: Unit = villagers[0]
 			if not is_instance_valid(villager):
 				break
-			villager.begin_recruitment(building, entry.get("transforms_to", ""))
+			villager.begin_recruitment(
+				building,
+				entry.get("transforms_to", ""),
+				entry.get("squad_size", 1),
+				entry.get("squad_id", "")
+			)
 			pending_queue.remove_at(0)
 			changed = true
 

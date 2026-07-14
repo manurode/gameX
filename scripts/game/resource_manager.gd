@@ -1,11 +1,11 @@
 class_name ResourceManager
 extends Node
 
-signal resources_changed(wood: int, stone: int, food: int)
+signal resources_changed(wood: int, gold: int, food: int)
 
-var wood: int = 10000
-var stone: int = 10000
-var food: int = 10000
+var wood: int = BalanceConfig.INITIAL_WOOD
+var gold: int = BalanceConfig.INITIAL_GOLD
+var food: int = BalanceConfig.INITIAL_FOOD
 
 
 func _ready() -> void:
@@ -15,7 +15,7 @@ func _ready() -> void:
 func can_afford(cost: Dictionary) -> bool:
 	return (
 		wood >= cost.get("wood", 0)
-		and stone >= cost.get("stone", 0)
+		and gold >= cost.get("gold", 0)
 		and food >= cost.get("food", 0)
 	)
 
@@ -24,7 +24,7 @@ func spend(cost: Dictionary) -> bool:
 	if not can_afford(cost):
 		return false
 	wood -= cost.get("wood", 0)
-	stone -= cost.get("stone", 0)
+	gold -= cost.get("gold", 0)
 	food -= cost.get("food", 0)
 	_emit_changed()
 	return true
@@ -32,7 +32,7 @@ func spend(cost: Dictionary) -> bool:
 
 func add_resources(amounts: Dictionary) -> void:
 	wood += amounts.get("wood", 0)
-	stone += amounts.get("stone", 0)
+	gold += amounts.get("gold", 0)
 	food += amounts.get("food", 0)
 	_emit_changed()
 
@@ -45,5 +45,14 @@ func try_spend_food(amount: int) -> bool:
 	return true
 
 
+func consume_food_up_to(amount: int) -> int:
+	var consumed := mini(maxi(amount, 0), food)
+	if consumed <= 0:
+		return 0
+	food -= consumed
+	_emit_changed()
+	return consumed
+
+
 func _emit_changed() -> void:
-	resources_changed.emit(wood, stone, food)
+	resources_changed.emit(wood, gold, food)

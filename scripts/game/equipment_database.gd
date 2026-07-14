@@ -5,25 +5,25 @@ const DEFINITIONS: Dictionary = {
 	"villager": {
 		"name": "Aldeano",
 		"train_time": 12.0,
-		"cost": {"wood": 0, "stone": 0, "food": 50},
+		"cost": {"wood": 0, "gold": 0, "food": 50},
 		"building_types": ["town_center"],
 		"transforms_to": "",
 	},
-	"knight_gear": {
-		"name": "Equipo de caballero",
-		"train_time": 20.0,
-		"cost": {"wood": 0, "stone": 30, "food": 20},
+	"knight_squad": {
+		"name": "Escuadrón de caballeros",
+		"train_time": BalanceConfig.SQUAD_TRAIN_TIME,
+		"cost": {"wood": 0, "gold": BalanceConfig.SQUAD_GOLD_COST, "food": BalanceConfig.SQUAD_FOOD_COST},
 		"building_types": ["stable"],
 		"transforms_to": "knight",
-		"batch_size": 1,
+		"squad_size": BalanceConfig.SQUAD_SIZE,
 	},
-	"archer_gear": {
-		"name": "Equipo de arquero",
-		"train_time": 16.0,
-		"cost": {"wood": 40, "stone": 0, "food": 15},
-		"building_types": ["stable", "tower"],
+	"archer_squad": {
+		"name": "Escuadrón de arqueros",
+		"train_time": BalanceConfig.SQUAD_TRAIN_TIME,
+		"cost": {"wood": 0, "gold": BalanceConfig.SQUAD_GOLD_COST, "food": BalanceConfig.SQUAD_FOOD_COST},
+		"building_types": ["barracks"],
 		"transforms_to": "archer",
-		"batch_size": 1,
+		"squad_size": BalanceConfig.SQUAD_SIZE,
 	},
 }
 

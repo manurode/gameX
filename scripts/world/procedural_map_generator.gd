@@ -99,12 +99,12 @@ func _generate_resources(
 	_append_random_placements(placements, rng, town_center, water_set, reachable_set, occupied, 52, {
 		"kind": "wood",
 		"variant_count": 2,
-		"amount": 120,
+		"amount": BalanceConfig.TREE_CAPACITY,
 	})
 	_append_random_placements(placements, rng, town_center, water_set, reachable_set, occupied, 18, {
-		"kind": "stone",
+		"kind": "gold",
 		"variant_count": 2,
-		"amount": 160,
+		"amount": BalanceConfig.GOLD_VEIN_CAPACITY,
 	})
 	_append_random_placements(placements, rng, town_center, water_set, reachable_set, occupied, 14, {
 		"kind": "food",
