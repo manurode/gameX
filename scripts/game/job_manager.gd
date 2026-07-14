@@ -3,7 +3,7 @@ extends Node
 
 const GATHER_CARRY_AMOUNT := 10
 const GATHER_TIME_AT_NODE := 2.5
-const AUTO_BUILD_RADIUS := 450.0
+const AUTO_BUILD_RADIUS := 800.0
 
 var _resource_manager: ResourceManager
 var _population_manager: PopulationManager

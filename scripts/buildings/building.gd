@@ -352,23 +352,39 @@ func _apply_upgrade_visual() -> void:
 			sprite.modulate = Color.WHITE
 
 
-func get_approach_point(from_position: Vector2, margin: float = 12.0) -> Vector2:
-	var center := get_base_center()
+func get_collision_center() -> Vector2:
+	return global_position + Vector2(0.0, -_footprint.y * 0.25)
+
+
+func get_collision_half_size() -> Vector2:
+	return _footprint * 0.5
+
+
+func get_approach_point(from_position: Vector2, margin: float = 2.0) -> Vector2:
+	var center := get_collision_center()
 	var direction := from_position.direction_to(center)
 	if direction == Vector2.ZERO:
 		direction = Vector2.DOWN
-	var half := _footprint * 0.55
-	var reach := maxf(half.x, half.y) + margin
+	var reach := _reach_along_collision_rect(direction) + margin
 	return center - direction * reach
 
 
 func get_combat_approach_point(from_position: Vector2) -> Vector2:
-	# Just outside the nav block so melee units can reach the perimeter from any side.
-	return get_approach_point(from_position, 4.0)
+	return get_approach_point(from_position, 0.0)
 
 
 func get_entry_approach_point(from_position: Vector2) -> Vector2:
-	return get_approach_point(from_position, 8.0)
+	return get_approach_point(from_position, 2.0)
+
+
+func _reach_along_collision_rect(direction: Vector2) -> float:
+	var half := get_collision_half_size()
+	var abs_dir := direction.abs()
+	if abs_dir.x < 0.001 and abs_dir.y < 0.001:
+		return maxf(half.x, half.y)
+	var tx := INF if abs_dir.x < 0.001 else half.x / abs_dir.x
+	var ty := INF if abs_dir.y < 0.001 else half.y / abs_dir.y
+	return minf(tx, ty)
 
 
 func _setup_selection_indicator() -> void:
@@ -695,13 +711,13 @@ func get_nav_block_outline() -> PackedVector2Array:
 	if not blocks_navigation or building_state != BuildingState.ACTIVE:
 		return PackedVector2Array()
 
-	var half := _footprint * 0.55
-	var center := global_position + Vector2(0.0, -_footprint.y * 0.2)
+	var center := get_collision_center()
+	var half := get_collision_half_size()
 	return PackedVector2Array([
-		center + Vector2(-half.x, -half.y * 0.5),
-		center + Vector2(half.x, -half.y * 0.5),
-		center + Vector2(half.x, half.y * 0.5),
-		center + Vector2(-half.x, half.y * 0.5),
+		center + Vector2(-half.x, -half.y),
+		center + Vector2(half.x, -half.y),
+		center + Vector2(half.x, half.y),
+		center + Vector2(-half.x, half.y),
 	])
 
 

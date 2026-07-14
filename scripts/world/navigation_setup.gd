@@ -159,8 +159,8 @@ func _mark_outline_cells(
 	for y in range(candidate_rect.position.y, candidate_rect.end.y):
 		for x in range(candidate_rect.position.x, candidate_rect.end.x):
 			var cell := Vector2i(x, y)
-			var cell_polygon := _get_cell_corners(cell)
-			if not Geometry2D.intersect_polygons(cell_polygon, local_outline).is_empty():
+			var cell_center := _ground_layer.map_to_local(cell)
+			if Geometry2D.is_point_in_polygon(cell_center, local_outline):
 				blocked[cell] = true
 
 
