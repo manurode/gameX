@@ -17,7 +17,8 @@ func setup(
 	blocks: bool,
 	slow_mult: float = 1.0,
 	slow_rad: float = 0.0,
-	block_half: Vector2 = Vector2(40.0, 25.0)
+	block_half: Vector2 = Vector2(40.0, 25.0),
+	show_sprite: bool = true
 ) -> void:
 	blocks_movement = blocks
 	slow_multiplier = slow_mult
@@ -25,13 +26,14 @@ func setup(
 	nav_block_half_size = block_half
 	position = world_position
 
-	_sprite = Sprite2D.new()
-	_sprite.texture = texture
-	_sprite.centered = true
-	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-	_sprite.offset = sprite_offset
-	_sprite.y_sort_enabled = true
-	add_child(_sprite)
+	if show_sprite:
+		_sprite = Sprite2D.new()
+		_sprite.texture = texture
+		_sprite.centered = true
+		_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+		_sprite.offset = sprite_offset
+		_sprite.y_sort_enabled = true
+		add_child(_sprite)
 
 	if blocks_movement:
 		_collision_body = StaticBody2D.new()

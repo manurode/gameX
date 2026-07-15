@@ -7,6 +7,8 @@ const AGENT_CLEARANCE := 16.0
 const SEGMENT_SAMPLE_STEP := 8.0
 const CLOSEST_POINT_SEARCH_LIMIT := 48
 const DYNAMIC_REBUILD_RADIUS := 128.0
+const PATHS_PER_FRAME := 12
+const PATH_CACHE_LIMIT := 512
 
 var _ground_layer: TinyTilesMap
 var _sector_regions: Dictionary = {}
@@ -19,6 +21,8 @@ var _path_grid := AStarGrid2D.new()
 var _path_grid_origin := Vector2.ZERO
 var _path_grid_size := Vector2i.ZERO
 var _navigation_version := 0
+var _path_cache: Dictionary = {}
+var _path_queue: Array[Dictionary] = []
 
 
 func setup_from_ground(ground_layer: TinyTilesMap) -> void:
@@ -26,6 +30,11 @@ func setup_from_ground(ground_layer: TinyTilesMap) -> void:
 	add_to_group("navigation_manager")
 	navigation_polygon = null
 	_create_sector_regions()
+	set_process(true)
+
+
+func _process(_delta: float) -> void:
+	_process_path_queue()
 
 
 func rebuild_navigation(obstacles: Array = [], buildings: Array = []) -> void:
@@ -246,10 +255,61 @@ func _rebuild_dirty_path_grid() -> void:
 			point_id,
 			not _is_world_point_walkable(_grid_to_world(point_id))
 		)
-	_navigation_version += 1
+	_bump_navigation_version()
 
 
 func get_navigation_path(from_position: Vector2, target_position: Vector2) -> PackedVector2Array:
+	var cache_key := _make_path_cache_key(from_position, target_position)
+	if _path_cache.has(cache_key):
+		return _path_cache[cache_key]
+
+	queue_navigation_path(from_position, target_position)
+	return PackedVector2Array()
+
+
+func queue_navigation_path(from_position: Vector2, target_position: Vector2) -> void:
+	if _path_grid_size == Vector2i.ZERO:
+		return
+
+	var cache_key := _make_path_cache_key(from_position, target_position)
+	if _path_cache.has(cache_key):
+		return
+
+	for request in _path_queue:
+		if request.get("key", "") == cache_key:
+			return
+
+	_path_queue.append({
+		"from": from_position,
+		"to": target_position,
+		"key": cache_key,
+	})
+
+
+func queue_navigation_paths(requests: Array) -> void:
+	for request in requests:
+		if request is Dictionary:
+			queue_navigation_path(request.get("from", Vector2.ZERO), request.get("to", Vector2.ZERO))
+
+
+func _process_path_queue() -> void:
+	var processed := 0
+	while not _path_queue.is_empty() and processed < PATHS_PER_FRAME:
+		var request: Dictionary = _path_queue.pop_front()
+		var cache_key: String = request.get("key", "")
+		if cache_key.is_empty() or _path_cache.has(cache_key):
+			processed += 1
+			continue
+
+		var from_position: Vector2 = request.get("from", Vector2.ZERO)
+		var target_position: Vector2 = request.get("to", Vector2.ZERO)
+		_path_cache[cache_key] = _compute_navigation_path(from_position, target_position)
+		if _path_cache.size() > PATH_CACHE_LIMIT:
+			_path_cache.clear()
+		processed += 1
+
+
+func _compute_navigation_path(from_position: Vector2, target_position: Vector2) -> PackedVector2Array:
 	if _path_grid_size == Vector2i.ZERO:
 		return PackedVector2Array()
 
@@ -274,6 +334,24 @@ func get_navigation_path(from_position: Vector2, target_position: Vector2) -> Pa
 		raw_path.append(reachable_target)
 
 	return _smooth_path(raw_path)
+
+
+func _make_path_cache_key(from_position: Vector2, target_position: Vector2) -> String:
+	var start_id := _world_to_grid(from_position)
+	var target_id := _world_to_grid(target_position)
+	return "%d:%d:%d:%d:%d" % [
+		_navigation_version,
+		start_id.x,
+		start_id.y,
+		target_id.x,
+		target_id.y,
+	]
+
+
+func _bump_navigation_version() -> void:
+	_navigation_version += 1
+	_path_cache.clear()
+	_path_queue.clear()
 
 
 func get_closest_walkable_point(world_position: Vector2) -> Vector2:
@@ -320,7 +398,7 @@ func _rebuild_path_grid() -> void:
 			if not _is_world_point_walkable(_grid_to_world(point_id)):
 				_path_grid.set_point_solid(point_id, true)
 
-	_navigation_version += 1
+	_bump_navigation_version()
 
 
 func _world_to_grid(world_position: Vector2) -> Vector2i:
@@ -442,6 +520,7 @@ func _has_clear_segment(from_position: Vector2, to_position: Vector2) -> bool:
 	var sample_count := maxi(1, ceili(distance / SEGMENT_SAMPLE_STEP))
 	for i in range(1, sample_count + 1):
 		var point := from_position.lerp(to_position, float(i) / float(sample_count))
-		if not _is_world_point_walkable(point):
+		var grid_id := _world_to_grid(point)
+		if not _is_grid_id_valid(grid_id) or _path_grid.is_point_solid(grid_id):
 			return false
 	return true

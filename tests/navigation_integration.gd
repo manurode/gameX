@@ -47,7 +47,13 @@ func _run() -> void:
 
 	var start := building.global_position + Vector2(-240.0, 0.0)
 	var destination := building.global_position + Vector2(240.0, 0.0)
-	var path: PackedVector2Array = navigation_manager.get_navigation_path(start, destination)
+	navigation_manager.queue_navigation_path(start, destination)
+	var path := PackedVector2Array()
+	for _frame in 120:
+		await get_tree().process_frame
+		path = navigation_manager.get_navigation_path(start, destination)
+		if not path.is_empty():
+			break
 	assert(path.size() >= 3, "The route must bend around the building.")
 
 	unit.global_position = start

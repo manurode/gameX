@@ -16,6 +16,10 @@ const WHEAT_PATHS: Array[String] = [
 	"res://assets/tilesets/tiny_tiles/Environment/Terrain/Wheat/env_wheat_a.png",
 	"res://assets/tilesets/tiny_tiles/Environment/Terrain/Wheat/env_wheat_b.png",
 ]
+const FOREST_SLOW_MULTIPLIER := 0.62
+const FOREST_SLOW_RADIUS := 88.0
+const FOREST_BLOCK_HALF := Vector2(52.0, 32.0)
+const MOUNTAIN_BLOCK_HALF := Vector2(68.0, 42.0)
 const MILL_WHEAT_COLUMNS := 3
 const MILL_WHEAT_ROWS := 2
 const MILL_WHEAT_OFFSET := Vector2(0.0, 32.0)
@@ -98,6 +102,36 @@ func _spawn_resources(placements: Array[Dictionary]) -> void:
 		node.setup(texture, world_pos, resource_kind, placement.get("amount", 100), offset)
 		add_child(node)
 		_resource_nodes.append(node)
+		_spawn_resource_terrain(kind, texture, world_pos, offset)
+
+
+func _spawn_resource_terrain(kind: String, texture: Texture2D, world_pos: Vector2, offset: Vector2) -> void:
+	var obstacle := TerrainObstacle.new()
+	if kind == "wood":
+		obstacle.setup(
+			texture,
+			world_pos,
+			offset,
+			false,
+			FOREST_SLOW_MULTIPLIER,
+			FOREST_SLOW_RADIUS,
+			FOREST_BLOCK_HALF,
+			false
+		)
+	else:
+		obstacle.setup(
+			texture,
+			world_pos,
+			offset,
+			true,
+			1.0,
+			0.0,
+			MOUNTAIN_BLOCK_HALF,
+			false
+		)
+	obstacle.add_to_group("terrain_obstacles")
+	add_child(obstacle)
+	_obstacles.append(obstacle)
 
 
 func _spawn_decorations(placements: Array[Dictionary]) -> void:

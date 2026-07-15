@@ -439,8 +439,24 @@ static func assign_move_destinations(
 		return a.get_instance_id() < b.get_instance_id()
 	)
 
+	var navigation_manager: Node = null
+	if not valid_units.is_empty():
+		var tree := valid_units[0].get_tree()
+		if tree != null:
+			navigation_manager = tree.get_first_node_in_group("navigation_manager")
+
+	var path_requests: Array = []
 	for i in valid_units.size():
-		valid_units[i].move_to(slots[i])
+		var unit := valid_units[i]
+		var slot := slots[i]
+		unit.move_to(slot)
+		path_requests.append({
+			"from": unit.global_position,
+			"to": slot,
+		})
+
+	if navigation_manager != null and navigation_manager.has_method("queue_navigation_paths"):
+		navigation_manager.call("queue_navigation_paths", path_requests)
 
 
 func select() -> void:
@@ -1059,9 +1075,23 @@ func _sync_navigation_target(target: Vector2) -> void:
 		global_position,
 		target
 	)
+	if _navigation_path.is_empty():
+		navigation_manager.call("queue_navigation_path", global_position, target)
+		_resolved_navigation_target = navigation_manager.call(
+			"get_closest_walkable_point",
+			target
+		)
+		_navigation_path_target = target
+		_navigation_map_version = current_version
+		return
+
+	_apply_navigation_path(target)
+	_navigation_map_version = current_version
+
+
+func _apply_navigation_path(target: Vector2) -> void:
 	_navigation_path_index = 0
 	_navigation_path_target = target
-	_navigation_map_version = current_version
 	_resolved_navigation_target = target
 	if not _navigation_path.is_empty():
 		_resolved_navigation_target = _navigation_path[-1]
@@ -1071,11 +1101,6 @@ func _sync_navigation_target(target: Vector2) -> void:
 			<= PATH_WAYPOINT_REACHED
 		):
 			_navigation_path_index += 1
-	else:
-		_resolved_navigation_target = navigation_manager.call(
-			"get_closest_walkable_point",
-			target
-		)
 
 
 func _force_navigation_repath(target: Vector2) -> void:
@@ -1123,6 +1148,16 @@ func _follow_navigation_toward(target: Vector2, desired_distance: float, delta: 
 
 	navigation_agent.target_desired_distance = desired_distance
 	_sync_navigation_target(target)
+
+	if _navigation_path.is_empty():
+		if _resolved_navigation_target != Vector2.INF:
+			var fallback_direction := global_position.direction_to(_resolved_navigation_target)
+			if fallback_direction != Vector2.ZERO:
+				_move_along_path(fallback_direction, _resolved_navigation_target, delta)
+				return
+		velocity = Vector2.ZERO
+		_play_idle()
+		return
 
 	var direction := _get_navigation_direction(target)
 	if direction == Vector2.ZERO:
