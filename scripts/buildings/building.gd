@@ -13,8 +13,8 @@ const HEALTH_BAR_VISIBLE_MS := 4000
 const CONSTRUCTION_ALPHA := 0.55
 const ENTRY_RANGE := 42.0
 const GARRISON_ATTACK_RANGE := 220.0
-const COLLISION_BODY_SHRINK := Vector2(0.82, 0.38)
-const COLLISION_BODY_CENTER_Y := 0.62
+const COLLISION_BODY_SHRINK := Vector2(0.84, 0.84)
+const COLLISION_BODY_CENTER_Y := 0.2
 const WALL_COLLISION_SHRINK := Vector2(0.94, 0.48)
 const WALL_COLLISION_CENTER_Y := 0.42
 
@@ -501,20 +501,58 @@ func _apply_upgrade_visual() -> void:
 
 
 func get_collision_center() -> Vector2:
-	return global_position + Vector2(0.0, -_footprint.y * _get_collision_center_y_factor())
+	if building_type_id == "wall":
+		return global_position + Vector2(0.0, -_footprint.y * WALL_COLLISION_CENTER_Y)
+	return get_interaction_center()
 
 
 func get_collision_half_size() -> Vector2:
-	return _get_collision_body_size() * 0.5
+	if building_type_id == "wall":
+		return _get_collision_body_size() * 0.5
+	return get_interaction_half_size()
+
+
+func get_interaction_center() -> Vector2:
+	var center_y := WALL_COLLISION_CENTER_Y if building_type_id == "wall" else 0.2
+	return global_position + Vector2(0.0, -_footprint.y * center_y)
+
+
+func get_interaction_half_size() -> Vector2:
+	if building_type_id == "wall":
+		return Vector2(
+			_footprint.x * WALL_COLLISION_SHRINK.x * 0.5,
+			_footprint.y * WALL_COLLISION_SHRINK.y * 0.5
+		)
+	return _footprint * 0.42
+
+
+func get_closest_surface_point(from_position: Vector2) -> Vector2:
+	var center := get_interaction_center()
+	var half := get_interaction_half_size()
+	var local := from_position - center
+	var clamped := Vector2(
+		clampf(local.x, -half.x, half.x),
+		clampf(local.y, -half.y, half.y)
+	)
+	if clamped.distance_squared_to(local) < 0.01:
+		var pen_x := half.x - absf(local.x)
+		var pen_y := half.y - absf(local.y)
+		if pen_x < pen_y:
+			clamped.x = half.x if local.x >= 0.0 else -half.x
+		else:
+			clamped.y = half.y if local.y >= 0.0 else -half.y
+	return center + clamped
 
 
 func get_approach_point(from_position: Vector2, margin: float = 2.0) -> Vector2:
-	var center := get_collision_center()
-	var direction := from_position.direction_to(center)
-	if direction == Vector2.ZERO:
-		direction = Vector2.DOWN
-	var reach := _reach_along_collision_rect(direction) + margin
-	return center - direction * reach
+	var center := get_interaction_center()
+	var surface := get_closest_surface_point(from_position)
+	var outward := surface - center
+	if outward.length_squared() < 0.01:
+		outward = from_position - center
+	if outward == Vector2.ZERO:
+		outward = Vector2.DOWN
+	return surface + outward.normalized() * margin
 
 
 func get_combat_approach_point(from_position: Vector2) -> Vector2:
@@ -523,16 +561,6 @@ func get_combat_approach_point(from_position: Vector2) -> Vector2:
 
 func get_entry_approach_point(from_position: Vector2) -> Vector2:
 	return get_approach_point(from_position, 2.0)
-
-
-func _reach_along_collision_rect(direction: Vector2) -> float:
-	var half := get_collision_half_size()
-	var abs_dir := direction.abs()
-	if abs_dir.x < 0.001 and abs_dir.y < 0.001:
-		return maxf(half.x, half.y)
-	var tx := INF if abs_dir.x < 0.001 else half.x / abs_dir.x
-	var ty := INF if abs_dir.y < 0.001 else half.y / abs_dir.y
-	return minf(tx, ty)
 
 
 func _setup_selection_indicator() -> void:
@@ -557,8 +585,10 @@ func get_base_center() -> Vector2:
 	return global_position + Vector2(0.0, -_footprint.y * 0.2)
 
 
-func get_melee_attack_point() -> Vector2:
-	return get_base_center()
+func get_melee_attack_point(from_position: Vector2 = Vector2.INF) -> Vector2:
+	if from_position == Vector2.INF:
+		return get_base_center()
+	return get_closest_surface_point(from_position)
 
 
 func get_attack_point() -> Vector2:
@@ -667,13 +697,13 @@ func _find_exit_position() -> Vector2:
 		Vector2(_footprint.x * 0.8, 0.0),
 		Vector2(-_footprint.x * 0.8, 0.0),
 		Vector2(0.0, _footprint.y * 0.6),
-		Vector2(0.0, -_footprint.y * 0.3),
+		Vector2(0.0, -_footprint.y * 0.6),
 	]
 	for offset in offsets:
 		var candidate := global_position + offset
 		if _is_position_walkable(candidate):
 			return candidate
-	return global_position + Vector2(_footprint.x, 0.0)
+	return global_position + Vector2(_footprint.x * 0.8, 0.0)
 
 
 func _is_position_walkable(world_pos: Vector2) -> bool:
@@ -859,8 +889,8 @@ func get_nav_block_outline() -> PackedVector2Array:
 	if not blocks_navigation or building_state != BuildingState.ACTIVE:
 		return PackedVector2Array()
 
-	var center := get_collision_center()
-	var half := get_collision_half_size()
+	var center := get_interaction_center()
+	var half := get_interaction_half_size()
 	return PackedVector2Array([
 		center + Vector2(-half.x, -half.y),
 		center + Vector2(half.x, -half.y),

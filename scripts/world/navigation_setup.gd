@@ -125,7 +125,11 @@ func _get_blocked_cells(cell_rect: Rect2i) -> Dictionary:
 				cell_rect,
 				blocked
 			)
-	# Buildings use tight physical collision only; coarse nav cells created false dead zones.
+	for building in _buildings:
+		if is_instance_valid(building) and building is Building:
+			var active_building := building as Building
+			if active_building.blocks_navigation:
+				_mark_outline_cells(active_building.get_nav_block_outline(), cell_rect, blocked)
 	return blocked
 
 

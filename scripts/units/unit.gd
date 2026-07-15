@@ -1222,9 +1222,13 @@ func _process_combat(_delta: float) -> void:
 		_update_terrain_feedback(_delta)
 		return
 
-	# Melee vs unit: direct chase (no terrain blocking between open units).
+	# Melee vs unit/building: direct chase toward the nearest attack surface.
 	if combat_style == CombatStyle.MELEE and attack_target != null and is_instance_valid(attack_target):
 		_chase_melee_unit_direct(_delta)
+		_update_terrain_feedback(_delta)
+		return
+	if combat_style == CombatStyle.MELEE and attack_target_building != null and is_instance_valid(attack_target_building):
+		_chase_melee_building_direct(_delta)
 		_update_terrain_feedback(_delta)
 		return
 
@@ -1235,7 +1239,15 @@ func _process_combat(_delta: float) -> void:
 
 
 func _chase_melee_unit_direct(delta: float) -> void:
-	var target_point := attack_target.get_sprite_center()
+	_chase_melee_direct_toward(attack_target.get_sprite_center(), delta)
+
+
+func _chase_melee_building_direct(delta: float) -> void:
+	var target_point := attack_target_building.get_melee_attack_point(global_position)
+	_chase_melee_direct_toward(target_point, delta)
+
+
+func _chase_melee_direct_toward(target_point: Vector2, delta: float) -> void:
 	var direction := global_position.direction_to(target_point)
 	if direction == Vector2.ZERO:
 		velocity = Vector2.ZERO
@@ -1281,7 +1293,9 @@ func _get_melee_combat_distance() -> float:
 	if attack_target != null and is_instance_valid(attack_target):
 		return get_sprite_center().distance_to(attack_target.get_sprite_center())
 	if attack_target_building != null and is_instance_valid(attack_target_building):
-		return get_sprite_center().distance_to(attack_target_building.get_melee_attack_point())
+		return get_sprite_center().distance_to(
+			attack_target_building.get_melee_attack_point(global_position)
+		)
 	return INF
 
 
@@ -1298,13 +1312,19 @@ func _process_garrison_approach(_delta: float) -> void:
 		return
 
 	var approach := building.get_entry_approach_point(global_position)
-	var distance := global_position.distance_to(approach)
+	var surface_distance := global_position.distance_to(
+		building.get_closest_surface_point(global_position)
+	)
+	var distance := minf(global_position.distance_to(approach), surface_distance)
 	if distance <= Building.ENTRY_RANGE:
 		building.enter_garrison(self)
 		return
 
 	_follow_navigation_toward(approach, 4.0, _delta)
-	distance = global_position.distance_to(approach)
+	surface_distance = global_position.distance_to(
+		building.get_closest_surface_point(global_position)
+	)
+	distance = minf(global_position.distance_to(approach), surface_distance)
 	if navigation_agent.is_navigation_finished() and distance <= Building.ENTRY_RANGE * 1.5:
 		building.enter_garrison(self)
 
@@ -1622,8 +1642,16 @@ func _is_in_attack_range() -> bool:
 				return dist >= attack_range_min and dist <= attack_range_max
 
 	if attack_target_building != null and is_instance_valid(attack_target_building):
-		var building_origin := attack_target_building.get_melee_attack_point() if combat_style == CombatStyle.MELEE else attack_target_building.get_attack_point()
-		var building_dist := get_sprite_center().distance_to(building_origin) if combat_style == CombatStyle.MELEE else origin.distance_to(building_origin)
+		var building_origin := (
+			attack_target_building.get_melee_attack_point(global_position)
+			if combat_style == CombatStyle.MELEE
+			else attack_target_building.get_closest_surface_point(global_position)
+		)
+		var building_dist := (
+			get_sprite_center().distance_to(building_origin)
+			if combat_style == CombatStyle.MELEE
+			else origin.distance_to(building_origin)
+		)
 		if garrisoned_building != null:
 			var range_max: float = weapon_stats.get("range_max", attack_range_max)
 			return building_dist <= range_max
@@ -1668,9 +1696,9 @@ func _get_chase_standoff_point() -> Vector2:
 		if combat_style == CombatStyle.MELEE:
 			if _is_in_attack_range():
 				return global_position
-			return attack_target_building.get_combat_approach_point(global_position)
+			return attack_target_building.get_melee_attack_point(global_position)
 
-		var building_pos := attack_target_building.get_combat_approach_point(global_position)
+		var building_pos := attack_target_building.get_closest_surface_point(global_position)
 		var building_dir := global_position.direction_to(building_pos)
 		if building_dir == Vector2.ZERO:
 			building_dir = Vector2.DOWN
@@ -1705,7 +1733,11 @@ func _direction_to_target() -> Vector2:
 	if attack_target != null and is_instance_valid(attack_target):
 		return global_position.direction_to(attack_target.get_sprite_center())
 	if attack_target_building != null and is_instance_valid(attack_target_building):
-		var aim_point := attack_target_building.get_melee_attack_point() if combat_style == CombatStyle.MELEE else attack_target_building.get_attack_point()
+		var aim_point := (
+			attack_target_building.get_melee_attack_point(global_position)
+			if combat_style == CombatStyle.MELEE
+			else attack_target_building.get_closest_surface_point(global_position)
+		)
 		return global_position.direction_to(aim_point)
 	return Vector2.DOWN
 
