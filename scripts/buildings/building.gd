@@ -670,7 +670,7 @@ func enter_garrison(unit: Unit) -> bool:
 
 
 func _select_for_player() -> void:
-	var selection_manager := get_node_or_null("/root/Main/GameWorld/SelectionManager")
+	var selection_manager := get_node_or_null("/root/Main/Layout/WorldView/SubViewport/GameWorld/SelectionManager")
 	if selection_manager != null and selection_manager.has_method("select_building"):
 		selection_manager.select_building(self)
 

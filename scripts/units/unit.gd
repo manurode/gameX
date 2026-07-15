@@ -910,7 +910,7 @@ func _play_procedural_death_fall() -> void:
 
 
 func _remove_from_selection() -> void:
-	var selection_manager := get_node_or_null("/root/Main/GameWorld/SelectionManager")
+	var selection_manager := get_node_or_null("/root/Main/Layout/WorldView/SubViewport/GameWorld/SelectionManager")
 	if selection_manager != null and selection_manager.has_method("remove_unit_from_selection"):
 		selection_manager.remove_unit_from_selection(self)
 

@@ -63,7 +63,9 @@ const TEX_FOOD := "res://assets/tilesets/tiny_tiles/UI/Icons/UI_icon_resources_w
 const TEX_HAMMER := "res://assets/tilesets/tiny_tiles/UI/Icons/UI_icon_hammer.png"
 
 const ICON_VARIANT_SIZE := 128
-const SLOT_SIZE := Vector2(78, 78)
+const SLOT_SIZE := Vector2(66, 80)
+const ICON_SIZE := Vector2(36, 30)
+const RESOURCE_ICON_SIZE := Vector2(22, 22)
 const MIN_FORMATION_UNITS := 2
 
 @onready var _resources_box: VBoxContainer = $MarginContainer/HBoxContainer/ResourcesBox
@@ -74,7 +76,7 @@ const MIN_FORMATION_UNITS := 2
 
 var _production_box: VBoxContainer
 var _production_title: Label
-var _production_items_box: VBoxContainer
+var _production_items_box: BoxContainer
 var _production_item_buttons: Dictionary = {}
 var _production_queue_label: Label
 var _production_progress_label: Label
@@ -151,50 +153,55 @@ func setup(
 
 func _build_resource_rows() -> void:
 	var entries: Array[Dictionary] = [
-		{"key": "wood", "texture": TEX_WOOD, "label": "Madera"},
 		{"key": "gold", "texture": TEX_GOLD, "label": "Oro"},
+		{"key": "wood", "texture": TEX_WOOD, "label": "Madera"},
 		{"key": "food", "texture": TEX_FOOD, "label": "Comida"},
 	]
+	var resources_row := HBoxContainer.new()
+	resources_row.add_theme_constant_override("separation", 8)
+	resources_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	_resources_box.add_child(resources_row)
+
 	for entry in entries:
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 8)
-		row.alignment = BoxContainer.ALIGNMENT_CENTER
+		var cell := HBoxContainer.new()
+		cell.add_theme_constant_override("separation", 3)
+		cell.alignment = BoxContainer.ALIGNMENT_CENTER
 
 		var icon := TextureRect.new()
-		icon.custom_minimum_size = Vector2(36, 36)
+		icon.custom_minimum_size = RESOURCE_ICON_SIZE
 		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		icon.texture = _make_icon_atlas(entry.texture)
-		row.add_child(icon)
+		cell.add_child(icon)
 
 		var amount := Label.new()
 		amount.text = "0"
-		amount.add_theme_font_size_override("font_size", 18)
+		amount.add_theme_font_size_override("font_size", 14)
 		amount.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
 		amount.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
 		amount.add_theme_constant_override("shadow_offset_x", 1)
 		amount.add_theme_constant_override("shadow_offset_y", 1)
-		row.add_child(amount)
+		cell.add_child(amount)
 
-		_resources_box.add_child(row)
+		resources_row.add_child(cell)
 		_resource_labels[entry.key] = amount
 
-	var pop_row := HBoxContainer.new()
-	pop_row.add_theme_constant_override("separation", 6)
-	pop_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	var stats_row := HBoxContainer.new()
+	stats_row.add_theme_constant_override("separation", 10)
+	stats_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	_resources_box.add_child(stats_row)
+
 	_population_label = Label.new()
 	_population_label.text = "Pob: 0/5"
-	_population_label.add_theme_font_size_override("font_size", 13)
+	_population_label.add_theme_font_size_override("font_size", 11)
 	_population_label.add_theme_color_override("font_color", Color(0.75, 0.85, 0.95))
-	pop_row.add_child(_population_label)
-	_resources_box.add_child(pop_row)
+	stats_row.add_child(_population_label)
 
 	_food_upkeep_label = Label.new()
-	_food_upkeep_label.text = "Consumo: 0 comida/s"
-	_food_upkeep_label.add_theme_font_size_override("font_size", 11)
+	_food_upkeep_label.text = "Consumo: 0/s"
+	_food_upkeep_label.add_theme_font_size_override("font_size", 10)
 	_food_upkeep_label.add_theme_color_override("font_color", Color(0.72, 0.82, 0.55))
-	_food_upkeep_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_resources_box.add_child(_food_upkeep_label)
+	stats_row.add_child(_food_upkeep_label)
 
 
 func _ensure_production_box() -> void:
@@ -203,33 +210,34 @@ func _ensure_production_box() -> void:
 	var hbox := $MarginContainer/HBoxContainer
 	_production_box = VBoxContainer.new()
 	_production_box.name = "ProductionBox"
-	_production_box.custom_minimum_size = Vector2(180, 0)
+	_production_box.custom_minimum_size = Vector2(140, 0)
 	_production_box.visible = false
+	_production_box.add_theme_constant_override("separation", 2)
 	hbox.add_child(_production_box)
 	hbox.move_child(_production_box, 2)
 
 	_production_title = Label.new()
-	_production_title.add_theme_font_size_override("font_size", 12)
+	_production_title.add_theme_font_size_override("font_size", 11)
 	_production_title.add_theme_color_override("font_color", Color(0.85, 0.78, 0.55))
 	_production_box.add_child(_production_title)
 
-	_production_items_box = VBoxContainer.new()
+	_production_items_box = HBoxContainer.new()
 	_production_items_box.add_theme_constant_override("separation", 4)
 	_production_box.add_child(_production_items_box)
 
 	_production_queue_label = Label.new()
-	_production_queue_label.add_theme_font_size_override("font_size", 11)
+	_production_queue_label.add_theme_font_size_override("font_size", 10)
 	_production_queue_label.add_theme_color_override("font_color", Color(0.75, 0.72, 0.55))
 	_production_queue_label.visible = false
 	_production_box.add_child(_production_queue_label)
 
 	_production_progress_label = Label.new()
-	_production_progress_label.add_theme_font_size_override("font_size", 11)
+	_production_progress_label.add_theme_font_size_override("font_size", 10)
 	_production_progress_label.visible = false
 	_production_box.add_child(_production_progress_label)
 
 	_production_pending_label = Label.new()
-	_production_pending_label.add_theme_font_size_override("font_size", 11)
+	_production_pending_label.add_theme_font_size_override("font_size", 10)
 	_production_pending_label.add_theme_color_override("font_color", Color(1.0, 0.7, 0.5))
 	_production_pending_label.visible = false
 	_production_box.add_child(_production_pending_label)
@@ -264,7 +272,8 @@ func _build_curfew_button() -> void:
 	)
 	_curfew_button.focus_mode = Control.FOCUS_NONE
 	_curfew_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	_curfew_button.custom_minimum_size = Vector2(100, 36)
+	_curfew_button.custom_minimum_size = Vector2(110, 28)
+	_curfew_button.add_theme_font_size_override("font_size", 11)
 	_curfew_button.pressed.connect(_on_curfew_button_pressed)
 	_status_column.add_child(_curfew_button)
 	_status_column.move_child(_curfew_button, 0)
@@ -309,21 +318,21 @@ func _create_build_slot(type_id: String, hotkey: int) -> Button:
 	var content := MarginContainer.new()
 	content.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	content.add_theme_constant_override("margin_left", 4)
-	content.add_theme_constant_override("margin_top", 2)
-	content.add_theme_constant_override("margin_right", 4)
-	content.add_theme_constant_override("margin_bottom", 2)
+	content.add_theme_constant_override("margin_left", 2)
+	content.add_theme_constant_override("margin_top", 1)
+	content.add_theme_constant_override("margin_right", 2)
+	content.add_theme_constant_override("margin_bottom", 1)
 	button.add_child(content)
 
 	var vbox := VBoxContainer.new()
 	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 2)
+	vbox.add_theme_constant_override("separation", 1)
 	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	vbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	content.add_child(vbox)
 
 	var icon := TextureRect.new()
-	icon.custom_minimum_size = Vector2(48, 40)
+	icon.custom_minimum_size = ICON_SIZE
 	icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	icon.texture = _get_building_icon(type_id)
@@ -333,17 +342,18 @@ func _create_build_slot(type_id: String, hotkey: int) -> Button:
 	var name_label := Label.new()
 	name_label.text = def.get("name", type_id)
 	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_label.add_theme_font_size_override("font_size", 10)
+	name_label.add_theme_font_size_override("font_size", 9)
 	name_label.add_theme_color_override("font_color", Color(0.85, 0.82, 0.72))
 	name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	name_label.clip_text = true
 	vbox.add_child(name_label)
 
 	var hotkey_label := Label.new()
 	hotkey_label.text = str(hotkey)
-	hotkey_label.add_theme_font_size_override("font_size", 11)
+	hotkey_label.add_theme_font_size_override("font_size", 10)
 	hotkey_label.add_theme_color_override("font_color", Color(0.7, 0.65, 0.5))
 	hotkey_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
-	hotkey_label.position = Vector2(4, 2)
+	hotkey_label.position = Vector2(3, 1)
 	hotkey_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	button.add_child(hotkey_label)
 
@@ -377,21 +387,21 @@ func _create_formation_slot(formation: Unit.FormationType, hotkey: int) -> Butto
 	var content := MarginContainer.new()
 	content.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	content.add_theme_constant_override("margin_left", 4)
-	content.add_theme_constant_override("margin_top", 2)
-	content.add_theme_constant_override("margin_right", 4)
-	content.add_theme_constant_override("margin_bottom", 2)
+	content.add_theme_constant_override("margin_left", 2)
+	content.add_theme_constant_override("margin_top", 1)
+	content.add_theme_constant_override("margin_right", 2)
+	content.add_theme_constant_override("margin_bottom", 1)
 	button.add_child(content)
 
 	var vbox := VBoxContainer.new()
 	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 2)
+	vbox.add_theme_constant_override("separation", 1)
 	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	vbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	content.add_child(vbox)
 
 	var icon := TextureRect.new()
-	icon.custom_minimum_size = Vector2(48, 40)
+	icon.custom_minimum_size = ICON_SIZE
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	icon.texture = _create_formation_icon(formation)
@@ -401,17 +411,17 @@ func _create_formation_slot(formation: Unit.FormationType, hotkey: int) -> Butto
 	var name_label := Label.new()
 	name_label.text = info.get("name", "")
 	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_label.add_theme_font_size_override("font_size", 10)
+	name_label.add_theme_font_size_override("font_size", 9)
 	name_label.add_theme_color_override("font_color", Color(0.85, 0.82, 0.72))
 	name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	vbox.add_child(name_label)
 
 	var hotkey_label := Label.new()
 	hotkey_label.text = str(hotkey)
-	hotkey_label.add_theme_font_size_override("font_size", 11)
+	hotkey_label.add_theme_font_size_override("font_size", 10)
 	hotkey_label.add_theme_color_override("font_color", Color(0.7, 0.65, 0.5))
 	hotkey_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
-	hotkey_label.position = Vector2(4, 2)
+	hotkey_label.position = Vector2(3, 1)
 	hotkey_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	button.add_child(hotkey_label)
 
@@ -426,9 +436,9 @@ func _create_slot_style() -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.08, 0.07, 0.06, 0.85)
 	style.border_color = Color(0.35, 0.3, 0.22, 1.0)
-	style.set_border_width_all(2)
-	style.set_corner_radius_all(4)
-	style.set_content_margin_all(4)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(3)
+	style.set_content_margin_all(2)
 	return style
 
 
@@ -533,7 +543,15 @@ func _on_population_changed(pop: int, cap: int) -> void:
 func _on_food_upkeep_changed(upkeep: float) -> void:
 	if _food_upkeep_label == null or _population_manager == null:
 		return
-	_food_upkeep_label.text = "Consumo: " + _population_manager.get_food_upkeep_label()
+	if _population_manager.population <= 0:
+		_food_upkeep_label.text = "Sin consumo"
+	else:
+		var income := 0.0
+		var job_manager := get_tree().get_first_node_in_group("job_manager")
+		if job_manager is JobManager:
+			income = (job_manager as JobManager).get_food_income_per_second()
+		var net := income - upkeep
+		_food_upkeep_label.text = "%.2f/s  bal %+.2f" % [upkeep, net]
 	if upkeep <= 0.0:
 		_food_upkeep_label.add_theme_color_override("font_color", Color(0.72, 0.82, 0.55))
 	elif _population_manager.food_shortage_active:

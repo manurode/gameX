@@ -71,7 +71,7 @@ func on_ground_ready(ground: TinyTilesMap) -> void:
 
 	population_manager.recalculate_cap_from_buildings()
 
-	var hud := get_node_or_null("/root/Main/HUD")
+	var hud := get_node_or_null("/root/Main/Layout/WorldView/SubViewport/HUD")
 	if hud != null and hud.has_method("setup"):
 		hud.call(
 			"setup",

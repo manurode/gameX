@@ -417,8 +417,9 @@ func _screen_to_world(screen_point: Vector2) -> Vector2:
 	return get_viewport().get_canvas_transform().affine_inverse() * screen_point
 
 
-func _is_pointer_over_ui(screen_pos: Vector2) -> bool:
-	var hub := get_node_or_null("/root/Main/HUD/GameHub")
-	if hub is Control and (hub as Control).get_global_rect().has_point(screen_pos):
-		return true
+func _is_pointer_over_ui(_screen_pos: Vector2) -> bool:
+	var hub := get_node_or_null("/root/Main/Layout/GameHub")
+	if hub is Control:
+		var root_mouse := get_tree().root.get_mouse_position()
+		return (hub as Control).get_global_rect().has_point(root_mouse)
 	return false

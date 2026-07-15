@@ -1,10 +1,10 @@
 extends CanvasLayer
 
-@onready var game_hub: PanelContainer = $GameHub
-@onready var minimap: Control = $GameHub/MarginContainer/HBoxContainer/CommandArea/Minimap
 @onready var help_label: Label = $TopLeft/MarginContainer/VBoxContainer/HelpLabel
 @onready var cycle_button: Button = $TopLeft/MarginContainer/VBoxContainer/CycleButton
 
+var game_hub: PanelContainer
+var minimap: Control
 var _build_manager: Node
 var _day_night_manager: DayNightManager
 var _game_state_manager: GameStateManager
@@ -12,9 +12,19 @@ var _game_over_label: Label
 
 
 func _ready() -> void:
+	_resolve_hub_nodes()
 	if cycle_button != null:
 		cycle_button.disabled = true
 	_create_game_over_overlay()
+
+
+func _resolve_hub_nodes() -> void:
+	var main := get_tree().root.get_node_or_null("Main")
+	if main == null:
+		return
+	game_hub = main.get_node_or_null("Layout/GameHub") as PanelContainer
+	if game_hub != null:
+		minimap = game_hub.get_node_or_null("MarginContainer/HBoxContainer/CommandArea/Minimap")
 
 
 func setup(
@@ -31,6 +41,7 @@ func setup(
 ) -> void:
 	_build_manager = build_manager
 	_day_night_manager = day_night_manager
+	_resolve_hub_nodes()
 
 	if game_hub != null and game_hub.has_method("setup"):
 		game_hub.setup(

@@ -20,7 +20,7 @@ var _drag_started: bool = false
 var _buildings_container: Node2D
 var _resource_manager: ResourceManager
 
-@onready var selection_box: Control = get_node_or_null("/root/Main/HUD/SelectionBox")
+@onready var selection_box: Control = get_node_or_null("/root/Main/Layout/WorldView/SubViewport/HUD/SelectionBox")
 
 
 func setup(buildings_container: Node2D, resource_manager: ResourceManager) -> void:
@@ -30,7 +30,7 @@ func setup(buildings_container: Node2D, resource_manager: ResourceManager) -> vo
 
 func _ready() -> void:
 	if selection_box == null:
-		selection_box = get_node_or_null("/root/Main/HUD/SelectionBox")
+		selection_box = get_node_or_null("/root/Main/Layout/WorldView/SubViewport/HUD/SelectionBox")
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -610,7 +610,7 @@ func _is_placement_mode_active() -> bool:
 
 
 func _is_pointer_over_ui(screen_pos: Vector2) -> bool:
-	var hud := get_node_or_null("/root/Main/HUD")
+	var hud := get_node_or_null("/root/Main/Layout/WorldView/SubViewport/HUD")
 	if hud == null:
 		return false
 
@@ -622,8 +622,10 @@ func _is_pointer_over_ui(screen_pos: Vector2) -> bool:
 	if top_left is Control and (top_left as Control).get_global_rect().has_point(screen_pos):
 		return true
 
-	var hub := hud.get_node_or_null("GameHub")
-	if hub is Control and (hub as Control).get_global_rect().has_point(screen_pos):
-		return true
+	var hub := get_node_or_null("/root/Main/Layout/GameHub")
+	if hub is Control:
+		var root_mouse := get_tree().root.get_mouse_position()
+		if (hub as Control).get_global_rect().has_point(root_mouse):
+			return true
 
 	return false

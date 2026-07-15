@@ -2,9 +2,42 @@
 
 [ext_resource type="PackedScene" uid="uid://cworld001" path="res://scenes/world/game_world.tscn" id="1_world"]
 [ext_resource type="PackedScene" uid="uid://chud001" path="res://scenes/ui/hud.tscn" id="2_hud"]
+[ext_resource type="PackedScene" uid="uid://gamehub001" path="res://scenes/ui/game_hub.tscn" id="3_hub"]
 
-[node name="Main" type="Node" unique_id=360820588]
+[node name="Main" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 
-[node name="GameWorld" parent="." unique_id=280731319 instance=ExtResource("1_world")]
+[node name="Layout" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 0
 
-[node name="HUD" parent="." unique_id=311108892 instance=ExtResource("2_hud")]
+[node name="WorldView" type="SubViewportContainer" parent="Layout"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+stretch = true
+mouse_filter = 0
+
+[node name="SubViewport" type="SubViewport" parent="Layout/WorldView"]
+handle_input_locally = true
+size = Vector2i(1280, 620)
+render_target_update_mode = 4
+
+[node name="GameWorld" parent="Layout/WorldView/SubViewport" instance=ExtResource("1_world")]
+
+[node name="HUD" parent="Layout/WorldView/SubViewport" instance=ExtResource("2_hud")]
+
+[node name="GameHub" parent="Layout" instance=ExtResource("3_hub")]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 0
