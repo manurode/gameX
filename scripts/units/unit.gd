@@ -948,9 +948,7 @@ func _physics_process(delta: float) -> void:
 		not is_instance_valid(construction_target)
 		or construction_target.building_state != Building.BuildingState.CONSTRUCTING
 	):
-		construction_target = null
-		if _unit_state == UnitState.CONSTRUCTING:
-			_unit_state = UnitState.IDLE
+		_notify_construction_finished()
 
 	if repair_target != null and (
 		not is_instance_valid(repair_target)

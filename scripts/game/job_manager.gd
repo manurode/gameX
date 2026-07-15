@@ -3,6 +3,8 @@ extends Node
 
 const GATHER_CARRY_AMOUNT := 10
 const AUTO_BUILD_RADIUS := 800.0
+const WORKER_ASSIGN_RADIUS := Unit.ALLY_DEFEND_RADIUS
+const WORKER_COUNT_SCORE_WEIGHT := 1_000_000.0
 
 var _resource_manager: ResourceManager
 var _population_manager: PopulationManager
@@ -380,7 +382,7 @@ func _fill_building_workers(building: Building) -> void:
 
 	var workers: Array = _building_workers.get(building, [])
 	while workers.size() < max_workers:
-		var villager := _find_idle_civilian()
+		var villager := _find_nearest_idle_civilian_near(building.global_position)
 		if villager == null:
 			break
 		var node := _find_nearest_resource_node(building)
@@ -396,19 +398,36 @@ func _assign_villager_to_building(villager: Unit, building: Building) -> void:
 	_assign_villager_to_resource(villager, building, node)
 
 
-func _find_idle_civilian() -> Unit:
+func _is_eligible_idle_civilian(unit: Unit) -> bool:
+	return unit.is_civilian and not unit.is_busy() and not unit._is_dying and unit.hp > 0
+
+
+func _find_nearest_idle_civilian_near(center: Vector2, radius: float = WORKER_ASSIGN_RADIUS) -> Unit:
+	var radius_sq := radius * radius
+	var best: Unit = null
+	var best_dist_sq := INF
+
 	for node in get_tree().get_nodes_in_group("units"):
 		if not node is Unit:
 			continue
 		var unit := node as Unit
-		if unit.is_civilian and not unit.is_busy() and not unit._is_dying and unit.hp > 0:
-			return unit
-	return null
+		if not _is_eligible_idle_civilian(unit):
+			continue
+		var dist_sq := unit.global_position.distance_squared_to(center)
+		if dist_sq > radius_sq:
+			continue
+		if dist_sq < best_dist_sq:
+			best_dist_sq = dist_sq
+			best = unit
+
+	return best
 
 
-func _find_best_gather_building_for_villager(_villager: Unit) -> Building:
+func _find_best_gather_building_for_villager(villager: Unit) -> Building:
 	var best_building: Building = null
 	var best_score := INF
+	var radius_sq := WORKER_ASSIGN_RADIUS * WORKER_ASSIGN_RADIUS
+	var villager_pos := villager.global_position
 
 	for node in get_tree().get_nodes_in_group("buildings"):
 		if not node is Building:
@@ -419,6 +438,10 @@ func _find_best_gather_building_for_villager(_villager: Unit) -> Building:
 		if not BuildingDatabase.is_gather_building(building.building_type_id):
 			continue
 
+		var dist_sq := building.global_position.distance_squared_to(villager_pos)
+		if dist_sq > radius_sq:
+			continue
+
 		var workers: Array = _building_workers.get(building, [])
 		var def := BuildingDatabase.get_definition(building.building_type_id)
 		if workers.size() >= def.get("max_workers", 0):
@@ -426,7 +449,7 @@ func _find_best_gather_building_for_villager(_villager: Unit) -> Building:
 		if _find_nearest_resource_node(building) == null:
 			continue
 
-		var score := float(workers.size()) * 1000.0
+		var score := float(workers.size()) * WORKER_COUNT_SCORE_WEIGHT + dist_sq
 		if score < best_score:
 			best_score = score
 			best_building = building
