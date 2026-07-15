@@ -82,7 +82,9 @@ func on_ground_ready(ground: TinyTilesMap) -> void:
 			day_night_manager,
 			population_manager,
 			production_manager,
-			curfew_manager
+			curfew_manager,
+			camera,
+			ground
 		)
 
 

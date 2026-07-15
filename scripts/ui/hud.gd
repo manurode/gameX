@@ -1,6 +1,7 @@
 extends CanvasLayer
 
 @onready var game_hub: PanelContainer = $GameHub
+@onready var minimap: Control = $Minimap
 @onready var help_label: Label = $TopLeft/MarginContainer/VBoxContainer/HelpLabel
 @onready var cycle_button: Button = $TopLeft/MarginContainer/VBoxContainer/CycleButton
 
@@ -24,7 +25,9 @@ func setup(
 	day_night_manager: DayNightManager = null,
 	population_manager: PopulationManager = null,
 	production_manager: ProductionManager = null,
-	curfew_manager: CurfewManager = null
+	curfew_manager: CurfewManager = null,
+	camera: Camera2D = null,
+	ground: TinyTilesMap = null
 ) -> void:
 	_build_manager = build_manager
 	_day_night_manager = day_night_manager
@@ -38,6 +41,8 @@ func setup(
 			production_manager,
 			curfew_manager
 		)
+	if minimap != null and minimap.has_method("setup") and camera != null and ground != null:
+		minimap.setup(camera, ground)
 	if _build_manager != null and _build_manager.has_signal("build_mode_changed"):
 		_build_manager.build_mode_changed.connect(_on_build_mode_changed)
 
