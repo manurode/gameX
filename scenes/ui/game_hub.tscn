@@ -1,6 +1,7 @@
-[gd_scene format=3 uid="uid://gamehub001"]
+[gd_scene load_steps=3 format=3 uid="uid://gamehub001"]
 
 [ext_resource type="Script" path="res://scripts/ui/game_hub.gd" id="1_hub"]
+[ext_resource type="Script" path="res://scripts/ui/minimap.gd" id="2_minimap"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hub"]
 bg_color = Color(0.1, 0.08, 0.06, 0.94)
@@ -87,19 +88,18 @@ theme_override_constants/h_separation = 6
 theme_override_constants/v_separation = 6
 columns = 4
 
+[node name="Separator2" type="VSeparator" parent="MarginContainer/HBoxContainer/CommandArea"]
+layout_mode = 2
+
+[node name="Minimap" type="Control" parent="MarginContainer/HBoxContainer/CommandArea"]
+custom_minimum_size = Vector2(170, 112)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 0
+script = ExtResource("2_minimap")
+
 [node name="StatusColumn" type="VBoxContainer" parent="MarginContainer/HBoxContainer/CommandArea"]
 custom_minimum_size = Vector2(100, 0)
 layout_mode = 2
 size_flags_vertical = 4
 alignment = 1
-
-[node name="StatusLabel" type="Label" parent="MarginContainer/HBoxContainer/CommandArea/StatusColumn"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.9, 0.75, 1)
-theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.6)
-theme_override_constants/shadow_offset_x = 1
-theme_override_constants/shadow_offset_y = 1
-theme_override_font_sizes/font_size = 13
-text = "Construcción"
-horizontal_alignment = 1
-autowrap_mode = 2

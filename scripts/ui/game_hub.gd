@@ -70,7 +70,6 @@ const MIN_FORMATION_UNITS := 2
 @onready var _build_tab_icon: TextureRect = $MarginContainer/HBoxContainer/CommandArea/TabColumn/BuildTabIcon
 @onready var _build_grid: GridContainer = $MarginContainer/HBoxContainer/CommandArea/BuildGrid
 @onready var _formation_grid: GridContainer = $MarginContainer/HBoxContainer/CommandArea/FormationGrid
-@onready var _status_label: Label = $MarginContainer/HBoxContainer/CommandArea/StatusColumn/StatusLabel
 @onready var _status_column: VBoxContainer = $MarginContainer/HBoxContainer/CommandArea/StatusColumn
 
 var _production_box: VBoxContainer
@@ -148,7 +147,6 @@ func setup(
 	if _curfew_manager != null:
 		_curfew_manager.curfew_changed.connect(_on_curfew_changed)
 		_refresh_curfew_button()
-	_update_status(false, "")
 
 
 func _build_resource_rows() -> void:
@@ -290,8 +288,6 @@ func _refresh_curfew_button() -> void:
 		_curfew_button.add_theme_color_override("font_color", Color(1.0, 0.82, 0.45))
 	else:
 		_curfew_button.add_theme_color_override("font_color", Color(0.85, 0.82, 0.72))
-	if _status_label != null and not _formation_mode and _active_build_type.is_empty() and _selected_building == null:
-		_status_label.text = "Aldeanos refugiándose" if active else "Construcción"
 
 
 func _create_build_slot(type_id: String, hotkey: int) -> Button:
@@ -549,12 +545,6 @@ func _on_food_upkeep_changed(upkeep: float) -> void:
 func _on_food_shortage(active: bool) -> void:
 	if _food_upkeep_label != null and _population_manager != null:
 		_on_food_upkeep_changed(_population_manager.get_food_upkeep_per_second())
-	if _status_label == null:
-		return
-	if active and not _formation_mode:
-		_status_label.text = "Sin comida: civiles al 50% y soldados pierden vida"
-	elif not _formation_mode and _selected_building == null:
-		_update_status(_active_build_type != "", _active_build_type)
 
 
 func _on_building_selection_changed(building: Building) -> void:
@@ -721,7 +711,6 @@ func _on_selection_changed(selected_units: Array) -> void:
 
 func _on_formation_changed(_formation: Unit.FormationType) -> void:
 	_refresh_formation_highlight()
-	_update_formation_status()
 
 
 func _show_build_panel() -> void:
@@ -732,8 +721,6 @@ func _show_build_panel() -> void:
 		_formation_grid.visible = false
 	if _build_tab_icon != null:
 		_build_tab_icon.texture = _make_icon_atlas(TEX_HAMMER)
-	if _active_build_type.is_empty():
-		_update_status(false, "")
 
 
 func _show_formation_panel() -> void:
@@ -744,7 +731,6 @@ func _show_formation_panel() -> void:
 		_formation_grid.visible = true
 	if _build_tab_icon != null:
 		_build_tab_icon.texture = _create_formation_tab_icon()
-	_update_formation_status()
 	_refresh_formation_highlight()
 
 
@@ -814,23 +800,3 @@ func _apply_slot_style(button: Button, style: StyleBoxFlat, border_width: int = 
 func _on_build_mode_changed(active: bool, type_id: String) -> void:
 	_active_build_type = type_id if active else ""
 	_refresh_affordability()
-	if not _formation_mode:
-		_update_status(active, type_id)
-
-
-func _update_status(active: bool, type_id: String) -> void:
-	if _status_label == null:
-		return
-	if not active:
-		_status_label.text = "Construcción"
-		return
-	var def := BuildingDatabase.get_definition(type_id)
-	_status_label.text = def.get("name", type_id)
-
-
-func _update_formation_status() -> void:
-	if _status_label == null or _selection_manager == null:
-		return
-	var info: Dictionary = FORMATION_INFO.get(_selection_manager.move_formation, {})
-	var subtitle: String = info.get("subtitle", "Formaciones")
-	_status_label.text = "%s (%d)" % [subtitle, _selected_unit_count]

@@ -1,7 +1,7 @@
 extends Control
 
-const MAP_PADDING := 6.0
-const MINIMAP_SIZE := Vector2(196, 140)
+const MAP_PADDING := 4.0
+const MINIMAP_SIZE := Vector2(170, 112)
 
 const FRAME_BG := Color(0.1, 0.08, 0.06, 0.94)
 const FRAME_BORDER := Color(0.42, 0.35, 0.24, 1.0)
@@ -106,26 +106,6 @@ func _draw_frame() -> void:
 		center + Vector2(0.0, -half.y),
 	])
 	draw_polyline(diamond, Color(0.35, 0.3, 0.22, 0.9), 1.0)
-
-	var title_pos := Vector2(MAP_PADDING + 2.0, MAP_PADDING - 1.0)
-	draw_string(
-		ThemeDB.fallback_font,
-		title_pos + Vector2(1.0, 1.0),
-		"MAPA",
-		HORIZONTAL_ALIGNMENT_LEFT,
-		-1,
-		10,
-		Color(0, 0, 0, 0.5)
-	)
-	draw_string(
-		ThemeDB.fallback_font,
-		title_pos,
-		"MAPA",
-		HORIZONTAL_ALIGNMENT_LEFT,
-		-1,
-		10,
-		Color(0.75, 0.68, 0.48, 1.0)
-	)
 
 
 func _draw_terrain() -> void:
@@ -293,10 +273,9 @@ func _sample_terrain_color(world_pos: Vector2) -> Color:
 
 
 func _get_map_content_rect() -> Rect2:
-	var top := MAP_PADDING + 14.0
 	return Rect2(
-		Vector2(MAP_PADDING, top),
-		size - Vector2(MAP_PADDING * 2.0, top + MAP_PADDING)
+		Vector2(MAP_PADDING, MAP_PADDING),
+		size - Vector2(MAP_PADDING * 2.0, MAP_PADDING * 2.0)
 	)
 
 

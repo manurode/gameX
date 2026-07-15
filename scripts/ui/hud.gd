@@ -1,7 +1,7 @@
 extends CanvasLayer
 
 @onready var game_hub: PanelContainer = $GameHub
-@onready var minimap: Control = $Minimap
+@onready var minimap: Control = $GameHub/MarginContainer/HBoxContainer/CommandArea/Minimap
 @onready var help_label: Label = $TopLeft/MarginContainer/VBoxContainer/HelpLabel
 @onready var cycle_button: Button = $TopLeft/MarginContainer/VBoxContainer/CycleButton
 
