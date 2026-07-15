@@ -90,13 +90,19 @@ func _enforce_curfew() -> void:
 
 
 func _release_curfew() -> void:
+	var buildings: Array[Building] = []
 	for node in get_tree().get_nodes_in_group("units"):
 		if not node is Unit:
 			continue
 		var unit := node as Unit
 		if not _is_villager(unit) or unit.garrisoned_building == null:
 			continue
-		unit.exit_garrison()
+		var building := unit.garrisoned_building
+		if not buildings.has(building):
+			buildings.append(building)
+	for building in buildings:
+		if is_instance_valid(building):
+			building.exit_all_garrison()
 
 	if _job_manager == null:
 		return

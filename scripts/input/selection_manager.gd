@@ -218,9 +218,17 @@ func _exit_garrison_for_selected() -> void:
 	if selected_building != null and is_instance_valid(selected_building):
 		selected_building.exit_all_garrison()
 		return
+	var by_building: Dictionary = {}
 	for unit in selected_units:
-		if is_instance_valid(unit) and unit.garrisoned_building != null:
-			unit.exit_garrison()
+		if not is_instance_valid(unit) or unit.garrisoned_building == null:
+			continue
+		var building: Building = unit.garrisoned_building
+		if not by_building.has(building):
+			by_building[building] = []
+		by_building[building].append(unit)
+	for building in by_building:
+		if is_instance_valid(building):
+			building.exit_garrison_units(by_building[building])
 
 
 func _move_selected_units(world_point: Vector2) -> void:

@@ -675,21 +675,71 @@ func _select_for_player() -> void:
 		selection_manager.select_building(self)
 
 
-func exit_garrison(unit: Unit) -> void:
+func exit_garrison(unit: Unit, exit_position: Variant = null) -> void:
 	if not garrisoned_units.has(unit):
 		return
 	garrisoned_units.erase(unit)
-	unit.on_exited_garrison(_find_exit_position())
+	var pos: Vector2 = exit_position if exit_position is Vector2 else _find_exit_position()
+	unit.on_exited_garrison(pos)
 	garrison_changed.emit()
 	if garrisoned_units.is_empty():
 		clear_garrison_attack()
 
 
-func exit_all_garrison() -> void:
-	var units := garrisoned_units.duplicate()
+func exit_garrison_units(units: Array) -> void:
+	var to_exit: Array[Unit] = []
 	for unit in units:
-		if is_instance_valid(unit):
-			exit_garrison(unit)
+		if unit is Unit and is_instance_valid(unit) and garrisoned_units.has(unit):
+			to_exit.append(unit)
+	if to_exit.is_empty():
+		return
+	var positions := _get_exit_positions(to_exit.size())
+	for i in to_exit.size():
+		exit_garrison(to_exit[i], positions[i])
+
+
+func exit_all_garrison() -> void:
+	exit_garrison_units(garrisoned_units.duplicate())
+
+
+func _get_exit_positions(count: int) -> Array[Vector2]:
+	if count <= 0:
+		return []
+	if count == 1:
+		return [_find_exit_position()]
+
+	var center := get_base_center()
+	var base_radius := maxf(_footprint.x, _footprint.y) * 0.85
+	var spacing := Unit.PERSONAL_SPACE_RADIUS * 2.0
+	var positions: Array[Vector2] = []
+	var assigned := 0
+	var ring := 0
+
+	while assigned < count:
+		var ring_radius := base_radius + float(ring) * spacing * 0.9
+		var ring_capacity := maxi(1, int(TAU * ring_radius / spacing))
+		var slots := mini(count - assigned, ring_capacity)
+		var angle_offset := float(ring) * (PI / maxf(1.0, float(ring_capacity)) * 0.5)
+		for i in slots:
+			var angle := angle_offset + TAU * float(i) / float(slots)
+			var candidate: Vector2 = center + Vector2(cos(angle), sin(angle)) * ring_radius
+			positions.append(_resolve_walkable_exit(candidate))
+			assigned += 1
+		ring += 1
+
+	return positions
+
+
+func _resolve_walkable_exit(preferred: Vector2) -> Vector2:
+	if _is_position_walkable(preferred):
+		return preferred
+	for radius_offset: float in [8.0, 16.0, 24.0]:
+		for angle_step in 8:
+			var angle := TAU * float(angle_step) / 8.0
+			var candidate: Vector2 = preferred + Vector2(cos(angle), sin(angle)) * radius_offset
+			if _is_position_walkable(candidate):
+				return candidate
+	return _find_exit_position()
 
 
 func _find_exit_position() -> Vector2:
