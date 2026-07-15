@@ -52,6 +52,8 @@ func _draw() -> void:
 func _can_hit_unit(unit: Unit) -> bool:
 	if unit == null or not is_instance_valid(unit) or unit == shooter or unit.hp <= 0 or unit._is_dying:
 		return false
+	if unit.garrisoned_building != null:
+		return false
 	if shooter != null and is_instance_valid(shooter) and not shooter.is_hostile_to(unit):
 		return false
 	return true

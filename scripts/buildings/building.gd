@@ -207,11 +207,23 @@ func is_garrison_occupied() -> bool:
 
 
 func get_garrison_count() -> int:
-	var count := 0
+	_prune_garrisoned_units()
+	return garrisoned_units.size()
+
+
+func _prune_garrisoned_units() -> void:
+	var cleaned: Array[Unit] = []
+	var removed := false
 	for unit in garrisoned_units:
-		if is_instance_valid(unit):
-			count += 1
-	return count
+		if is_instance_valid(unit) and not unit._is_dying and unit.hp > 0:
+			cleaned.append(unit)
+		else:
+			removed = true
+	if removed:
+		garrisoned_units = cleaned
+		if garrisoned_units.is_empty():
+			clear_garrison_attack()
+		garrison_changed.emit()
 
 
 func get_garrison_combat_weight() -> float:
@@ -643,17 +655,29 @@ func deselect() -> void:
 
 
 func get_garrison_space() -> int:
-	return maxi(0, garrison_capacity - garrisoned_units.size())
+	return maxi(0, garrison_capacity - get_garrison_count())
+
+
+func get_entry_range() -> float:
+	return maxf(ENTRY_RANGE, maxf(pick_half_size.x, pick_half_size.y) * 0.55)
+
+
+func can_accept_garrison_approach(unit: Unit) -> bool:
+	return (
+		building_state == BuildingState.ACTIVE
+		and can_garrison
+		and unit != null
+		and is_instance_valid(unit)
+		and not unit._is_dying
+		and unit.hp > 0
+		and (unit.can_attack or unit.is_civilian)
+	)
 
 
 func can_enter_garrison(unit: Unit) -> bool:
 	return (
-		building_state == BuildingState.ACTIVE
-		and can_garrison
+		can_accept_garrison_approach(unit)
 		and get_garrison_space() > 0
-		and unit != null
-		and is_instance_valid(unit)
-		and (unit.can_attack or unit.is_civilian)
 		and not garrisoned_units.has(unit)
 	)
 
@@ -679,17 +703,23 @@ func exit_garrison(unit: Unit, exit_position: Variant = null) -> void:
 	if not garrisoned_units.has(unit):
 		return
 	garrisoned_units.erase(unit)
-	var pos: Vector2 = exit_position if exit_position is Vector2 else _find_exit_position()
-	unit.on_exited_garrison(pos)
+	# Dying units only need list cleanup — don't respawn them at the exit point.
+	if is_instance_valid(unit) and not unit._is_dying:
+		var pos: Vector2 = exit_position if exit_position is Vector2 else _find_exit_position()
+		unit.on_exited_garrison(pos)
 	garrison_changed.emit()
 	if garrisoned_units.is_empty():
 		clear_garrison_attack()
 
 
 func exit_garrison_units(units: Array) -> void:
+	_prune_garrisoned_units()
 	var to_exit: Array[Unit] = []
 	for unit in units:
-		if unit is Unit and is_instance_valid(unit) and garrisoned_units.has(unit):
+		# is_instance_valid must come before `is` — freed instances crash on `is`.
+		if not is_instance_valid(unit):
+			continue
+		if unit is Unit and garrisoned_units.has(unit):
 			to_exit.append(unit)
 	if to_exit.is_empty():
 		return

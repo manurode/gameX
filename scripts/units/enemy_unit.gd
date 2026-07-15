@@ -47,7 +47,11 @@ func _evaluate_combat_target() -> void:
 
 func _has_valid_combat_target() -> bool:
 	if attack_target != null and is_instance_valid(attack_target):
-		if attack_target.hp > 0 and not attack_target._is_dying:
+		if (
+			attack_target.hp > 0
+			and not attack_target._is_dying
+			and attack_target.garrisoned_building == null
+		):
 			return true
 		attack_target = null
 
@@ -79,6 +83,8 @@ func _find_nearest_player_unit(max_range: float) -> Unit:
 			continue
 		var player_unit := node as Unit
 		if player_unit._is_dying or player_unit.hp <= 0:
+			continue
+		if player_unit.garrisoned_building != null:
 			continue
 		var distance := global_position.distance_to(player_unit.global_position)
 		if distance < best_distance:

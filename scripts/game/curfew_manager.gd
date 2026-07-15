@@ -66,7 +66,11 @@ func send_villager_to_shelter(villager: Unit) -> void:
 	if building == null:
 		return
 
-	if villager.garrison_approach_target == building:
+	# Already heading to a shelter with space — keep going.
+	if (
+		villager.garrison_approach_target == building
+		and building.can_enter_garrison(villager)
+	):
 		return
 
 	villager.approach_garrison(building)

@@ -514,7 +514,14 @@ func move_to(target: Vector2) -> void:
 
 
 func attack_target_unit(target: Unit) -> void:
-	if not can_attack or target == self or not is_instance_valid(target) or target.hp <= 0 or target._is_dying:
+	if (
+		not can_attack
+		or target == self
+		or not is_instance_valid(target)
+		or target.hp <= 0
+		or target._is_dying
+		or target.garrisoned_building != null
+	):
 		if not garrisoned_building:
 			move_to(target.global_position if is_instance_valid(target) else global_position)
 		return
@@ -553,9 +560,12 @@ func attack_target_building_node(target: Building) -> void:
 
 func approach_garrison(building: Building) -> void:
 	cancel_recruitment()
-	if not is_instance_valid(building) or not building.can_enter_garrison(self):
+	if not is_instance_valid(building) or not building.can_accept_garrison_approach(self):
 		return
 	if garrisoned_building != null:
+		return
+	# Need space to start the approach; waiting units already mid-approach keep their target.
+	if not building.can_enter_garrison(self) and garrison_approach_target != building:
 		return
 
 	var job_manager := get_tree().get_first_node_in_group("job_manager")
@@ -704,6 +714,9 @@ func _get_combat_world() -> Node:
 func take_damage(amount: int, attacker: Unit = null) -> void:
 	if _is_dying or hp <= 0:
 		return
+	# Garrisoned units are protected; attackers must hit the building instead.
+	if garrisoned_building != null and is_instance_valid(garrisoned_building):
+		return
 	if attacker != null and is_instance_valid(attacker) and not is_hostile_to(attacker):
 		return
 
@@ -851,7 +864,12 @@ func _die() -> void:
 
 	cancel_recruitment()
 	_is_dying = true
+	if garrisoned_building != null and is_instance_valid(garrisoned_building):
+		garrisoned_building.exit_garrison(self)
+	garrisoned_building = null
+	garrison_approach_target = null
 	attack_target = null
+	attack_target_building = null
 	_unit_state = UnitState.DYING
 	_is_attack_animating = false
 	velocity = Vector2.ZERO
@@ -931,7 +949,12 @@ func _physics_process(delta: float) -> void:
 
 	_attack_cooldown_remaining = maxf(0.0, _attack_cooldown_remaining - delta)
 
-	if attack_target != null and (not is_instance_valid(attack_target) or attack_target.hp <= 0 or attack_target._is_dying):
+	if attack_target != null and (
+		not is_instance_valid(attack_target)
+		or attack_target.hp <= 0
+		or attack_target._is_dying
+		or attack_target.garrisoned_building != null
+	):
 		attack_target = null
 		_unit_state = UnitState.IDLE
 		_is_attack_animating = false
@@ -960,7 +983,7 @@ func _physics_process(delta: float) -> void:
 
 	if garrison_approach_target != null and (
 		not is_instance_valid(garrison_approach_target)
-		or not garrison_approach_target.can_enter_garrison(self)
+		or not garrison_approach_target.can_accept_garrison_approach(self)
 	):
 		garrison_approach_target = null
 		if _unit_state == UnitState.GARRISON_APPROACH:
@@ -1311,22 +1334,33 @@ func _process_garrison_approach(_delta: float) -> void:
 		_unit_state = UnitState.IDLE
 		return
 
+	if _is_close_enough_to_enter_garrison(building):
+		if building.enter_garrison(self):
+			return
+		# Capacity full: wait at the door instead of idling in the open.
+		velocity = Vector2.ZERO
+		_play_idle()
+		return
+
+	var approach := building.get_entry_approach_point(global_position)
+	_follow_navigation_toward(approach, 4.0, _delta)
+	if navigation_agent.is_navigation_finished() and _is_close_enough_to_enter_garrison(building):
+		building.enter_garrison(self)
+
+
+func _is_close_enough_to_enter_garrison(building: Building) -> bool:
+	if not is_instance_valid(building):
+		return false
+	# Standing over the building sprite counts as arrived (large castles).
+	if building.contains_world_point(global_position):
+		return true
+	var entry_range := building.get_entry_range()
 	var approach := building.get_entry_approach_point(global_position)
 	var surface_distance := global_position.distance_to(
 		building.get_closest_surface_point(global_position)
 	)
 	var distance := minf(global_position.distance_to(approach), surface_distance)
-	if distance <= Building.ENTRY_RANGE:
-		building.enter_garrison(self)
-		return
-
-	_follow_navigation_toward(approach, 4.0, _delta)
-	surface_distance = global_position.distance_to(
-		building.get_closest_surface_point(global_position)
-	)
-	distance = minf(global_position.distance_to(approach), surface_distance)
-	if navigation_agent.is_navigation_finished() and distance <= Building.ENTRY_RANGE * 1.5:
-		building.enter_garrison(self)
+	return distance <= entry_range
 
 
 func _process_construction(delta: float) -> void:
@@ -1788,7 +1822,13 @@ func _fire_garrison_attack() -> void:
 
 
 func _deal_attack() -> void:
-	if attack_target != null and is_instance_valid(attack_target) and attack_target.hp > 0 and not attack_target._is_dying:
+	if (
+		attack_target != null
+		and is_instance_valid(attack_target)
+		and attack_target.hp > 0
+		and not attack_target._is_dying
+		and attack_target.garrisoned_building == null
+	):
 		if not is_hostile_to(attack_target):
 			return
 		if garrisoned_building != null:
