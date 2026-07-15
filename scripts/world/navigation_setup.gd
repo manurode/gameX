@@ -2,6 +2,10 @@ extends NavigationRegion2D
 
 const SECTOR_SIZE := 16
 const REBUILD_DEBOUNCE := 0.12
+const PATH_CELL_SIZE := Vector2(24.0, 24.0)
+const AGENT_CLEARANCE := 16.0
+const SEGMENT_SAMPLE_STEP := 8.0
+const CLOSEST_POINT_SEARCH_LIMIT := 48
 
 var _ground_layer: TinyTilesMap
 var _sector_regions: Dictionary = {}
@@ -9,10 +13,15 @@ var _dirty_sectors: Dictionary = {}
 var _obstacles: Array = []
 var _buildings: Array = []
 var _rebuild_timer: Timer
+var _path_grid := AStarGrid2D.new()
+var _path_grid_origin := Vector2.ZERO
+var _path_grid_size := Vector2i.ZERO
+var _navigation_version := 0
 
 
 func setup_from_ground(ground_layer: TinyTilesMap) -> void:
 	_ground_layer = ground_layer
+	add_to_group("navigation_manager")
 	navigation_polygon = null
 	_create_sector_regions()
 
@@ -24,6 +33,7 @@ func rebuild_navigation(obstacles: Array = [], buildings: Array = []) -> void:
 	for sector_key in _sector_regions:
 		_rebuild_sector(sector_key)
 	_dirty_sectors.clear()
+	_rebuild_path_grid()
 
 
 func update_sources(obstacles: Array, buildings: Array) -> void:
@@ -188,3 +198,202 @@ func _rebuild_dirty_sectors() -> void:
 	_dirty_sectors.clear()
 	for sector in sectors:
 		_rebuild_sector(sector)
+	_rebuild_path_grid()
+
+
+func get_navigation_path(from_position: Vector2, target_position: Vector2) -> PackedVector2Array:
+	if _path_grid_size == Vector2i.ZERO:
+		return PackedVector2Array()
+
+	var start_id := _find_closest_walkable_id(_world_to_grid(from_position))
+	var target_id := _find_closest_walkable_id(_world_to_grid(target_position))
+	if start_id == Vector2i(-1, -1) or target_id == Vector2i(-1, -1):
+		return PackedVector2Array()
+
+	var id_path := _path_grid.get_id_path(start_id, target_id, false)
+	if id_path.is_empty():
+		return PackedVector2Array()
+
+	var raw_path := PackedVector2Array()
+	raw_path.append(from_position)
+	for point_id in id_path:
+		raw_path.append(_grid_to_world(point_id))
+
+	var reachable_target := _grid_to_world(target_id)
+	if _is_world_point_walkable(target_position):
+		reachable_target = target_position
+	if raw_path[-1].distance_squared_to(reachable_target) > 1.0:
+		raw_path.append(reachable_target)
+
+	return _smooth_path(raw_path)
+
+
+func get_closest_walkable_point(world_position: Vector2) -> Vector2:
+	if _path_grid_size == Vector2i.ZERO:
+		return world_position
+	var point_id := _find_closest_walkable_id(_world_to_grid(world_position))
+	if point_id == Vector2i(-1, -1):
+		return world_position
+	return _grid_to_world(point_id)
+
+
+func get_navigation_version() -> int:
+	return _navigation_version
+
+
+func _rebuild_path_grid() -> void:
+	if _ground_layer == null:
+		return
+
+	var bounds := _ground_layer.get_map_bounds().grow(
+		maxf(float(TinyTilesMap.TILE_SIZE.x), float(TinyTilesMap.TILE_SIZE.y)) * 0.5
+	)
+	_path_grid_origin = Vector2(
+		floorf(bounds.position.x / PATH_CELL_SIZE.x) * PATH_CELL_SIZE.x,
+		floorf(bounds.position.y / PATH_CELL_SIZE.y) * PATH_CELL_SIZE.y
+	)
+	_path_grid_size = Vector2i(
+		ceili(bounds.size.x / PATH_CELL_SIZE.x) + 1,
+		ceili(bounds.size.y / PATH_CELL_SIZE.y) + 1
+	)
+
+	_path_grid = AStarGrid2D.new()
+	_path_grid.region = Rect2i(Vector2i.ZERO, _path_grid_size)
+	_path_grid.offset = _path_grid_origin
+	_path_grid.cell_size = PATH_CELL_SIZE
+	_path_grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
+	_path_grid.default_compute_heuristic = AStarGrid2D.HEURISTIC_EUCLIDEAN
+	_path_grid.default_estimate_heuristic = AStarGrid2D.HEURISTIC_EUCLIDEAN
+	_path_grid.update()
+
+	for y in _path_grid_size.y:
+		for x in _path_grid_size.x:
+			var point_id := Vector2i(x, y)
+			if not _is_world_point_walkable(_grid_to_world(point_id)):
+				_path_grid.set_point_solid(point_id, true)
+
+	_navigation_version += 1
+
+
+func _world_to_grid(world_position: Vector2) -> Vector2i:
+	return Vector2i(
+		roundi((world_position.x - _path_grid_origin.x) / PATH_CELL_SIZE.x),
+		roundi((world_position.y - _path_grid_origin.y) / PATH_CELL_SIZE.y)
+	)
+
+
+func _grid_to_world(point_id: Vector2i) -> Vector2:
+	return _path_grid_origin + Vector2(point_id) * PATH_CELL_SIZE
+
+
+func _is_grid_id_valid(point_id: Vector2i) -> bool:
+	return (
+		point_id.x >= 0
+		and point_id.y >= 0
+		and point_id.x < _path_grid_size.x
+		and point_id.y < _path_grid_size.y
+	)
+
+
+func _find_closest_walkable_id(center_id: Vector2i) -> Vector2i:
+	if _is_grid_id_valid(center_id) and not _path_grid.is_point_solid(center_id):
+		return center_id
+
+	for radius in range(1, CLOSEST_POINT_SEARCH_LIMIT + 1):
+		var best_id := Vector2i(-1, -1)
+		var best_distance_sq := INF
+		for x in range(center_id.x - radius, center_id.x + radius + 1):
+			for y in [center_id.y - radius, center_id.y + radius]:
+				var candidate := Vector2i(x, y)
+				if _is_grid_id_valid(candidate) and not _path_grid.is_point_solid(candidate):
+					var distance_sq := Vector2(candidate - center_id).length_squared()
+					if distance_sq < best_distance_sq:
+						best_distance_sq = distance_sq
+						best_id = candidate
+		for y in range(center_id.y - radius + 1, center_id.y + radius):
+			for x in [center_id.x - radius, center_id.x + radius]:
+				var candidate := Vector2i(x, y)
+				if _is_grid_id_valid(candidate) and not _path_grid.is_point_solid(candidate):
+					var distance_sq := Vector2(candidate - center_id).length_squared()
+					if distance_sq < best_distance_sq:
+						best_distance_sq = distance_sq
+						best_id = candidate
+		if best_id != Vector2i(-1, -1):
+			return best_id
+
+	return Vector2i(-1, -1)
+
+
+func _is_world_point_walkable(world_position: Vector2) -> bool:
+	if _ground_layer == null:
+		return false
+	if not _ground_layer.is_walkable_cell(_ground_layer.get_cell_at_world(world_position)):
+		return false
+
+	for obstacle in _obstacles:
+		if (
+			is_instance_valid(obstacle)
+			and obstacle is TerrainObstacle
+			and (obstacle as TerrainObstacle).blocks_movement
+			and _is_point_blocked_by_outline(
+				world_position,
+				(obstacle as TerrainObstacle).get_nav_block_outline()
+			)
+		):
+			return false
+
+	for building in _buildings:
+		if (
+			is_instance_valid(building)
+			and building is Building
+			and (building as Building).blocks_navigation
+			and _is_point_blocked_by_outline(
+				world_position,
+				(building as Building).get_nav_block_outline()
+			)
+		):
+			return false
+
+	return true
+
+
+func _is_point_blocked_by_outline(point: Vector2, outline: PackedVector2Array) -> bool:
+	if outline.size() < 3:
+		return false
+	if Geometry2D.is_point_in_polygon(point, outline):
+		return true
+
+	for i in outline.size():
+		var segment_start := outline[i]
+		var segment_end := outline[(i + 1) % outline.size()]
+		var closest := Geometry2D.get_closest_point_to_segment(point, segment_start, segment_end)
+		if point.distance_squared_to(closest) <= AGENT_CLEARANCE * AGENT_CLEARANCE:
+			return true
+	return false
+
+
+func _smooth_path(raw_path: PackedVector2Array) -> PackedVector2Array:
+	if raw_path.size() <= 2:
+		return raw_path
+
+	var result := PackedVector2Array([raw_path[0]])
+	var anchor_index := 0
+	while anchor_index < raw_path.size() - 1:
+		var furthest_visible := anchor_index + 1
+		for candidate_index in range(raw_path.size() - 1, anchor_index, -1):
+			if _has_clear_segment(raw_path[anchor_index], raw_path[candidate_index]):
+				furthest_visible = candidate_index
+				break
+		result.append(raw_path[furthest_visible])
+		anchor_index = furthest_visible
+	return result
+
+
+func _has_clear_segment(from_position: Vector2, to_position: Vector2) -> bool:
+	var distance := from_position.distance_to(to_position)
+	var sample_count := maxi(1, ceili(distance / SEGMENT_SAMPLE_STEP))
+	for i in range(1, sample_count + 1):
+		var point := from_position.lerp(to_position, float(i) / float(sample_count))
+		if not _is_world_point_walkable(point):
+			return false
+	return true

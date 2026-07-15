@@ -8,9 +8,9 @@ const PHASE_DURATIONS := {
 	"dawn": 30.0,
 }
 
-const INITIAL_WOOD := 200
-const INITIAL_GOLD := 0
-const INITIAL_FOOD := 100
+const INITIAL_WOOD := 2000
+const INITIAL_GOLD := 2000
+const INITIAL_FOOD := 2000
 const INITIAL_VILLAGERS := 5
 
 const WOOD_PER_SECOND := 1.0

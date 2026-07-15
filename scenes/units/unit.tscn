@@ -3,8 +3,8 @@
 [ext_resource type="Script" path="res://scripts/units/unit.gd" id="1_unit"]
 [ext_resource type="Script" path="res://scripts/units/unit_health_bar.gd" id="2_health_bar"]
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_unit"]
-size = Vector2(48, 72)
+[sub_resource type="CircleShape2D" id="CircleShape2D_unit"]
+radius = 14.0
 
 [sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_dust"]
 direction = Vector3(0, -1, 0)
@@ -50,8 +50,8 @@ sprite_frames = SubResource("SpriteFrames_empty")
 animation = &"idle"
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
-position = Vector2(0, -36)
-shape = SubResource("RectangleShape2D_unit")
+position = Vector2(0, -8)
+shape = SubResource("CircleShape2D_unit")
 
 [node name="NavigationAgent2D" type="NavigationAgent2D" parent="."]
 
