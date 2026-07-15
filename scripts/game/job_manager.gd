@@ -36,6 +36,7 @@ func on_building_completed(building: Building) -> void:
 func on_building_destroyed(building: Building) -> void:
 	if BuildingDatabase.spawns_gather_source(building.building_type_id):
 		_remove_gather_source_for_building(building)
+	_forget_return_buildings_for_building(building)
 	_release_building_workers(building)
 
 
@@ -58,12 +59,10 @@ func try_assign_idle_villager(villager: Unit) -> void:
 		return
 	if villager.is_busy():
 		return
-	if _return_buildings.has(villager):
-		var remembered: Building = _return_buildings[villager]
-		_return_buildings.erase(villager)
-		if is_instance_valid(remembered) and _can_assign_to_building(villager, remembered):
-			_assign_villager_to_building(villager, remembered)
-			return
+	var remembered := _take_return_building(villager)
+	if remembered != null and _can_assign_to_building(villager, remembered):
+		_assign_villager_to_building(villager, remembered)
+		return
 
 	if _try_assign_nearby_construction(villager):
 		return
@@ -77,8 +76,8 @@ func on_villager_manual_move(unit: Unit) -> void:
 	if not unit.is_civilian:
 		return
 	if _unit_jobs.has(unit):
-		var building: Building = _unit_jobs[unit].get("building")
-		if building != null:
+		var building = _unit_jobs[unit].get("building")
+		if building is Building and is_instance_valid(building):
 			_return_buildings[unit] = building
 		release_unit_job(unit)
 
@@ -220,6 +219,15 @@ func get_active_worker_count(resource_key: String) -> int:
 		if is_instance_valid(building) and BuildingDatabase.get_gather_type(building.building_type_id) == resource_key:
 			count += 1
 	return count
+
+
+func on_villager_died(villager: Unit) -> void:
+	forget_return_building(villager)
+	release_unit_job(villager)
+
+
+func forget_return_building(villager: Unit) -> void:
+	_return_buildings.erase(villager)
 
 
 func release_unit_job(unit: Unit) -> void:
@@ -511,3 +519,23 @@ func _remove_gather_source_for_building(building: Building) -> void:
 		if node.has_method("remove_mill_wheat_for_building"):
 			node.remove_mill_wheat_for_building(building)
 			return
+
+
+func _take_return_building(villager: Unit) -> Building:
+	if not _return_buildings.has(villager):
+		return null
+	var remembered = _return_buildings[villager]
+	_return_buildings.erase(villager)
+	if remembered is Building and is_instance_valid(remembered):
+		return remembered as Building
+	return null
+
+
+func _forget_return_buildings_for_building(building: Building) -> void:
+	var stale_villagers: Array = []
+	for villager in _return_buildings.keys():
+		var remembered = _return_buildings[villager]
+		if not is_instance_valid(villager) or remembered == building or not is_instance_valid(remembered):
+			stale_villagers.append(villager)
+	for villager in stale_villagers:
+		_return_buildings.erase(villager)

@@ -172,7 +172,7 @@ func _spawn_villager(ground: TinyTilesMap, cell: Vector2i, index: int) -> void:
 
 func _on_player_unit_died(unit: Unit) -> void:
 	population_manager.unregister_unit(unit)
-	job_manager.release_unit_job(unit)
+	job_manager.on_villager_died(unit)
 
 
 func _on_build_mode_changed(active: bool, _type_id: String) -> void:
