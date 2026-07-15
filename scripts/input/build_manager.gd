@@ -209,10 +209,8 @@ func _place_single_building(world_pos: Vector2, vertical: bool, charge_resources
 		building.set_wall_vertical(true)
 	_buildings_container.add_child(building)
 	building.global_position = world_pos
-	building.construction_completed.connect(_on_building_completed.bind(building))
 	if _job_manager != null:
 		_job_manager.alert_nearby_builders(building)
-	_request_nav_rebuild(building)
 	return building
 
 
@@ -392,10 +390,6 @@ func _can_afford_wall_line(segment_count: int) -> bool:
 	return _resource_manager.can_afford(total_cost)
 
 
-func _on_building_completed(building: Building) -> void:
-	_request_nav_rebuild(building)
-
-
 func _has_gather_node_nearby(world_pos: Vector2, type_id: String) -> bool:
 	var gather_type: String = BuildingDatabase.get_gather_type(type_id)
 	if gather_type.is_empty():
@@ -417,12 +411,6 @@ func _has_gather_node_nearby(world_pos: Vector2, type_id: String) -> bool:
 		if Vector2(cell - node_cell).length() <= float(radius_cells):
 			return true
 	return false
-
-
-func _request_nav_rebuild(changed_building: Building = null) -> void:
-	var world := get_tree().get_first_node_in_group("game_world")
-	if world != null and world.has_method("rebuild_navigation"):
-		world.call_deferred("rebuild_navigation", changed_building)
 
 
 func _screen_to_world(screen_point: Vector2) -> Vector2:

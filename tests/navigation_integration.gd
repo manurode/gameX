@@ -28,6 +28,23 @@ func _run() -> void:
 	assert(unit != null)
 	assert(navigation_manager != null)
 
+	var initial_version: int = navigation_manager.get_navigation_version()
+	var rebuild_started := Time.get_ticks_msec()
+	world.rebuild_navigation(building)
+	for _frame in 120:
+		await get_tree().process_frame
+		if navigation_manager.get_navigation_version() > initial_version:
+			break
+	var rebuild_elapsed := Time.get_ticks_msec() - rebuild_started
+	assert(
+		navigation_manager.get_navigation_version() > initial_version,
+		"The dynamic navigation update did not finish."
+	)
+	assert(
+		rebuild_elapsed < 1000,
+		"Dynamic navigation update took %d ms." % rebuild_elapsed
+	)
+
 	var start := building.global_position + Vector2(-240.0, 0.0)
 	var destination := building.global_position + Vector2(240.0, 0.0)
 	var path: PackedVector2Array = navigation_manager.get_navigation_path(start, destination)
@@ -45,5 +62,6 @@ func _run() -> void:
 			break
 
 	assert(reached, "The unit did not navigate around the building.")
+	print("DYNAMIC_NAV_REBUILD_OK %dms" % rebuild_elapsed)
 	print("NAVIGATION_INTEGRATION_OK")
 	get_tree().quit(0)

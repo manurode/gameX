@@ -6,10 +6,12 @@ const PATH_CELL_SIZE := Vector2(24.0, 24.0)
 const AGENT_CLEARANCE := 16.0
 const SEGMENT_SAMPLE_STEP := 8.0
 const CLOSEST_POINT_SEARCH_LIMIT := 48
+const DYNAMIC_REBUILD_RADIUS := 128.0
 
 var _ground_layer: TinyTilesMap
 var _sector_regions: Dictionary = {}
 var _dirty_sectors: Dictionary = {}
+var _dirty_path_grid_points: Dictionary = {}
 var _obstacles: Array = []
 var _buildings: Array = []
 var _rebuild_timer: Timer
@@ -44,16 +46,32 @@ func update_sources(obstacles: Array, buildings: Array) -> void:
 func request_rebuild_at(world_position: Vector2) -> void:
 	if _ground_layer == null:
 		return
-	var cell := _ground_layer.get_cell_at_world(world_position)
-	var sector := Vector2i(
-		floori(float(cell.x) / float(SECTOR_SIZE)),
-		floori(float(cell.y) / float(SECTOR_SIZE))
+	var radius_vector := Vector2(DYNAMIC_REBUILD_RADIUS, DYNAMIC_REBUILD_RADIUS)
+	var min_cell := Vector2i(1 << 30, 1 << 30)
+	var max_cell := Vector2i(-(1 << 30), -(1 << 30))
+	for corner in [
+		world_position - radius_vector,
+		world_position + radius_vector,
+		world_position + Vector2(radius_vector.x, -radius_vector.y),
+		world_position + Vector2(-radius_vector.x, radius_vector.y),
+	]:
+		var corner_cell := _ground_layer.get_cell_at_world(corner)
+		min_cell = min_cell.min(corner_cell)
+		max_cell = max_cell.max(corner_cell)
+	var min_sector := Vector2i(
+		floori(float(min_cell.x) / float(SECTOR_SIZE)),
+		floori(float(min_cell.y) / float(SECTOR_SIZE))
 	)
-	for y in range(sector.y - 1, sector.y + 2):
-		for x in range(sector.x - 1, sector.x + 2):
+	var max_sector := Vector2i(
+		floori(float(max_cell.x) / float(SECTOR_SIZE)),
+		floori(float(max_cell.y) / float(SECTOR_SIZE))
+	)
+	for y in range(min_sector.y, max_sector.y + 1):
+		for x in range(min_sector.x, max_sector.x + 1):
 			var key := Vector2i(x, y)
 			if key in _sector_regions:
 				_dirty_sectors[key] = true
+	_mark_path_grid_dirty(world_position)
 	_ensure_rebuild_timer()
 	_rebuild_timer.start(REBUILD_DEBOUNCE)
 
@@ -64,6 +82,7 @@ func _create_sector_regions() -> void:
 			region.queue_free()
 	_sector_regions.clear()
 	_dirty_sectors.clear()
+	_dirty_path_grid_points.clear()
 
 	var map_size := _ground_layer.get_map_size()
 	var sector_count := Vector2i(
@@ -198,7 +217,36 @@ func _rebuild_dirty_sectors() -> void:
 	_dirty_sectors.clear()
 	for sector in sectors:
 		_rebuild_sector(sector)
-	_rebuild_path_grid()
+	_rebuild_dirty_path_grid()
+
+
+func _mark_path_grid_dirty(world_position: Vector2) -> void:
+	if _path_grid_size == Vector2i.ZERO:
+		return
+
+	var radius_vector := Vector2(DYNAMIC_REBUILD_RADIUS, DYNAMIC_REBUILD_RADIUS)
+	var min_id := _world_to_grid(world_position - radius_vector) - Vector2i.ONE
+	var max_id := _world_to_grid(world_position + radius_vector) + Vector2i.ONE
+	min_id = min_id.max(Vector2i.ZERO)
+	max_id = max_id.min(_path_grid_size - Vector2i.ONE)
+	for y in range(min_id.y, max_id.y + 1):
+		for x in range(min_id.x, max_id.x + 1):
+			_dirty_path_grid_points[Vector2i(x, y)] = true
+
+
+func _rebuild_dirty_path_grid() -> void:
+	if _dirty_path_grid_points.is_empty() or _path_grid_size == Vector2i.ZERO:
+		return
+
+	var dirty_points := _dirty_path_grid_points.keys()
+	_dirty_path_grid_points.clear()
+	for dirty_point in dirty_points:
+		var point_id: Vector2i = dirty_point
+		_path_grid.set_point_solid(
+			point_id,
+			not _is_world_point_walkable(_grid_to_world(point_id))
+		)
+	_navigation_version += 1
 
 
 func get_navigation_path(from_position: Vector2, target_position: Vector2) -> PackedVector2Array:
