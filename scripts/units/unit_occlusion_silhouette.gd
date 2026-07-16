@@ -1,40 +1,57 @@
 class_name UnitOcclusionSilhouette
 extends Node
 
-## Pixel-accurate silhouette when a unit is visually covered by environment props.
-## While occluded, replaces the unit sprite with a per-frame composite
-## (silhouette on covered pixels, original color on uncovered ones) so animation stays in sync.
+## When a unit is covered by environment props, mirrors its AnimatedSprite2D onto a
+## high-z overlay and tints covered pixels via a mask shader. Animation stays live;
+## only the occlusion mask is CPU-baked.
 
 const OCCLUDER_REFRESH_INTERVAL := 0.05
 const SILHOUETTE_COLOR := Color(0.12, 0.28, 0.48, 0.82)
 const Y_SLOP := 8.0
 const SAMPLE_STEP := 1
+const SHADER_PATH := "res://shaders/unit_occlusion_silhouette.gdshader"
 
 var _unit: Unit
 var _layer: Node2D
-var _silhouette: Sprite2D
-var _silhouette_texture: ImageTexture
+var _silhouette: AnimatedSprite2D
+var _mask_texture: ImageTexture
+var _material: ShaderMaterial
 var _occluder_timer := 0.0
 var _cached_occluders: Array = []
 var _occluded := false
 var _frame_connected := false
 var _hid_unit_sprite := false
+var _mask_dirty := true
+var _last_anim: StringName = &""
+var _last_frame := -1
+var _last_flip_h := false
+var _last_flip_v := false
 
 
 func setup(unit: Unit, silhouette_layer: Node2D) -> void:
 	_unit = unit
 	_layer = silhouette_layer
-	_silhouette_texture = ImageTexture.new()
+	_mask_texture = ImageTexture.new()
 
-	_silhouette = Sprite2D.new()
+	var shader := load(SHADER_PATH) as Shader
+	_material = ShaderMaterial.new()
+	_material.shader = shader
+	_material.set_shader_parameter("silhouette_color", SILHOUETTE_COLOR)
+	_material.set_shader_parameter("occlusion_mask", _mask_texture)
+	_material.set_shader_parameter("alpha_threshold", OcclusionUtils.ALPHA_THRESHOLD)
+	_material.set_shader_parameter("region_uv", Color(0, 0, 1, 1))
+
+	_silhouette = AnimatedSprite2D.new()
 	_silhouette.name = "UnitSilhouette"
-	_silhouette.texture = _silhouette_texture
 	_silhouette.centered = true
 	_silhouette.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_silhouette.z_as_relative = false
 	_silhouette.z_index = 20
 	_silhouette.visible = false
 	_silhouette.y_sort_enabled = false
+	_silhouette.material = _material
+	# Frame is mirrored from the unit; do not advance independently.
+	_silhouette.speed_scale = 0.0
 	_layer.add_child(_silhouette)
 
 	if _unit.animated_sprite != null and not _frame_connected:
@@ -61,8 +78,10 @@ func _exit_tree() -> void:
 
 
 func _on_unit_frame_changed() -> void:
+	_mask_dirty = true
 	if _occluded or not _cached_occluders.is_empty():
-		_rebuild_silhouette()
+		_sync_sprite_from_unit()
+		_rebuild_mask_if_needed()
 
 
 func _process(delta: float) -> void:
@@ -77,12 +96,14 @@ func _process(delta: float) -> void:
 	if _occluder_timer <= 0.0:
 		_occluder_timer = OCCLUDER_REFRESH_INTERVAL
 		_refresh_occluder_cache()
+		_mask_dirty = true
 
 	if _cached_occluders.is_empty():
 		_set_occluded(false)
 		return
 
-	_rebuild_silhouette()
+	_sync_sprite_from_unit()
+	_rebuild_mask_if_needed()
 
 
 func _set_occluded(value: bool) -> void:
@@ -115,7 +136,6 @@ func _restore_unit_sprite() -> void:
 
 func _refresh_occluder_cache() -> void:
 	var sprite := _unit.animated_sprite
-	# Sprite may be hidden while we own the composite; still use it for sampling.
 	if sprite == null:
 		_cached_occluders.clear()
 		return
@@ -126,7 +146,68 @@ func _refresh_occluder_cache() -> void:
 	_cached_occluders = _collect_overlapping_front_occluders(unit_rect)
 
 
-func _rebuild_silhouette() -> void:
+func _sync_sprite_from_unit() -> void:
+	var src := _unit.animated_sprite
+	if src == null or _silhouette == null:
+		return
+
+	if _silhouette.sprite_frames != src.sprite_frames:
+		_silhouette.sprite_frames = src.sprite_frames
+		_mask_dirty = true
+
+	var anim := src.animation
+	var anim_changed := anim != _last_anim
+	if anim_changed and src.sprite_frames != null and src.sprite_frames.has_animation(anim):
+		_silhouette.play(anim)
+		_silhouette.pause()
+		_last_anim = anim
+		_mask_dirty = true
+
+	var frame_changed := src.frame != _last_frame or anim_changed
+	if frame_changed:
+		_silhouette.frame = src.frame
+		_last_frame = src.frame
+		_mask_dirty = true
+		_update_region_uv(OcclusionUtils.animated_frame_texture(src))
+	elif _silhouette.frame != src.frame:
+		_silhouette.frame = src.frame
+
+	if src.flip_h != _last_flip_h or src.flip_v != _last_flip_v:
+		_last_flip_h = src.flip_h
+		_last_flip_v = src.flip_v
+		_mask_dirty = true
+
+	_silhouette.flip_h = src.flip_h
+	_silhouette.flip_v = src.flip_v
+	_silhouette.global_position = src.global_position
+	_silhouette.offset = src.offset
+	_silhouette.scale = src.scale
+	_silhouette.rotation = src.rotation
+	_silhouette.centered = src.centered
+
+
+func _update_region_uv(frame_tex: Texture2D) -> void:
+	if _material == null:
+		return
+	if frame_tex is AtlasTexture:
+		var at := frame_tex as AtlasTexture
+		var atlas := at.atlas
+		if atlas != null:
+			var asize := atlas.get_size()
+			if asize.x > 0.0 and asize.y > 0.0:
+				var r := at.region
+				_material.set_shader_parameter(
+					"region_uv",
+					Color(r.position.x / asize.x, r.position.y / asize.y, r.size.x / asize.x, r.size.y / asize.y)
+				)
+				return
+	_material.set_shader_parameter("region_uv", Color(0, 0, 1, 1))
+
+
+func _rebuild_mask_if_needed() -> void:
+	if not _mask_dirty:
+		return
+
 	var sprite := _unit.animated_sprite
 	if sprite == null or _cached_occluders.is_empty():
 		_set_occluded(false)
@@ -141,18 +222,19 @@ func _rebuild_silhouette() -> void:
 		_set_occluded(false)
 		return
 
-	var image := OcclusionUtils.build_occlusion_composite_image(
+	var mask := OcclusionUtils.build_occlusion_mask_image(
 		sprite,
 		_cached_occluders,
-		SILHOUETTE_COLOR,
 		SAMPLE_STEP
 	)
-	if image == null:
+	_mask_dirty = false
+	if mask == null:
 		_set_occluded(false)
 		return
 
-	_silhouette_texture.set_image(image)
-	_sync_transform()
+	_mask_texture.set_image(mask)
+	_material.set_shader_parameter("occlusion_mask", _mask_texture)
+	_update_region_uv(OcclusionUtils.animated_frame_texture(sprite))
 	_set_occluded(true)
 
 
@@ -176,16 +258,3 @@ func _collect_overlapping_front_occluders(unit_rect: Rect2) -> Array:
 			if OcclusionUtils.rects_overlap(unit_rect, occ_rect):
 				result.append(occ_sprite)
 	return result
-
-
-func _sync_transform() -> void:
-	var src := _unit.animated_sprite
-	if src == null or _silhouette == null:
-		return
-	_silhouette.global_position = src.global_position
-	_silhouette.offset = src.offset
-	_silhouette.scale = src.scale
-	_silhouette.rotation = src.rotation
-	_silhouette.centered = src.centered
-	_silhouette.flip_h = false
-	_silhouette.flip_v = false
