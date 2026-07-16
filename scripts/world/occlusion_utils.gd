@@ -47,8 +47,10 @@ static func sprite_global_rect(sprite: Sprite2D) -> Rect2:
 	return Rect2(min_v, max_v - min_v)
 
 
-static func animated_sprite_global_rect(sprite: AnimatedSprite2D) -> Rect2:
-	if sprite == null or not sprite.visible or sprite.sprite_frames == null:
+static func animated_sprite_global_rect(sprite: AnimatedSprite2D, require_visible: bool = true) -> Rect2:
+	if sprite == null or sprite.sprite_frames == null:
+		return Rect2()
+	if require_visible and not sprite.visible:
 		return Rect2()
 	var tex := animated_frame_texture(sprite)
 	if tex == null:
@@ -123,9 +125,11 @@ static func any_sprite_opaque_at(sprites: Array, world_pos: Vector2, threshold: 
 	return false
 
 
-## Silhouette image in unit display-pixel space: only pixels covered by opaque occluders.
-## Returns null when nothing is visually covered.
-static func build_occlusion_silhouette_image(
+## Composite in unit display-pixel space:
+## - opaque pixels covered by occluders → silhouette_color
+## - other opaque pixels → original frame color
+## Returns null when nothing is visually covered (caller should show the normal sprite).
+static func build_occlusion_composite_image(
 	unit_sprite: AnimatedSprite2D,
 	occluder_sprites: Array,
 	silhouette_color: Color,
@@ -151,18 +155,20 @@ static func build_occlusion_silhouette_image(
 		for dx in range(0, width, step):
 			var tex_x := (width - 1 - dx) if unit_sprite.flip_h else dx
 			var tex_y := (height - 1 - dy) if unit_sprite.flip_v else dy
-			if unit_img.get_pixel(tex_x, tex_y).a < ALPHA_THRESHOLD:
+			var src_color := unit_img.get_pixel(tex_x, tex_y)
+			if src_color.a < ALPHA_THRESHOLD:
 				continue
 			var world_pos := animated_display_pixel_to_world(unit_sprite, dx, dy)
-			if not any_sprite_opaque_at(occluder_sprites, world_pos):
-				continue
-			any_hit = true
+			var covered := any_sprite_opaque_at(occluder_sprites, world_pos)
+			if covered:
+				any_hit = true
+			var paint := silhouette_color if covered else src_color
 			for oy in range(step):
 				for ox in range(step):
 					var qx := dx + ox
 					var qy := dy + oy
 					if qx < width and qy < height:
-						out.set_pixel(qx, qy, silhouette_color)
+						out.set_pixel(qx, qy, paint)
 
 	return out if any_hit else null
 
