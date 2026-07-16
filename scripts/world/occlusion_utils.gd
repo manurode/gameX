@@ -125,6 +125,38 @@ static func any_sprite_opaque_at(sprites: Array, world_pos: Vector2, threshold: 
 	return false
 
 
+## Returns true if any opaque unit pixel is covered by an occluder sprite.
+static func is_animated_sprite_occluded(
+	unit_sprite: AnimatedSprite2D,
+	occluder_sprites: Array,
+	sample_step: int = 2
+) -> bool:
+	if unit_sprite == null or occluder_sprites.is_empty():
+		return false
+	var frame_tex := animated_frame_texture(unit_sprite)
+	if frame_tex == null:
+		return false
+	var unit_img := get_texture_image(frame_tex)
+	if unit_img == null:
+		return false
+
+	var width := unit_img.get_width()
+	var height := unit_img.get_height()
+	var step := maxi(1, sample_step)
+
+	for ty in range(0, height, step):
+		for tx in range(0, width, step):
+			var src_color := unit_img.get_pixel(tx, ty)
+			if src_color.a < ALPHA_THRESHOLD:
+				continue
+			var dx := (width - 1 - tx) if unit_sprite.flip_h else tx
+			var dy := (height - 1 - ty) if unit_sprite.flip_v else ty
+			var world_pos := animated_display_pixel_to_world(unit_sprite, dx, dy)
+			if any_sprite_opaque_at(occluder_sprites, world_pos):
+				return true
+	return false
+
+
 ## Alpha mask in unit *texture* UV space (matches AnimatedSprite2D + flip).
 ## Covered opaque pixels → white; everything else → transparent.
 ## Returns null when nothing is visually covered.
