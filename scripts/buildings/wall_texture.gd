@@ -4,16 +4,20 @@ extends RefCounted
 ## Painted Mediterranean wall segments on the two iso 2:1 diagonals.
 ## wall_se (/) runs bottom-left → top-right along axis (2, -1).
 ## wall_sw (\) runs top-left → bottom-right along axis (2, 1).
+##
+## Segment centers sit on the lattice. Spacing is tuned so neighboring
+## centers share roughly one pillar (~60px painted overlap). Corners place
+## both orientations on the same lattice point (corner post).
 const TEXTURE_SE := "res://assets/tilesets/mediterranean/Buildings/wall_se.png"
 const TEXTURE_SW := "res://assets/tilesets/mediterranean/Buildings/wall_sw.png"
 
-const ISO_STEP := 56.0
-## Segment anchors every two lattice units. Sprite span ~170px → ~58px overlap for a seamless run.
-const SEGMENT_UNITS := 2
+const ISO_STEP := 28.0
+## spacing = 140 → euclidean ≈ 156. Painted span ≈ 216 → ~60px pillar share.
+const SEGMENT_UNITS := 5
 ## Physical / nav thickness so chained segments form a continuous barrier.
 const BLOCK_THICKNESS := 28.0
 ## Slight length overlap so adjacent segments leave no walkable gap.
-const BLOCK_LENGTH_FACTOR := 1.08
+const BLOCK_LENGTH_FACTOR := 1.12
 
 static var _cache: Dictionary = {}
 
@@ -49,18 +53,32 @@ static func get_axis_direction(vertical: bool) -> Vector2:
 	return get_segment_step(vertical).normalized()
 
 
-## vertical=true when the drag follows the backslash (\) axis.
+## vertical=true → SW backslash (\) = default "horizontal" wall on screen.
+## vertical=false → SE slash (/) = "vertical" wall, chosen when dragging upward.
+static func is_horizontal(vertical: bool) -> bool:
+	return vertical
+
+
+static func default_orientation() -> bool:
+	## Idle / default drag: horizontal SW (\).
+	return true
+
+
+## Drag rules: stay on horizontal (SW) unless the mouse clearly moves upward / along SE.
 static func orientation_from_delta(delta: Vector2) -> bool:
 	if delta.length_squared() < 1.0:
-		return false
+		return default_orientation()
 	var slash_dir := Vector2(2.0, -1.0).normalized()
 	var backslash_dir := Vector2(2.0, 1.0).normalized()
 	var slash_score := absf(delta.dot(slash_dir))
 	var backslash_score := absf(delta.dot(backslash_dir))
-	if absf(slash_score - backslash_score) < 0.01 * maxf(slash_score, backslash_score):
-		# Screen-axis drags tie on both iso axes — map Y-dominant to \.
-		return absf(delta.y) > absf(delta.x)
-	return backslash_score > slash_score
+	# Upward mouse travel unlocks the SE ("vertical") wall.
+	var dragging_up := delta.y < -ISO_STEP * 0.5
+	if dragging_up and slash_score >= backslash_score * 0.85:
+		return false
+	if slash_score > backslash_score * 1.25:
+		return false
+	return true
 
 
 static func snap_position(world_pos: Vector2) -> Vector2:
@@ -85,7 +103,6 @@ static func segment_key(world_pos: Vector2, vertical: bool) -> String:
 
 
 static func footprint(_vertical: bool) -> Vector2:
-	# Keep overlap checks smaller than spacing so chained segments don't block each other.
 	return Vector2(52.0, 44.0)
 
 
