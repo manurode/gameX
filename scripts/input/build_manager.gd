@@ -152,6 +152,7 @@ func _process(_delta: float) -> void:
 			_ghost_sprite.texture = WallTexture.get_texture(vertical)
 			if _ghost_sprite.texture != null:
 				_ghost_sprite.offset = Vector2(0.0, -_ghost_sprite.texture.get_height() * 0.5 + 48.0)
+			_ghost_sprite.scale = Vector2.ONE * BuildingDatabase.get_visual_scale("wall")
 			ghost_valid = _is_valid_wall_segment(world_pos, vertical)
 			_ghost_sprite.modulate = Color(0.4, 0.95, 0.55, 0.65) if ghost_valid else Color(0.95, 0.35, 0.35, 0.55)
 			_ghost_sprite.rotation_degrees = 0.0
@@ -205,6 +206,8 @@ func _update_ghost_texture() -> void:
 	if _ghost_sprite.texture != null:
 		var foot := 48.0 if selected_building_type == "wall" else 64.0
 		_ghost_sprite.offset = Vector2(0.0, -_ghost_sprite.texture.get_height() * 0.5 + foot)
+		var visual_scale := BuildingDatabase.get_visual_scale(selected_building_type)
+		_ghost_sprite.scale = Vector2(visual_scale, visual_scale)
 		_ghost_sprite.modulate = def.get("tint", Color(0.4, 0.95, 0.55, 0.55))
 
 
@@ -495,6 +498,7 @@ func _update_wall_preview_polyline(end_pos: Vector2) -> void:
 		ghost.texture = WallTexture.get_texture(segment["vertical"])
 		if ghost.texture != null:
 			ghost.offset = Vector2(0.0, -ghost.texture.get_height() * 0.5 + 48.0)
+		ghost.scale = Vector2.ONE * BuildingDatabase.get_visual_scale("wall")
 		ghost.visible = true
 
 		var key := WallTexture.segment_key(segment["pos"], segment["vertical"])
@@ -521,6 +525,7 @@ func _ensure_wall_ghost_count(count: int) -> void:
 		ghost.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 		ghost.texture = WallTexture.get_texture(false)
 		ghost.offset = Vector2(0.0, -ghost.texture.get_height() * 0.5 + 48.0)
+		ghost.scale = Vector2.ONE * BuildingDatabase.get_visual_scale("wall")
 		ghost.z_index = 49
 		_wall_ghost_container.add_child(ghost)
 		_wall_ghost_sprites.append(ghost)

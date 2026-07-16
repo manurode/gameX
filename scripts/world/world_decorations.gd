@@ -15,11 +15,14 @@ const HILL_PATHS: Array[String] = [
 	"res://assets/tilesets/mediterranean/Decor/mountain_c.png",
 ]
 const FOREST_SLOW_MULTIPLIER := 0.62
-const FOREST_SLOW_RADIUS := 220.0
-const FOREST_BLOCK_HALF := Vector2(180.0, 110.0)
-const FOREST_PICK_RADIUS := 200.0
-const MOUNTAIN_PICK_RADIUS := 280.0
-const MOUNTAIN_BLOCK_HALF := Vector2(260.0, 160.0)
+const FOREST_SLOW_RADIUS := 260.0
+const FOREST_BLOCK_HALF := Vector2(210.0, 130.0)
+const FOREST_PICK_RADIUS := 240.0
+const FOREST_VISUAL_SCALE := 1.22
+const MOUNTAIN_PICK_RADIUS := 340.0
+const MOUNTAIN_BLOCK_HALF := Vector2(310.0, 190.0)
+const MOUNTAIN_VISUAL_SCALE := 1.32
+const GOLD_VEIN_VISUAL_SCALE := 1.15
 ## Farm plot is painted into mill.png; gather zone sits on that front plot.
 const MILL_FARM_OFFSET := Vector2(0.0, 22.0)
 const MILL_FARM_HALF_SIZE := Vector2(44.0, 26.0)
@@ -97,20 +100,21 @@ func _spawn_resources(placements: Array[Dictionary]) -> void:
 		if texture == null:
 			continue
 		var offset := Vector2(0.0, -texture.get_height() * 0.5 + 64.0)
+		var visual_scale := _visual_scale_for_kind(kind)
 		var node := ResourceNode.new()
 		var resource_kind := (
 			ResourceNode.ResourceKind.WOOD
 			if kind == "wood"
 			else ResourceNode.ResourceKind.GOLD
 		)
-		node.setup(texture, world_pos, resource_kind, placement.get("amount", 100), offset)
+		node.setup(texture, world_pos, resource_kind, placement.get("amount", 100), offset, visual_scale)
 		if kind == "wood":
 			node.pick_radius = FOREST_PICK_RADIUS
 		elif kind == "gold_mountain":
 			node.pick_radius = MOUNTAIN_PICK_RADIUS
 		_entity_parent.add_child(node)
 		_resource_nodes.append(node)
-		_spawn_resource_terrain(kind, texture, world_pos, offset)
+		_spawn_resource_terrain(kind, texture, world_pos, offset, visual_scale)
 
 
 func _paths_for_kind(kind: String) -> Array[String]:
@@ -126,7 +130,25 @@ func _paths_for_kind(kind: String) -> Array[String]:
 			return empty
 
 
-func _spawn_resource_terrain(kind: String, texture: Texture2D, world_pos: Vector2, offset: Vector2) -> void:
+func _visual_scale_for_kind(kind: String) -> float:
+	match kind:
+		"wood":
+			return FOREST_VISUAL_SCALE
+		"gold_mountain":
+			return MOUNTAIN_VISUAL_SCALE
+		"gold":
+			return GOLD_VEIN_VISUAL_SCALE
+		_:
+			return 1.0
+
+
+func _spawn_resource_terrain(
+	kind: String,
+	texture: Texture2D,
+	world_pos: Vector2,
+	offset: Vector2,
+	visual_scale: float = 1.0
+) -> void:
 	if _entity_parent == null:
 		return
 	var obstacle := TerrainObstacle.new()
@@ -139,7 +161,8 @@ func _spawn_resource_terrain(kind: String, texture: Texture2D, world_pos: Vector
 			FOREST_SLOW_MULTIPLIER,
 			FOREST_SLOW_RADIUS,
 			FOREST_BLOCK_HALF,
-			false
+			false,
+			visual_scale
 		)
 	else:
 		obstacle.setup(
@@ -150,7 +173,8 @@ func _spawn_resource_terrain(kind: String, texture: Texture2D, world_pos: Vector
 			1.0,
 			0.0,
 			MOUNTAIN_BLOCK_HALF,
-			false
+			false,
+			visual_scale
 		)
 	obstacle.add_to_group("terrain_obstacles")
 	_entity_parent.add_child(obstacle)
@@ -175,7 +199,9 @@ func _spawn_decorations(placements: Array[Dictionary]) -> void:
 			placement.get("blocks", true),
 			1.0,
 			0.0,
-			MOUNTAIN_BLOCK_HALF
+			MOUNTAIN_BLOCK_HALF,
+			true,
+			MOUNTAIN_VISUAL_SCALE
 		)
 		obstacle.add_to_group("terrain_obstacles")
 		_entity_parent.add_child(obstacle)

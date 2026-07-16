@@ -18,7 +18,8 @@ func setup(
 	slow_mult: float = 1.0,
 	slow_rad: float = 0.0,
 	block_half: Vector2 = Vector2(40.0, 25.0),
-	show_sprite: bool = true
+	show_sprite: bool = true,
+	scale_factor: float = 1.0
 ) -> void:
 	blocks_movement = blocks
 	slow_multiplier = slow_mult
@@ -32,6 +33,7 @@ func setup(
 		_sprite.centered = true
 		_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 		_sprite.offset = sprite_offset
+		_sprite.scale = Vector2(scale_factor, scale_factor)
 		_sprite.y_sort_enabled = true
 		add_child(_sprite)
 		add_to_group("occlusion_props")

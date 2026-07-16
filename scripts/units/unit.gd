@@ -14,6 +14,8 @@ const TARGET_SCAN_INTERVAL := 0.35
 const PLAYER_AGGRO_RANGE := 300.0
 const PERSONAL_SPACE_RADIUS := 28.0
 const NAV_AGENT_RADIUS := 16.0
+## World scale so units read closer to building doors / human height.
+const VISUAL_SCALE := 0.92
 const STUCK_TIME_SECONDS := 0.75
 const STUCK_MOVE_EPSILON_SQ := 2.0
 const STUCK_REPATH_MAX := 4
@@ -113,6 +115,7 @@ func _ready() -> void:
 	_setup_selection_indicator()
 	_setup_occlusion_silhouette()
 	animated_sprite.offset = sprite_offset
+	animated_sprite.scale = Vector2(VISUAL_SCALE, VISUAL_SCALE)
 	animated_sprite.frame_changed.connect(_on_animation_frame_changed)
 	animated_sprite.animation_finished.connect(_on_animation_finished)
 	await get_tree().physics_frame
@@ -302,6 +305,7 @@ func _setup_shadow() -> void:
 	var texture := ImageTexture.create_from_image(image)
 	shadow_sprite.texture = texture
 	shadow_sprite.position = Vector2.ZERO
+	shadow_sprite.scale = Vector2(VISUAL_SCALE, VISUAL_SCALE)
 	shadow_sprite.y_sort_enabled = false
 	shadow_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	shadow_sprite.modulate = Color(1, 1, 1, 1)
@@ -488,7 +492,7 @@ func deselect() -> void:
 func get_sprite_center() -> Vector2:
 	if garrisoned_building != null and is_instance_valid(garrisoned_building):
 		return garrisoned_building.get_sprite_center()
-	return global_position + sprite_offset
+	return global_position + sprite_offset * VISUAL_SCALE
 
 
 func get_selection_rect() -> Rect2:

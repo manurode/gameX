@@ -55,8 +55,9 @@ const DEFINITIONS: Dictionary = {
 		"garrison_weapon": "crossbow",
 		"can_garrison": true,
 		"blocks_nav": true,
-		"footprint": Vector2(120.0, 75.0),
-		"pick_half_size": Vector2(90.0, 80.0),
+		"visual_scale": 1.52,
+		"footprint": Vector2(160.0, 100.0),
+		"pick_half_size": Vector2(122.0, 110.0),
 		"is_core": true,
 		"buildable": false,
 		"produces": ["villager"],
@@ -74,8 +75,9 @@ const DEFINITIONS: Dictionary = {
 		"garrison_weapon": "stone",
 		"can_garrison": true,
 		"blocks_nav": true,
-		"footprint": Vector2(70.0, 45.0),
-		"pick_half_size": Vector2(55.0, 50.0),
+		"visual_scale": 0.70,
+		"footprint": Vector2(54.0, 35.0),
+		"pick_half_size": Vector2(42.0, 40.0),
 		"housing": 5,
 	},
 	"house_big": {
@@ -91,8 +93,9 @@ const DEFINITIONS: Dictionary = {
 		"garrison_weapon": "stone",
 		"can_garrison": true,
 		"blocks_nav": true,
-		"footprint": Vector2(90.0, 55.0),
-		"pick_half_size": Vector2(70.0, 60.0),
+		"visual_scale": 0.95,
+		"footprint": Vector2(92.0, 58.0),
+		"pick_half_size": Vector2(72.0, 62.0),
 		"housing": 8,
 	},
 	"lumber_camp": {
@@ -108,8 +111,9 @@ const DEFINITIONS: Dictionary = {
 		"garrison_weapon": "stone",
 		"can_garrison": true,
 		"blocks_nav": true,
-		"footprint": Vector2(75.0, 45.0),
-		"pick_half_size": Vector2(58.0, 50.0),
+		"visual_scale": 0.82,
+		"footprint": Vector2(68.0, 42.0),
+		"pick_half_size": Vector2(54.0, 48.0),
 		"gather_type": "wood",
 		"gather_radius_cells": 3,
 		"gather_rate": BalanceConfig.WOOD_PER_SECOND,
@@ -128,13 +132,14 @@ const DEFINITIONS: Dictionary = {
 		"garrison_weapon": "stone",
 		"can_garrison": true,
 		"blocks_nav": true,
-		"footprint": Vector2(95.0, 72.0),
-		"pick_half_size": Vector2(72.0, 70.0),
+		"visual_scale": 0.95,
+		"footprint": Vector2(92.0, 70.0),
+		"pick_half_size": Vector2(70.0, 68.0),
 		"gather_type": "food",
 		"spawns_gather_source": true,
 		"gather_radius_cells": 0,
-		"farm_offset": Vector2(0.0, 22.0),
-		"farm_half_size": Vector2(44.0, 26.0),
+		"farm_offset": Vector2(0.0, 21.0),
+		"farm_half_size": Vector2(42.0, 25.0),
 		"gather_rate": BalanceConfig.FOOD_PER_SECOND,
 		"max_workers": BalanceConfig.MILL_MAX_WORKERS,
 	},
@@ -151,8 +156,9 @@ const DEFINITIONS: Dictionary = {
 		"garrison_weapon": "stone",
 		"can_garrison": true,
 		"blocks_nav": true,
-		"footprint": Vector2(70.0, 50.0),
-		"pick_half_size": Vector2(55.0, 55.0),
+		"visual_scale": 0.85,
+		"footprint": Vector2(64.0, 48.0),
+		"pick_half_size": Vector2(52.0, 52.0),
 		"gather_type": "gold",
 		"gather_radius_cells": 3,
 		"gather_rate": BalanceConfig.GOLD_PER_SECOND,
@@ -171,8 +177,9 @@ const DEFINITIONS: Dictionary = {
 		"garrison_weapon": "stone",
 		"can_garrison": true,
 		"blocks_nav": true,
-		"footprint": Vector2(100.0, 60.0),
-		"pick_half_size": Vector2(75.0, 65.0),
+		"visual_scale": 1.00,
+		"footprint": Vector2(105.0, 62.0),
+		"pick_half_size": Vector2(78.0, 68.0),
 		"produces": ["knight_squad"],
 	},
 	"barracks": {
@@ -188,8 +195,9 @@ const DEFINITIONS: Dictionary = {
 		"garrison_weapon": "stone",
 		"can_garrison": true,
 		"blocks_nav": true,
-		"footprint": Vector2(100.0, 60.0),
-		"pick_half_size": Vector2(75.0, 65.0),
+		"visual_scale": 1.00,
+		"footprint": Vector2(105.0, 62.0),
+		"pick_half_size": Vector2(78.0, 68.0),
 		"produces": ["archer_squad"],
 	},
 	"tower": {
@@ -205,8 +213,9 @@ const DEFINITIONS: Dictionary = {
 		"garrison_weapon": "crossbow",
 		"can_garrison": true,
 		"blocks_nav": true,
-		"footprint": Vector2(60.0, 50.0),
-		"pick_half_size": Vector2(45.0, 70.0),
+		"visual_scale": 1.05,
+		"footprint": Vector2(62.0, 52.0),
+		"pick_half_size": Vector2(48.0, 72.0),
 		"automatic_defense": true,
 	},
 	"wall": {
@@ -223,8 +232,9 @@ const DEFINITIONS: Dictionary = {
 		"garrison_weapon": "stone",
 		"can_garrison": true,
 		"blocks_nav": true,
-		"footprint": Vector2(90.0, 45.0),
-		"pick_half_size": Vector2(60.0, 35.0),
+		"visual_scale": 0.95,
+		"footprint": Vector2(86.0, 42.0),
+		"pick_half_size": Vector2(56.0, 34.0),
 	},
 	"castle_small": {
 		"name": "Castillo",
@@ -239,8 +249,9 @@ const DEFINITIONS: Dictionary = {
 		"garrison_weapon": "crossbow",
 		"can_garrison": true,
 		"blocks_nav": true,
-		"footprint": Vector2(120.0, 75.0),
-		"pick_half_size": Vector2(90.0, 80.0),
+		"visual_scale": 1.42,
+		"footprint": Vector2(155.0, 98.0),
+		"pick_half_size": Vector2(115.0, 105.0),
 	},
 	"castle_big": {
 		"name": "Castillo grande",
@@ -255,8 +266,9 @@ const DEFINITIONS: Dictionary = {
 		"garrison_weapon": "ballista",
 		"can_garrison": true,
 		"blocks_nav": true,
-		"footprint": Vector2(150.0, 90.0),
-		"pick_half_size": Vector2(110.0, 95.0),
+		"visual_scale": 1.62,
+		"footprint": Vector2(195.0, 120.0),
+		"pick_half_size": Vector2(145.0, 125.0),
 	},
 }
 
@@ -289,6 +301,10 @@ static func can_upgrade(type_id: String, current_level: int) -> bool:
 
 static func get_definition(type_id: String) -> Dictionary:
 	return DEFINITIONS.get(type_id, {})
+
+
+static func get_visual_scale(type_id: String) -> float:
+	return float(get_definition(type_id).get("visual_scale", 1.0))
 
 
 static func get_all_type_ids() -> Array[String]:

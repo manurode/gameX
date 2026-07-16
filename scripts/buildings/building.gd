@@ -43,6 +43,7 @@ var garrison_attack_target_building: Building = null
 var _garrison_attack_cooldown: float = 0.0
 var _last_damage_time: int = 0
 var _definition: Dictionary = {}
+var _visual_scale: float = 1.0
 var _footprint := Vector2(70.0, 45.0)
 var _wall_vertical: bool = false
 var _repair_start_hp: int = 0
@@ -129,6 +130,7 @@ func _apply_definition() -> void:
 	garrison_weapon = _definition.get("garrison_weapon", "stone")
 	can_garrison = _definition.get("can_garrison", true)
 	blocks_navigation = _definition.get("blocks_nav", true)
+	_visual_scale = float(_definition.get("visual_scale", 1.0))
 	_footprint = _definition.get("footprint", Vector2(70.0, 45.0))
 	pick_half_size = _definition.get("pick_half_size", Vector2(55.0, 50.0))
 	_apply_upgrade_weapon()
@@ -151,12 +153,12 @@ func _setup_texture() -> void:
 			sprite.texture = load(texture_path)
 
 	if sprite.texture != null:
-		sprite.offset = _sprite_draw_offset()
-		sprite_offset = sprite.offset
+		_apply_sprite_transform()
 		sprite.modulate = _definition.get("tint", Color.WHITE)
 		if damage_overlay != null:
 			damage_overlay.texture = sprite.texture
 			damage_overlay.offset = sprite.offset
+			damage_overlay.scale = sprite.scale
 
 
 func _sprite_draw_offset() -> Vector2:
@@ -168,20 +170,34 @@ func _sprite_draw_offset() -> Vector2:
 	return Vector2(0.0, -sprite.texture.get_height() * 0.5 + 64.0)
 
 
+func _apply_sprite_transform() -> void:
+	if sprite == null or sprite.texture == null:
+		return
+	sprite.offset = _sprite_draw_offset()
+	sprite.scale = Vector2(_visual_scale, _visual_scale)
+	# Selection / combat helpers use world-space offset after scale.
+	sprite_offset = sprite.offset * sprite.scale
+	if damage_overlay != null:
+		damage_overlay.offset = sprite.offset
+		damage_overlay.scale = sprite.scale
+
+
 func _apply_wall_orientation() -> void:
 	if building_type_id != "wall" or sprite == null:
 		return
 	sprite.rotation_degrees = 0.0
 	sprite.texture = WallTexture.get_texture(_wall_vertical)
-	_footprint = WallTexture.footprint(_wall_vertical)
-	pick_half_size = WallTexture.pick_half_size(_wall_vertical)
+	var wall_scale := float(_definition.get("visual_scale", 1.0))
+	_visual_scale = wall_scale
+	_footprint = WallTexture.footprint(_wall_vertical) * wall_scale
+	pick_half_size = WallTexture.pick_half_size(_wall_vertical) * wall_scale
 	if sprite.texture != null:
-		sprite.offset = _sprite_draw_offset()
-		sprite_offset = sprite.offset
+		_apply_sprite_transform()
 	if damage_overlay != null:
 		damage_overlay.rotation_degrees = 0.0
 		damage_overlay.texture = sprite.texture
 		damage_overlay.offset = sprite.offset
+		damage_overlay.scale = sprite.scale
 	_setup_collision()
 
 
@@ -985,14 +1001,19 @@ func _update_construction_visual() -> void:
 		progress_bar.queue_redraw()
 	if sprite == null or building_state != BuildingState.CONSTRUCTING:
 		if sprite != null and building_state == BuildingState.ACTIVE:
-			sprite.scale = Vector2.ONE
+			sprite.scale = Vector2(_visual_scale, _visual_scale)
 			sprite.modulate = Color.WHITE
+			if damage_overlay != null:
+				damage_overlay.scale = sprite.scale
 		return
 
 	var ratio := clampf(construction_progress, 0.0, 1.0)
 	# Evolve from foundation scaffold to finished building
-	var build_scale := lerpf(0.35, 1.0, ratio)
+	var build_scale := lerpf(0.35, 1.0, ratio) * _visual_scale
 	sprite.scale = Vector2(build_scale, build_scale)
+	sprite_offset = sprite.offset * sprite.scale
+	if damage_overlay != null:
+		damage_overlay.scale = sprite.scale
 	var alpha := lerpf(0.45, 1.0, ratio)
 	var warmth := lerpf(0.72, 1.0, ratio)
 	sprite.modulate = Color(warmth, warmth * 0.95, warmth * 0.88, alpha)

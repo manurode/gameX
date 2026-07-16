@@ -29,13 +29,20 @@ func _ready() -> void:
 	_setup_selection_indicator()
 
 
-func setup(texture: Texture2D, world_pos: Vector2, kind: ResourceKind, amount: int, sprite_offset: Vector2) -> void:
+func setup(
+	texture: Texture2D,
+	world_pos: Vector2,
+	kind: ResourceKind,
+	amount: int,
+	sprite_offset: Vector2,
+	scale_factor: float = 1.0
+) -> void:
 	resource_kind = kind
 	amount_remaining = amount
 	_initial_amount = amount
 	is_infinite = false
 	global_position = world_pos
-	_add_sprite(texture, Vector2.ZERO, sprite_offset)
+	_add_sprite(texture, Vector2.ZERO, sprite_offset, scale_factor)
 	# Tall resource visuals (trees, gold rocks) occlude units; crop fields do not.
 	if kind != ResourceKind.FOOD:
 		add_to_group("occlusion_props")
