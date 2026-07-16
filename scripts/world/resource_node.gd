@@ -18,12 +18,14 @@ const AMOUNT_BAR_SCRIPT := preload("res://scripts/world/resource_amount_bar.gd")
 var pick_radius: float = PICK_RADIUS
 var _sprites: Array[Sprite2D] = []
 var _amount_bar: Node2D = null
+var _selection_indicator: Line2D = null
 
 
 func _ready() -> void:
 	add_to_group("resource_nodes")
 	y_sort_enabled = true
 	_ensure_amount_bar()
+	_setup_selection_indicator()
 
 
 func setup(texture: Texture2D, world_pos: Vector2, kind: ResourceKind, amount: int, sprite_offset: Vector2) -> void:
@@ -37,6 +39,7 @@ func setup(texture: Texture2D, world_pos: Vector2, kind: ResourceKind, amount: i
 	if kind != ResourceKind.FOOD:
 		add_to_group("occlusion_props")
 	_ensure_amount_bar()
+	_setup_selection_indicator()
 
 
 func get_occlusion_sprites() -> Array[Sprite2D]:
@@ -73,6 +76,7 @@ func setup_crop_field(
 			var sprite_offset := Vector2(0.0, -texture.get_height() * 0.5 + 64.0)
 			_add_sprite(texture, offset, sprite_offset, 0.92 + float(row) * 0.01)
 	_ensure_amount_bar()
+	_setup_selection_indicator()
 
 
 func _add_sprite(texture: Texture2D, local_pos: Vector2, sprite_offset: Vector2, scale_factor: float = 1.0) -> void:
@@ -93,6 +97,38 @@ func _ensure_amount_bar() -> void:
 	_amount_bar.set_script(AMOUNT_BAR_SCRIPT)
 	_amount_bar.name = "AmountBar"
 	add_child(_amount_bar)
+
+
+func _setup_selection_indicator() -> void:
+	if _selection_indicator == null:
+		_selection_indicator = Line2D.new()
+		_selection_indicator.name = "SelectionIndicator"
+		_selection_indicator.width = 2.0
+		_selection_indicator.default_color = Color(0.45, 0.95, 0.55, 0.55)
+		_selection_indicator.antialiased = true
+		_selection_indicator.visible = false
+		_selection_indicator.y_sort_enabled = false
+		add_child(_selection_indicator)
+
+	var radius_x := 40.0
+	var radius_y := 18.0
+	var sprites := get_occlusion_sprites()
+	if not sprites.is_empty():
+		var max_half_w := 0.0
+		for sprite in sprites:
+			var size := sprite.texture.get_size() * sprite.scale.abs()
+			max_half_w = maxf(max_half_w, size.x * 0.38)
+		radius_x = clampf(max_half_w, 28.0, 140.0)
+		radius_y = radius_x * 0.45
+
+	var points := PackedVector2Array()
+	const SEGMENTS := 48
+	for i in SEGMENTS + 1:
+		var angle := float(i) / float(SEGMENTS) * TAU
+		points.append(Vector2(cos(angle) * radius_x, sin(angle) * radius_y))
+	_selection_indicator.points = points
+	_selection_indicator.closed = true
+	_selection_indicator.visible = is_selected
 
 
 func get_resource_key() -> String:
@@ -186,10 +222,14 @@ func should_show_amount_bar() -> bool:
 
 func select() -> void:
 	is_selected = true
+	if _selection_indicator != null:
+		_selection_indicator.visible = true
 
 
 func deselect() -> void:
 	is_selected = false
+	if _selection_indicator != null:
+		_selection_indicator.visible = false
 
 
 func _update_field_visual() -> void:
