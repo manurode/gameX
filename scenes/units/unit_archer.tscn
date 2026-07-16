@@ -6,6 +6,8 @@
 [ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/archer/chr_archer_run_downward.png" id="4_walk_down"]
 [ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/archer/chr_archer_attack.png" id="5_attack_down"]
 [ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/archer/chr_archer_attack_back.png" id="6_attack_up"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/archer/chr_archer_deploy.png" id="7_death_down"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/archer/chr_archer_deploy_back.png" id="8_death_up"]
 
 [node name="UnitArcher" instance=ExtResource("1_base")]
 move_speed = 105.0
@@ -19,3 +21,5 @@ walk_up_sheet = ExtResource("3_walk_up")
 walk_down_sheet = ExtResource("4_walk_down")
 attack_up_sheet = ExtResource("6_attack_up")
 attack_down_sheet = ExtResource("5_attack_down")
+death_up_sheet = ExtResource("8_death_up")
+death_down_sheet = ExtResource("7_death_down")

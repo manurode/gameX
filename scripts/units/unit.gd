@@ -155,12 +155,12 @@ func _setup_sprite_frames() -> void:
 		death_down_sheet,
 		80,
 		6.0,
-		10.0,
+		12.0,
 		12.0,
 		7.0,
 		DEATH_FRAME_COUNT if death_up_sheet != null or death_down_sheet != null else -1,
 		gather_sheet,
-		9.0
+		10.0
 	)
 	if frames.get_animation_names().is_empty():
 		return
@@ -1584,11 +1584,16 @@ func _finish_gather_job() -> void:
 func _play_build_animation() -> void:
 	if _is_attack_animating:
 		return
+	# Prefer dedicated work/gather strip while constructing or repairing.
+	if animated_sprite.sprite_frames.has_animation(&"gather"):
+		if animated_sprite.animation != &"gather":
+			animated_sprite.play(&"gather")
+		_reset_sprite_motion()
+		return
 	_reset_sprite_motion()
 	if animated_sprite.sprite_frames.has_animation(&"idle"):
 		if animated_sprite.animation != &"idle":
 			animated_sprite.play(&"idle")
-	# Subtle hammer bounce while building
 	var bounce := sin(Time.get_ticks_msec() * 0.012) * 2.0
 	animated_sprite.position = Vector2(0.0, bounce)
 

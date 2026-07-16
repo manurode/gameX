@@ -16,6 +16,7 @@ const DEFINITIONS: Dictionary = {
 		"idle_sheet": "res://assets/tilesets/mediterranean/Characters/villager/chr_villager_idle.png",
 		"walk_up_sheet": "res://assets/tilesets/mediterranean/Characters/villager/chr_villager_run_upward.png",
 		"walk_down_sheet": "res://assets/tilesets/mediterranean/Characters/villager/chr_villager_run_downward.png",
+		"gather_sheet": "res://assets/tilesets/mediterranean/Characters/villager/chr_villager_afk.png",
 	},
 	"knight": {
 		"name": "Caballero",
@@ -33,7 +34,7 @@ const DEFINITIONS: Dictionary = {
 		"melee_range": 54.0,
 		"idle_sheet": "res://assets/tilesets/mediterranean/Characters/knight/chr_knight_idle.png",
 		"walk_up_sheet": "res://assets/tilesets/mediterranean/Characters/knight/chr_knight_run_upward.png",
-		"walk_down_sheet": "res://assets/tilesets/mediterranean/Characters/knight/chr_knight_run_backward.png",
+		"walk_down_sheet": "res://assets/tilesets/mediterranean/Characters/knight/chr_knight_run_downward.png",
 		"attack_up_sheet": "res://assets/tilesets/mediterranean/Characters/knight/chr_knight_attack_back.png",
 		"attack_down_sheet": "res://assets/tilesets/mediterranean/Characters/knight/chr_knight_attack.png",
 		"death_up_sheet": "res://assets/tilesets/mediterranean/Characters/knight/chr_knight_deploy_back.png",
@@ -148,5 +149,8 @@ static func apply_definition_to_unit(unit: Unit, type_id: String) -> void:
 	var death_down_path: String = def.get("death_down_sheet", "")
 	if not death_down_path.is_empty():
 		unit.death_down_sheet = load(death_down_path)
+	var gather_path: String = def.get("gather_sheet", "")
+	if not gather_path.is_empty():
+		unit.gather_sheet = load(gather_path)
 
 	unit.rebuild_visuals()

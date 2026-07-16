@@ -4,6 +4,7 @@
 [ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/builder/chr_builder_idle.png" id="2_idle"]
 [ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/builder/chr_builder_run_upward.png" id="3_walk_up"]
 [ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/builder/chr_builder_run_downward.png" id="4_walk_down"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/builder/chr_builder_afk.png" id="5_gather"]
 
 [node name="UnitBuilder" instance=ExtResource("1_base")]
 move_speed = 88.0
@@ -13,3 +14,4 @@ build_power = 1.0
 idle_sheet = ExtResource("2_idle")
 walk_up_sheet = ExtResource("3_walk_up")
 walk_down_sheet = ExtResource("4_walk_down")
+gather_sheet = ExtResource("5_gather")
