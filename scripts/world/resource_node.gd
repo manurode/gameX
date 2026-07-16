@@ -17,6 +17,7 @@ const AMOUNT_BAR_SCRIPT := preload("res://scripts/world/resource_amount_bar.gd")
 
 var pick_radius: float = PICK_RADIUS
 var _sprites: Array[Sprite2D] = []
+var _work_anchors: Array[Vector2] = []
 var _amount_bar: Node2D = null
 var _selection_indicator: Line2D = null
 
@@ -79,6 +80,23 @@ func setup_crop_field(
 	_setup_selection_indicator()
 
 
+## Invisible food source bound to a mill's painted farm plot (no yellow wheat tiles).
+func setup_mill_farm_zone(center_pos: Vector2, half_size: Vector2) -> void:
+	resource_kind = ResourceKind.FOOD
+	amount_remaining = 0
+	_initial_amount = 0
+	is_infinite = true
+	global_position = center_pos
+	pick_radius = maxf(half_size.x, half_size.y) * 1.15
+	_work_anchors = [
+		Vector2(-half_size.x * 0.55, half_size.y * 0.1),
+		Vector2(0.0, half_size.y * 0.25),
+		Vector2(half_size.x * 0.55, half_size.y * 0.1),
+	]
+	_ensure_amount_bar()
+	_setup_selection_indicator()
+
+
 func _add_sprite(texture: Texture2D, local_pos: Vector2, sprite_offset: Vector2, scale_factor: float = 1.0) -> void:
 	var sprite := Sprite2D.new()
 	sprite.texture = texture
@@ -112,14 +130,18 @@ func _setup_selection_indicator() -> void:
 
 	var radius_x := 40.0
 	var radius_y := 18.0
-	var sprites := get_occlusion_sprites()
-	if not sprites.is_empty():
-		var max_half_w := 0.0
-		for sprite in sprites:
-			var size := sprite.texture.get_size() * sprite.scale.abs()
-			max_half_w = maxf(max_half_w, size.x * 0.38)
-		radius_x = clampf(max_half_w, 28.0, 140.0)
-		radius_y = radius_x * 0.45
+	if not _work_anchors.is_empty():
+		radius_x = clampf(pick_radius, 28.0, 90.0)
+		radius_y = radius_x * 0.55
+	else:
+		var sprites := get_occlusion_sprites()
+		if not sprites.is_empty():
+			var max_half_w := 0.0
+			for sprite in sprites:
+				var size := sprite.texture.get_size() * sprite.scale.abs()
+				max_half_w = maxf(max_half_w, size.x * 0.38)
+			radius_x = clampf(max_half_w, 28.0, 140.0)
+			radius_y = radius_x * 0.45
 
 	var points := PackedVector2Array()
 	const SEGMENTS := 48
@@ -147,6 +169,16 @@ func get_initial_amount() -> int:
 
 
 func get_work_position(from_position: Vector2) -> Vector2:
+	if not _work_anchors.is_empty():
+		var best_anchor := to_global(_work_anchors[0])
+		var best_anchor_dist := from_position.distance_squared_to(best_anchor)
+		for i in range(1, _work_anchors.size()):
+			var anchor_pos := to_global(_work_anchors[i])
+			var anchor_dist := from_position.distance_squared_to(anchor_pos)
+			if anchor_dist < best_anchor_dist:
+				best_anchor_dist = anchor_dist
+				best_anchor = anchor_pos
+		return best_anchor
 	if _sprites.is_empty():
 		return global_position
 	var best_pos := to_global(_sprites[0].position + _sprites[0].offset)
@@ -179,6 +211,14 @@ func get_amount_bar_offset() -> Vector2:
 
 
 func contains_point(world_point: Vector2) -> bool:
+	if not _work_anchors.is_empty():
+		var local := to_local(world_point)
+		var rx := maxf(pick_radius, 1.0)
+		var ry := rx * 0.55
+		var nx := local.x / rx
+		var ny := local.y / ry
+		return nx * nx + ny * ny <= 1.0
+
 	var sprites := get_occlusion_sprites()
 	if sprites.is_empty():
 		return global_position.distance_to(world_point) <= pick_radius

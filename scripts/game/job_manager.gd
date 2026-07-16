@@ -458,10 +458,15 @@ func _find_best_gather_building_for_villager(villager: Unit) -> Building:
 
 
 func _building_covers_resource(building: Building, resource_node: ResourceNode) -> bool:
-	if _ground_layer == null:
+	if resource_node == null or not is_instance_valid(resource_node):
 		return false
 	var gather_type: String = BuildingDatabase.get_gather_type(building.building_type_id)
 	if gather_type != resource_node.get_resource_key():
+		return false
+	# Mills only cover their own integrated farm plot.
+	if BuildingDatabase.spawns_gather_source(building.building_type_id):
+		return _get_mill_farm_node(building) == resource_node
+	if _ground_layer == null:
 		return false
 	var def := BuildingDatabase.get_definition(building.building_type_id)
 	var radius_cells: int = def.get("gather_radius_cells", 3)
@@ -470,9 +475,28 @@ func _building_covers_resource(building: Building, resource_node: ResourceNode) 
 	return Vector2(cell - node_cell).length() <= float(radius_cells)
 
 
+func _get_mill_farm_node(building: Building) -> ResourceNode:
+	if building == null or not building.has_meta("mill_wheat_node"):
+		return null
+	var node = building.get_meta("mill_wheat_node")
+	if node is ResourceNode and is_instance_valid(node):
+		return node
+	return null
+
+
 func _find_nearest_resource_node(building: Building) -> ResourceNode:
 	var gather_type: String = BuildingDatabase.get_gather_type(building.building_type_id)
-	if gather_type.is_empty() or _ground_layer == null:
+	if gather_type.is_empty():
+		return null
+
+	# Food from a mill is only gathered on that mill's farm zone.
+	if BuildingDatabase.spawns_gather_source(building.building_type_id):
+		var farm := _get_mill_farm_node(building)
+		if farm != null and farm.has_resources():
+			return farm
+		return null
+
+	if _ground_layer == null:
 		return null
 
 	var def := BuildingDatabase.get_definition(building.building_type_id)

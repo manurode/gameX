@@ -14,19 +14,15 @@ const HILL_PATHS: Array[String] = [
 	"res://assets/tilesets/mediterranean/Decor/mountain_b.png",
 	"res://assets/tilesets/mediterranean/Decor/mountain_c.png",
 ]
-const WHEAT_PATHS: Array[String] = [
-	"res://assets/tilesets/mediterranean/Decor/wheat_a.png",
-	"res://assets/tilesets/mediterranean/Decor/wheat_b.png",
-]
 const FOREST_SLOW_MULTIPLIER := 0.62
 const FOREST_SLOW_RADIUS := 220.0
 const FOREST_BLOCK_HALF := Vector2(180.0, 110.0)
 const FOREST_PICK_RADIUS := 200.0
 const MOUNTAIN_PICK_RADIUS := 280.0
 const MOUNTAIN_BLOCK_HALF := Vector2(260.0, 160.0)
-const MILL_WHEAT_COLUMNS := 3
-const MILL_WHEAT_ROWS := 2
-const MILL_WHEAT_OFFSET := Vector2(0.0, 32.0)
+## Farm plot is painted into mill.png; gather zone sits on that front plot.
+const MILL_FARM_OFFSET := Vector2(0.0, 22.0)
+const MILL_FARM_HALF_SIZE := Vector2(44.0, 26.0)
 var _ground_layer: TileMapLayer
 var _entity_parent: Node2D
 var _obstacles: Array[TerrainObstacle] = []
@@ -60,13 +56,12 @@ func spawn_mill_wheat_for_building(building: Building) -> ResourceNode:
 		if existing is ResourceNode and is_instance_valid(existing):
 			return existing
 
-	var textures: Array[Texture2D] = []
-	for path in WHEAT_PATHS:
-		textures.append(load(path))
-
-	var world_pos := building.get_base_center() + MILL_WHEAT_OFFSET
+	var def := BuildingDatabase.get_definition(building.building_type_id)
+	var farm_offset: Vector2 = def.get("farm_offset", MILL_FARM_OFFSET)
+	var farm_half: Vector2 = def.get("farm_half_size", MILL_FARM_HALF_SIZE)
+	var world_pos := building.global_position + farm_offset
 	var node := ResourceNode.new()
-	node.setup_crop_field(world_pos, textures, MILL_WHEAT_COLUMNS, MILL_WHEAT_ROWS)
+	node.setup_mill_farm_zone(world_pos, farm_half)
 	_entity_parent.add_child(node)
 	_resource_nodes.append(node)
 	building.set_meta("mill_wheat_node", node)
