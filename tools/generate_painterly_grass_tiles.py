@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Generate painterly isometric grass tiles from AI/forest ground textures.
 
-Samples rich meadow textures into 256x128 iso diamonds. All variants share a
-soft edge band (same mean + light grain) so mixed placement hides the grid.
+Samples rich meadow textures into 256x128 iso diamonds. Variants are
+tone-matched (same mean RGB) so mixed placement reads as continuous grass
+without a flat shared edge band (those bands showed up as an olive grid).
+
 Creates 12 floor variants + grass_press, then bakes *_field.png.
 """
 
@@ -22,10 +24,12 @@ REFS = ROOT / "tools" / "grass_refs"
 PREVIEW = ROOT / "tools" / "seam_preview"
 
 W, H = 256, 128
-EDGE_SOFT = 16
-RIM = 12
+# Only neutralize a thin bevel / filter fringe — NOT a wide flat rim.
+RIM = 4
 EXTRUDE_PX = 1
 SPECKLE_CHROMA = 45.0
+# Keep loud accents a few px inside the silhouette so they aren't sheared.
+ACCENT_MARGIN = 5
 
 FLOOR_STEMS = [f"grass_{i:02d}" for i in range(12)]
 PRESS_STEM = "grass_press"
@@ -137,7 +141,6 @@ def paint_tile(
 	mask: np.ndarray,
 	stem: str,
 	sources: list[np.ndarray],
-	shared_edge: np.ndarray,
 	press: bool = False,
 ) -> np.ndarray:
 	rng = np.random.default_rng(_hash_seed(stem, 11))
@@ -160,22 +163,10 @@ def paint_tile(
 	if press:
 		rgb = rgb * 0.78 + np.array([48.0, 68.0, 30.0], dtype=np.float32) * 0.22
 
-	# Soft edge unification — critical for hiding the iso grid
 	dist = ndimage.distance_transform_edt(opaque)
-	edge = opaque & (dist <= float(EDGE_SOFT))
-	if edge.any():
-		fine = value_noise((H, W), 5, rng)
-		strength = np.clip(1.0 - (dist - 1.0) / float(EDGE_SOFT), 0.0, 1.0)
-		# Stronger near silhouette; keep faint grain so edges aren't a flat rim
-		strength = strength ** 1.35
-		target = shared_edge[None, None, :] + (fine - 0.5)[..., None] * np.array([8.0, 10.0, 5.0])
-		s = strength[..., None]
-		# Pull edges hard toward shared band (0.88–0.96)
-		pull = 0.90 + 0.06 * (dist <= 4)[..., None].astype(np.float32)
-		rgb[edge] = rgb[edge] * (1.0 - s[edge] * pull[edge]) + target[edge] * (s[edge] * pull[edge])
 
-	# Keep micro flower accents only in deep interior (won't break seams)
-	interior = opaque & (dist > EDGE_SOFT + 2)
+	# Micro accents stay a few px inside so bright dots aren't sheared at seams.
+	interior = opaque & (dist > float(ACCENT_MARGIN))
 	if interior.any() and not press:
 		ys, xs = np.where(interior)
 		n = min(10, len(ys))
@@ -199,34 +190,28 @@ def paint_tile(
 
 
 def flatten_bevel_rim(image: np.ndarray, rim: int = RIM) -> np.ndarray:
+	"""Luminance-only rim fix — keeps texture so we don't paint a flat olive band."""
 	out = image.copy()
 	opaque = out[:, :, 3] >= 128
 	dist = ndimage.distance_transform_edt(opaque)
-	interior = opaque & (dist > rim)
+	interior = opaque & (dist > rim + 2)
 	if not interior.any():
 		return out
-	body_mean = out[interior, :3].mean(0)
-	chroma = np.abs(out[:, :, :3] - body_mean).sum(axis=2)
-	body = interior & (chroma < SPECKLE_CHROMA)
-	if not body.any():
-		body = interior
-	body_mean = out[body, :3].mean(0)
-	target_lum = float(0.299 * body_mean[0] + 0.587 * body_mean[1] + 0.114 * body_mean[2])
-
-	ys, xs = np.where(opaque & (dist <= rim))
-	for y, x in zip(ys, xs):
-		color = out[y, x, :3]
-		if float(np.abs(color - body_mean).sum()) >= SPECKLE_CHROMA:
-			continue
-		lum = float(0.299 * color[0] + 0.587 * color[1] + 0.114 * color[2])
-		if lum < 1.0:
-			continue
-		scale = float(np.clip(target_lum / lum, 0.88, 1.18))
-		edge_dist = float(dist[y, x])
-		strength = float(np.clip(1.0 - (edge_dist - 1.0) / float(rim), 0.0, 1.0))
-		if edge_dist <= 6.0:
-			strength = max(strength, 0.97)
-		out[y, x, :3] = np.clip(color * (1.0 + (scale - 1.0) * strength), 0, 255)
+	body = out[interior, :3]
+	target_lum = float(0.299 * body[:, 0].mean() + 0.587 * body[:, 1].mean() + 0.114 * body[:, 2].mean())
+	lum = 0.299 * out[:, :, 0] + 0.587 * out[:, :, 1] + 0.114 * out[:, :, 2]
+	rim_mask = opaque & (dist <= rim)
+	strength = np.clip(1.0 - (dist - 1.0) / float(rim), 0.0, 1.0)
+	strength = np.where(dist <= 1.5, np.maximum(strength, 0.95), strength)
+	with np.errstate(divide="ignore", invalid="ignore"):
+		scale = np.where(lum > 1.0, np.clip(target_lum / lum, 0.85, 1.2), 1.0)
+	mixed = 1.0 + (scale - 1.0) * strength
+	for c in range(3):
+		out[:, :, c] = np.where(rim_mask, np.clip(out[:, :, c] * mixed, 0, 255), out[:, :, c])
+	# Soften only the outermost pixel toward local blur (anti AA bright fringe).
+	outer = opaque & (dist <= 1.5)
+	blur = np.stack([ndimage.gaussian_filter(out[:, :, c], 1.0) for c in range(3)], axis=-1)
+	out[:, :, :3] = np.where(outer[..., None], out[:, :, :3] * 0.55 + blur * 0.45, out[:, :, :3])
 	return out
 
 
@@ -298,66 +283,24 @@ def write_preview(tiles: list[np.ndarray], path: Path, cols: int = 4, rows: int 
 	print(f"Wrote preview {path}")
 
 
-def unify_edge_bands(tiles: list[np.ndarray], edge: int = EDGE_SOFT) -> list[np.ndarray]:
-	"""Force every tile's silhouette ring toward the same soft band."""
-	ref = tiles[0]
-	opaque = ref[:, :, 3] >= 128
-	dist = ndimage.distance_transform_edt(opaque)
-	interior = opaque & (dist > edge)
-	body_mean = ref[interior, :3].mean(0)
-	fine = ndimage.gaussian_filter(ref[:, :, :3], sigma=1.2)
-	grain = fine - fine[interior].mean(0)
-	master_rgb = body_mean + grain * 0.12
-	for c in range(3):
-		master_rgb[:, :, c] = ndimage.gaussian_filter(master_rgb[:, :, c], sigma=1.5)
-	master_rgb = body_mean * 0.75 + master_rgb * 0.25
-
-	out_tiles: list[np.ndarray] = []
-	for i, tile in enumerate(tiles):
-		out = tile.copy()
-		op = out[:, :, 3] >= 128
-		d = ndimage.distance_transform_edt(op)
-		edge_mask = op & (d <= edge)
-		strength = np.clip(1.0 - (d - 1.0) / float(edge), 0.0, 1.0) ** 1.2
-		strength = np.where(d <= 5, np.maximum(strength, 0.98), strength)
-		s = strength[..., None]
-		out[:, :, :3] = np.where(
-			edge_mask[..., None],
-			out[:, :, :3] * (1.0 - s) + master_rgb * s,
-			out[:, :, :3],
-		)
-		op2 = out[:, :, 3] >= 128
-		if ALL_STEMS[i] == PRESS_STEM:
-			out[op2, :3] = np.clip(out[op2, :3] * 0.92, 0, 255)
-		else:
-			out[op2, :3] = np.clip(out[op2, :3] + (body_mean - out[op2, :3].mean(0)), 0, 255)
-		out_tiles.append(extrude_rgb(out))
-	return out_tiles
-
-
 def main() -> None:
 	mask = load_diamond_mask()
 	sources = load_source_textures()
-	# Shared edge from mean of sources, nudged to target
-	means = [s.reshape(-1, 3).mean(0) for s in sources]
-	shared_edge = (np.mean(means, axis=0) * 0.45 + TARGET_MEAN * 0.55).astype(np.float32)
-	print(f"Shared edge RGB: {shared_edge.round(1)}")
+	print(f"Target mean RGB: {TARGET_MEAN.round(1)}")
 
 	raw_tiles: list[np.ndarray] = []
 	for stem in FLOOR_STEMS:
-		tile = paint_tile(mask, stem, sources, shared_edge, press=False)
+		tile = paint_tile(mask, stem, sources, press=False)
 		tile = mild_sharpen(tile)
 		raw_tiles.append(tile)
-		Image.fromarray(np.clip(tile, 0, 255).astype(np.uint8)).save(TERRAIN / f"{stem}.png")
-		print(f"Wrote {stem}.png")
+		print(f"Painted {stem}")
 
-	press = paint_tile(mask, PRESS_STEM, sources, shared_edge, press=True)
+	press = paint_tile(mask, PRESS_STEM, sources, press=True)
 	press = mild_sharpen(press)
 	raw_tiles.append(press)
-	Image.fromarray(np.clip(press, 0, 255).astype(np.uint8)).save(TERRAIN / f"{PRESS_STEM}.png")
-	print(f"Wrote {PRESS_STEM}.png")
+	print(f"Painted {PRESS_STEM}")
 
-	# Force first tile toward TARGET_MEAN, then match others to it
+	# Tone-match all floor tiles to the same mean — no flat edge band.
 	raw_tiles[0] = color_match(raw_tiles[0], TARGET_MEAN)
 	ref_mean = raw_tiles[0][raw_tiles[0][:, :, 3] >= 128, :3].mean(0)
 
@@ -381,16 +324,9 @@ def main() -> None:
 		baked.append(field)
 		out = TERRAIN / f"{stem}_field.png"
 		Image.fromarray(np.clip(field, 0, 255).astype(np.uint8)).save(out)
+		Image.fromarray(np.clip(field, 0, 255).astype(np.uint8)).save(TERRAIN / f"{stem}.png")
 		mean = field[field[:, :, 3] >= 128, :3].mean(0)
 		print(f"Wrote {out.name} mean={mean.round(1)}")
-
-	baked = unify_edge_bands(baked)
-	for i, stem in enumerate(ALL_STEMS):
-		out = TERRAIN / f"{stem}_field.png"
-		Image.fromarray(np.clip(baked[i], 0, 255).astype(np.uint8)).save(out)
-		Image.fromarray(np.clip(baked[i], 0, 255).astype(np.uint8)).save(TERRAIN / f"{stem}.png")
-		mean = baked[i][baked[i][:, :, 3] >= 128, :3].mean(0)
-		print(f"Unified {out.name} mean={mean.round(1)}")
 
 	write_preview(baked[:12], PREVIEW / "painterly_grass_grid.png")
 	write_preview([baked[0]] * 9, PREVIEW / "painterly_grass_same_tile.png", cols=3, rows=3)
