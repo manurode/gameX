@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Bake seam-fixed grass tiles that keep original speckles/detail.
 
+Legacy helper for grass_a..d. New painterly floor set is produced by
+tools/generate_painterly_grass_tiles.py (grass_00..11 + grass_press).
+
 Removes the dark bevel by blending rim pixels toward the interior mean
 (keeping high-chroma flowers). Does NOT dilate the diamond silhouette —
 dilation created vertical tip bars. Only extrudes RGB under alpha=0 so

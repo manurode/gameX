@@ -31,11 +31,10 @@ const MOUNTAIN_FOOTPRINT: Array[Vector2i] = [
 	Vector2i(3, 0), Vector2i(-3, 0),
 ]
 
+const GRASS_VARIANT_COUNT := 12
 const GRASS_A := 0
-const GRASS_B := 1
-const GRASS_C := 2
-const GRASS_D := 3
-const WATER := 4
+const GRASS_PRESS := 12
+const WATER := 13
 
 var map_size := DEFAULT_MAP_SIZE
 
@@ -103,16 +102,14 @@ func generate(requested_seed: int = 0) -> Dictionary:
 
 
 func _pick_grass_tile(noise: FastNoiseLite, cell: Vector2i) -> int:
-	# Almost all cells use grass_a. Sparse accents only — tone-matched field
-	# textures still show as patches if variants are too common.
-	var value := noise.get_noise_2d(float(cell.x), float(cell.y))
-	if value < -0.78:
-		return GRASS_C
-	if value > 0.80:
-		return GRASS_B
-	if absf(value) < 0.015:
-		return GRASS_D
-	return GRASS_A
+	# Distribute tone-matched painterly variants evenly. Shared edge bands keep
+	# mixed cells from reading as a hard grid; hash breaks stamped repetition.
+	var h := absi(cell.x * 73856093) ^ absi(cell.y * 19349663) ^ absi(cell.x * cell.y * 83492791)
+	var n := noise.get_noise_2d(float(cell.x) * 0.7, float(cell.y) * 0.7)
+	var idx := (h + int(n * 4.0)) % GRASS_VARIANT_COUNT
+	if idx < 0:
+		idx += GRASS_VARIANT_COUNT
+	return idx
 
 
 func _generate_resources(

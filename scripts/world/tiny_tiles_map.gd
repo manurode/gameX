@@ -6,13 +6,13 @@ signal terrain_generated(seed: int)
 
 enum GroundTile {
 	GRASS_A,
-	GRASS_B,
-	GRASS_C,
-	GRASS_D,
 	WATER,
 	MAIN,
 }
 
+## Atlas source IDs: 0..11 floor variants, 12 press, 13 water, 14 main.
+const GRASS_VARIANT_COUNT := 12
+const GRASS_PRESS := 12
 const TILE_SIZE := Vector2i(256, 128)
 
 @export var fixed_seed: int = 0
@@ -42,13 +42,11 @@ func _build_tileset() -> TileSet:
 	tileset.tile_size = TILE_SIZE
 	tileset.tile_layout = TileSet.TILE_LAYOUT_DIAMOND_RIGHT
 
-	# Prefer seam-fixed field textures (original detail, bevel removed). Fall back to raw art.
-	var grass_paths: Array[String] = [
-		_resolve_grass_path("grass_a"),
-		_resolve_grass_path("grass_b"),
-		_resolve_grass_path("grass_c"),
-		_resolve_grass_path("grass_d"),
-	]
+	# Painterly floor variants (tone-matched, shared edge band) + press + water.
+	var grass_paths: Array[String] = []
+	for i in GRASS_VARIANT_COUNT:
+		grass_paths.append(_resolve_grass_path("grass_%02d" % i))
+	grass_paths.append(_resolve_grass_path("grass_press"))
 	var extra_paths: Array[String] = [
 		"res://assets/tilesets/mediterranean/Terrain/water.png",
 		"res://assets/tilesets/mediterranean/Terrain/main.png",
@@ -159,11 +157,11 @@ func press_grass_at(world_pos: Vector2) -> void:
 		return
 
 	var original_source := get_cell_source_id(cell)
-	if original_source == GroundTile.GRASS_D:
+	if original_source == GRASS_PRESS:
 		_pressed_cells[cell] = {"source": original_source, "refs": 1}
 		return
 
-	set_cell(cell, GroundTile.GRASS_D, Vector2i.ZERO)
+	set_cell(cell, GRASS_PRESS, Vector2i.ZERO)
 	_pressed_cells[cell] = {"source": original_source, "refs": 1}
 
 
@@ -177,7 +175,7 @@ func release_grass_at_cell(cell: Vector2i) -> void:
 
 	var original_source: int = _pressed_cells[cell]["source"]
 	_pressed_cells.erase(cell)
-	if original_source != GroundTile.GRASS_D:
+	if original_source != GRASS_PRESS:
 		set_cell(cell, original_source, Vector2i.ZERO)
 
 
