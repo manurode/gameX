@@ -1,8 +1,9 @@
 extends Node2D
 
 const TREE_PATHS: Array[String] = [
-	"res://assets/tilesets/mediterranean/Decor/olive.png",
-	"res://assets/tilesets/mediterranean/Decor/cypress.png",
+	"res://assets/tilesets/mediterranean/Decor/forest_a.png",
+	"res://assets/tilesets/mediterranean/Decor/forest_b.png",
+	"res://assets/tilesets/mediterranean/Decor/forest_c.png",
 ]
 const GOLD_VEIN_PATHS: Array[String] = [
 	"res://assets/tilesets/mediterranean/Decor/rocks.png",
@@ -17,8 +18,9 @@ const WHEAT_PATHS: Array[String] = [
 	"res://assets/tilesets/mediterranean/Decor/wheat_b.png",
 ]
 const FOREST_SLOW_MULTIPLIER := 0.62
-const FOREST_SLOW_RADIUS := 88.0
-const FOREST_BLOCK_HALF := Vector2(52.0, 32.0)
+const FOREST_SLOW_RADIUS := 220.0
+const FOREST_BLOCK_HALF := Vector2(180.0, 110.0)
+const FOREST_PICK_RADIUS := 200.0
 const MOUNTAIN_BLOCK_HALF := Vector2(68.0, 42.0)
 const MILL_WHEAT_COLUMNS := 3
 const MILL_WHEAT_ROWS := 2
@@ -100,6 +102,8 @@ func _spawn_resources(placements: Array[Dictionary]) -> void:
 			else ResourceNode.ResourceKind.GOLD
 		)
 		node.setup(texture, world_pos, resource_kind, placement.get("amount", 100), offset)
+		if kind == "wood":
+			node.pick_radius = FOREST_PICK_RADIUS
 		add_child(node)
 		_resource_nodes.append(node)
 		_spawn_resource_terrain(kind, texture, world_pos, offset)

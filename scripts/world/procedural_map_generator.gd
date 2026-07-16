@@ -6,10 +6,19 @@ const BASE_MAP_AREA := 64 * 64
 const BASE_TOWN_CLEAR_RADIUS := 7.5
 const BASE_CONTENT_CLEAR_RADIUS := 9.0
 const BASE_TERRAIN_FREQUENCY := 0.055
-const BASE_TREE_COUNT := 52
+const BASE_TREE_COUNT := 14
 const BASE_GOLD_COUNT := 18
 const BASE_HILL_COUNT := 34
 const WATER_THRESHOLD := 0.38
+
+## Relative cells occupied by one forest (~15 tiles, irregular diamond).
+const FOREST_FOOTPRINT: Array[Vector2i] = [
+	Vector2i(0, 0),
+	Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
+	Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1),
+	Vector2i(2, 0), Vector2i(-2, 0), Vector2i(0, 2), Vector2i(0, -2),
+	Vector2i(2, 1), Vector2i(-1, 2),
+]
 
 const GRASS_A := 0
 const GRASS_B := 1
@@ -105,8 +114,9 @@ func _generate_resources(
 	var placements: Array[Dictionary] = []
 	_append_random_placements(placements, rng, town_center, water_set, reachable_set, occupied, _scaled_count(BASE_TREE_COUNT), {
 		"kind": "wood",
-		"variant_count": 2,
+		"variant_count": 3,
 		"amount": BalanceConfig.TREE_CAPACITY,
+		"footprint": FOREST_FOOTPRINT,
 	})
 	_append_random_placements(placements, rng, town_center, water_set, reachable_set, occupied, _scaled_count(BASE_GOLD_COUNT), {
 		"kind": "gold",
@@ -144,10 +154,11 @@ func _append_random_placements(
 ) -> void:
 	var placed := 0
 	var attempts := 0
-	var max_attempts := count * 80
+	var footprint: Array = template.get("footprint", [Vector2i.ZERO])
+	var max_attempts := count * (120 if footprint.size() > 1 else 80)
 	while placed < count and attempts < max_attempts:
 		attempts += 1
-		var margin := maxi(1, map_size.x / 16)
+		var margin := maxi(2, map_size.x / 16)
 		var max_x := maxi(margin, map_size.x - margin - 1)
 		var max_y := maxi(margin, map_size.y - margin - 1)
 		var cell := Vector2i(
@@ -156,18 +167,53 @@ func _append_random_placements(
 		)
 		if Vector2(cell - town_center).length() <= _get_content_clear_radius():
 			continue
-		if cell in water_set or cell not in reachable_set or cell in occupied:
-			continue
-		if _has_occupied_neighbor(cell, occupied):
+		if not _can_place_footprint(cell, footprint, water_set, reachable_set, occupied):
 			continue
 
 		var placement := template.duplicate()
 		placement["cell"] = cell
 		placement["variant"] = rng.randi_range(0, int(template.get("variant_count", 1)) - 1)
 		placement.erase("variant_count")
+		placement.erase("footprint")
 		target.append(placement)
-		occupied[cell] = true
+		_mark_footprint(cell, footprint, occupied)
 		placed += 1
+
+
+func _can_place_footprint(
+	origin: Vector2i,
+	footprint: Array,
+	water_set: Dictionary,
+	reachable_set: Dictionary,
+	occupied: Dictionary
+) -> bool:
+	var footprint_set: Dictionary = {}
+	for offset_variant in footprint:
+		var offset: Vector2i = offset_variant
+		var cell := origin + offset
+		footprint_set[cell] = true
+		if not _is_in_bounds(cell):
+			return false
+		if cell in water_set or cell not in reachable_set or cell in occupied:
+			return false
+
+	# Keep a 1-cell buffer against other placements (outside this footprint).
+	for cell_variant in footprint_set.keys():
+		var cell: Vector2i = cell_variant
+		for y in range(cell.y - 1, cell.y + 2):
+			for x in range(cell.x - 1, cell.x + 2):
+				var neighbor := Vector2i(x, y)
+				if neighbor in footprint_set:
+					continue
+				if neighbor in occupied:
+					return false
+	return true
+
+
+func _mark_footprint(origin: Vector2i, footprint: Array, occupied: Dictionary) -> void:
+	for offset_variant in footprint:
+		var offset: Vector2i = offset_variant
+		occupied[origin + offset] = true
 
 
 func _has_occupied_neighbor(cell: Vector2i, occupied: Dictionary) -> bool:

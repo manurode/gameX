@@ -12,6 +12,7 @@ var _initial_amount: int = 100
 
 const PICK_RADIUS := 72.0
 
+var pick_radius: float = PICK_RADIUS
 var _sprites: Array[Sprite2D] = []
 
 
@@ -94,7 +95,7 @@ func get_work_position(from_position: Vector2) -> Vector2:
 
 
 func contains_point(world_point: Vector2) -> bool:
-	return global_position.distance_to(world_point) <= PICK_RADIUS
+	return global_position.distance_to(world_point) <= pick_radius
 
 
 func harvest(amount: int) -> int:

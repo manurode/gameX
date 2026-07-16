@@ -34,7 +34,7 @@ func _test_cycle() -> void:
 
 func _test_balance_data() -> void:
 	assert(BalanceConfig.PHASE_DURATIONS.values().reduce(func(total, value): return total + value, 0.0) == 240.0)
-	assert(BalanceConfig.TREE_CAPACITY == 480)
+	assert(BalanceConfig.TREE_CAPACITY == 2400)
 	assert(BalanceConfig.GOLD_VEIN_CAPACITY / BalanceConfig.SQUAD_GOLD_COST == 22)
 	assert(BuildingDatabase.get_definition("house_small").housing == 5)
 	assert(BuildingDatabase.get_definition("wall").build_time == 3.0)
