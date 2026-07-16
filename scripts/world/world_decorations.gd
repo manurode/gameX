@@ -22,6 +22,7 @@ const FOREST_SLOW_MULTIPLIER := 0.62
 const FOREST_SLOW_RADIUS := 220.0
 const FOREST_BLOCK_HALF := Vector2(180.0, 110.0)
 const FOREST_PICK_RADIUS := 200.0
+const MOUNTAIN_PICK_RADIUS := 280.0
 const MOUNTAIN_BLOCK_HALF := Vector2(260.0, 160.0)
 const MILL_WHEAT_COLUMNS := 3
 const MILL_WHEAT_ROWS := 2
@@ -93,7 +94,9 @@ func _spawn_resources(placements: Array[Dictionary]) -> void:
 		var cell: Vector2i = placement.get("cell", Vector2i.ZERO)
 		var world_pos := _ground_layer.map_to_local(cell)
 
-		var paths := TREE_PATHS if kind == "wood" else GOLD_VEIN_PATHS
+		var paths := _paths_for_kind(kind)
+		if paths.is_empty():
+			continue
 		var variant := clampi(placement.get("variant", 0), 0, paths.size() - 1)
 		var texture: Texture2D = load(paths[variant])
 		if texture == null:
@@ -108,9 +111,24 @@ func _spawn_resources(placements: Array[Dictionary]) -> void:
 		node.setup(texture, world_pos, resource_kind, placement.get("amount", 100), offset)
 		if kind == "wood":
 			node.pick_radius = FOREST_PICK_RADIUS
+		elif kind == "gold_mountain":
+			node.pick_radius = MOUNTAIN_PICK_RADIUS
 		_entity_parent.add_child(node)
 		_resource_nodes.append(node)
 		_spawn_resource_terrain(kind, texture, world_pos, offset)
+
+
+func _paths_for_kind(kind: String) -> Array[String]:
+	match kind:
+		"wood":
+			return TREE_PATHS
+		"gold":
+			return GOLD_VEIN_PATHS
+		"gold_mountain":
+			return HILL_PATHS
+		_:
+			var empty: Array[String] = []
+			return empty
 
 
 func _spawn_resource_terrain(kind: String, texture: Texture2D, world_pos: Vector2, offset: Vector2) -> void:

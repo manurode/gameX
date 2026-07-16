@@ -174,24 +174,23 @@ func _generate_resources(
 		"variant_count": 2,
 		"amount": BalanceConfig.GOLD_VEIN_CAPACITY,
 	})
+	_append_random_placements(placements, rng, town_center, water_set, reachable_set, occupied, _scaled_count(BASE_HILL_COUNT), {
+		"kind": "gold_mountain",
+		"variant_count": 3,
+		"amount": BalanceConfig.GOLD_MOUNTAIN_CAPACITY,
+		"footprint": MOUNTAIN_FOOTPRINT,
+	})
 	return placements
 
 
 func _generate_decorations(
-	rng: RandomNumberGenerator,
-	town_center: Vector2i,
-	water_set: Dictionary,
-	reachable_set: Dictionary,
-	occupied: Dictionary
+	_rng: RandomNumberGenerator,
+	_town_center: Vector2i,
+	_water_set: Dictionary,
+	_reachable_set: Dictionary,
+	_occupied: Dictionary
 ) -> Array[Dictionary]:
-	var placements: Array[Dictionary] = []
-	_append_random_placements(placements, rng, town_center, water_set, reachable_set, occupied, _scaled_count(BASE_HILL_COUNT), {
-		"kind": "hill",
-		"variant_count": 3,
-		"blocks": true,
-		"footprint": MOUNTAIN_FOOTPRINT,
-	})
-	return placements
+	return []
 
 
 func _append_random_placements(

@@ -12,7 +12,6 @@ const WATER_COLOR := Color(0.12, 0.26, 0.42)
 const TREE_COLOR := Color(0.10, 0.24, 0.08)
 const GOLD_COLOR := Color(0.78, 0.62, 0.20)
 const FOOD_COLOR := Color(0.55, 0.72, 0.22)
-const HILL_COLOR := Color(0.38, 0.32, 0.24)
 const PLAYER_UNIT_COLOR := Color(0.45, 0.95, 0.55)
 const CIVILIAN_COLOR := Color(0.85, 0.72, 0.25)
 const ENEMY_COLOR := Color(0.95, 0.28, 0.22)
@@ -187,21 +186,11 @@ func _build_resource_markers() -> void:
 		var cell: Vector2i = placement.get("cell", Vector2i.ZERO)
 		var world_pos := _ground.map_to_local(cell)
 		var color := TREE_COLOR if kind == "wood" else GOLD_COLOR
+		var radius := 2.0 if kind == "gold_mountain" else 1.5
 		_resource_markers.append({
 			"pos": _world_to_minimap(world_pos),
 			"color": color,
-			"radius": 1.5,
-		})
-
-	for placement in _ground.get_decoration_placements():
-		if placement.get("kind", "") != "hill":
-			continue
-		var cell: Vector2i = placement.get("cell", Vector2i.ZERO)
-		var world_pos := _ground.map_to_local(cell)
-		_resource_markers.append({
-			"pos": _world_to_minimap(world_pos),
-			"color": HILL_COLOR,
-			"radius": 2.0,
+			"radius": radius,
 		})
 
 
