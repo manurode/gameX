@@ -14,6 +14,9 @@ const BUILD_HOTKEYS: Dictionary = {
 	KEY_9: "wall",
 }
 
+## Minimum travel along a leg before a mid-drag turn commits a corner.
+const WALL_TURN_MIN_SEGMENTS := 1.0
+
 var build_mode_active: bool = false
 var selected_building_type: String = "house_small"
 var ghost_valid: bool = false
@@ -23,6 +26,8 @@ var _wall_ghost_container: Node2D
 var _wall_ghost_sprites: Array[Sprite2D] = []
 var _wall_dragging: bool = false
 var _wall_drag_start: Vector2 = Vector2.ZERO
+var _wall_corners: Array[Vector2] = []
+var _wall_leg_vertical: int = -1  # -1 unset, 0 = SE (/), 1 = SW (\)
 var _ground_layer: TinyTilesMap
 var _buildings_container: Node2D
 var _resource_manager: ResourceManager
@@ -103,11 +108,13 @@ func _handle_wall_input(event: InputEvent) -> void:
 			var world_pos := _snap_wall_position(_screen_to_world(mouse_event.position))
 			if mouse_event.pressed:
 				_wall_drag_start = world_pos
+				_wall_corners = [world_pos]
+				_wall_leg_vertical = -1
 				_wall_dragging = true
-				_update_wall_preview(_wall_drag_start, world_pos)
+				_update_wall_preview_polyline(world_pos)
 			else:
 				if _wall_dragging:
-					_place_wall_line(_wall_drag_start, world_pos)
+					_place_wall_polyline(world_pos)
 				_stop_wall_drag()
 			get_viewport().set_input_as_handled()
 		elif mouse_event.button_index == MOUSE_BUTTON_RIGHT and mouse_event.pressed:
@@ -118,7 +125,8 @@ func _handle_wall_input(event: InputEvent) -> void:
 
 	if event is InputEventMouseMotion and _wall_dragging:
 		var world_pos := _snap_wall_position(_screen_to_world(event.position))
-		_update_wall_preview(_wall_drag_start, world_pos)
+		_sync_wall_corners_to_mouse(world_pos)
+		_update_wall_preview_polyline(world_pos)
 		get_viewport().set_input_as_handled()
 
 
@@ -133,8 +141,12 @@ func _process(_delta: float) -> void:
 			_ghost_sprite.visible = false
 		else:
 			var world_pos := _snap_wall_position(_screen_to_world(get_viewport().get_mouse_position()))
+			var vertical := _suggest_wall_orientation(world_pos)
 			_ghost_sprite.global_position = world_pos
-			ghost_valid = _is_valid_wall_segment(world_pos, false)
+			_ghost_sprite.texture = WallTexture.get_texture(vertical)
+			if _ghost_sprite.texture != null:
+				_ghost_sprite.offset = Vector2(0.0, -_ghost_sprite.texture.get_height() * 0.5 + 48.0)
+			ghost_valid = _is_valid_wall_segment(world_pos, vertical)
 			_ghost_sprite.modulate = Color(0.4, 0.95, 0.55, 0.65) if ghost_valid else Color(0.95, 0.35, 0.35, 0.55)
 			_ghost_sprite.rotation_degrees = 0.0
 			_ghost_sprite.visible = true
@@ -206,38 +218,144 @@ func _place_single_building(world_pos: Vector2, vertical: bool, charge_resources
 
 	var building: Building = _building_scene.instantiate()
 	building.configure(selected_building_type, Building.BuildingState.CONSTRUCTING, 0.0)
-	if vertical:
-		building.set_wall_vertical(true)
+	if selected_building_type == "wall":
+		building.set_wall_vertical(vertical)
 	_buildings_container.add_child(building)
 	building.global_position = world_pos
+	if selected_building_type == "wall":
+		building.notify_world_placed()
 	if _job_manager != null:
 		_job_manager.alert_nearby_builders(building)
 	return building
 
 
-func _place_wall_line(start_pos: Vector2, end_pos: Vector2) -> void:
+func _place_wall_polyline(end_pos: Vector2) -> void:
 	if not _is_construction_allowed():
 		return
-	var segments := _compute_wall_segments(start_pos, end_pos)
+	var segments := _compute_wall_polyline_segments(end_pos)
 	if segments.is_empty():
 		return
-	if not _can_afford_wall_line(segments.size()):
+
+	var valid_segments: Array[Dictionary] = []
+	var occupied_keys: Dictionary = {}
+	for segment in segments:
+		var key := WallTexture.segment_key(segment["pos"], segment["vertical"])
+		if occupied_keys.has(key):
+			continue
+		if _is_valid_wall_segment(segment["pos"], segment["vertical"], occupied_keys):
+			occupied_keys[key] = true
+			valid_segments.append(segment)
+
+	if valid_segments.is_empty():
 		return
 
-	for segment in segments:
-		if not _is_valid_wall_segment(segment["pos"], segment["vertical"]):
-			return
+	var affordable := _max_affordable_wall_segments(valid_segments.size())
+	if affordable <= 0:
+		return
+	if affordable < valid_segments.size():
+		valid_segments = valid_segments.slice(0, affordable)
 
 	var unit_cost := BuildingDatabase.get_cost("wall")
-	var total_cost := _multiply_cost(unit_cost, segments.size())
+	var total_cost := _multiply_cost(unit_cost, valid_segments.size())
 	if _resource_manager == null or not _resource_manager.spend(total_cost):
 		return
 
-	for segment in segments:
+	for segment in valid_segments:
 		_place_single_building(segment["pos"], segment["vertical"], false)
 
 
-func _compute_wall_segments(start_pos: Vector2, end_pos: Vector2) -> Array[Dictionary]:
+func _sync_wall_corners_to_mouse(mouse_pos: Vector2) -> void:
+	if _wall_corners.is_empty():
+		_wall_corners = [_wall_drag_start]
+
+	var from := _wall_corners[_wall_corners.size() - 1]
+	var delta := mouse_pos - from
+	if delta.length_squared() < 1.0:
+		return
+
+	var desired_vertical := WallTexture.orientation_from_delta(delta)
+	if _wall_leg_vertical < 0:
+		_wall_leg_vertical = 1 if desired_vertical else 0
+		return
+
+	var current_vertical := _wall_leg_vertical == 1
+	if desired_vertical == current_vertical:
+		_trim_wall_corners_beyond(mouse_pos)
+		return
+
+	# Direction changed: commit a corner on the current axis, then start the new leg.
+	var corner := WallTexture.project_to_axis(from, mouse_pos, current_vertical)
+	var min_turn := WallTexture.get_segment_spacing() * WALL_TURN_MIN_SEGMENTS * 0.5
+	if corner.distance_to(from) < min_turn:
+		# Still near the last corner — just switch active orientation.
+		_wall_leg_vertical = 1 if desired_vertical else 0
+		return
+
+	if corner.distance_squared_to(from) > 0.01:
+		_wall_corners.append(corner)
+	_wall_leg_vertical = 1 if desired_vertical else 0
+
+
+func _trim_wall_corners_beyond(mouse_pos: Vector2) -> void:
+	# If the cursor retreats past a committed corner, pop it so the path can reshape.
+	while _wall_corners.size() > 1:
+		var last: Vector2 = _wall_corners[_wall_corners.size() - 1]
+		var prev: Vector2 = _wall_corners[_wall_corners.size() - 2]
+		var leg_delta := last - prev
+		if leg_delta.length_squared() < 0.01:
+			_wall_corners.pop_back()
+			continue
+		var mouse_along := (mouse_pos - prev).dot(leg_delta.normalized())
+		var leg_len := leg_delta.length()
+		if mouse_along < leg_len * 0.5:
+			_wall_corners.pop_back()
+			var new_from: Vector2 = _wall_corners[_wall_corners.size() - 1]
+			var back_delta := mouse_pos - new_from
+			if back_delta.length_squared() > 1.0:
+				_wall_leg_vertical = 1 if WallTexture.orientation_from_delta(back_delta) else 0
+		else:
+			break
+
+
+func _compute_wall_polyline_segments(end_pos: Vector2) -> Array[Dictionary]:
+	var points: Array[Vector2] = []
+	for corner in _wall_corners:
+		points.append(corner)
+	var end := WallTexture.snap_position(end_pos)
+	if points.is_empty():
+		points.append(end)
+	elif points[points.size() - 1].distance_squared_to(end) > 0.01:
+		points.append(end)
+
+	var segments: Array[Dictionary] = []
+	var seen: Dictionary = {}
+	for i in range(points.size() - 1):
+		var leg := _compute_straight_wall_segments(points[i], points[i + 1])
+		for j in leg.size():
+			# Skip the shared corner segment when starting a new leg (already placed by previous).
+			if i > 0 and j == 0:
+				continue
+			var segment: Dictionary = leg[j]
+			var key := WallTexture.segment_key(segment["pos"], segment["vertical"])
+			if seen.has(key):
+				continue
+			seen[key] = true
+			segments.append(segment)
+
+	if segments.is_empty() and not points.is_empty():
+		var vertical := false
+		if _wall_leg_vertical >= 0:
+			vertical = _wall_leg_vertical == 1
+		elif points.size() >= 2:
+			vertical = WallTexture.orientation_from_delta(points[1] - points[0])
+		else:
+			vertical = _suggest_wall_orientation(points[0])
+		segments.append({"pos": points[0], "vertical": vertical})
+
+	return segments
+
+
+func _compute_straight_wall_segments(start_pos: Vector2, end_pos: Vector2) -> Array[Dictionary]:
 	var delta := end_pos - start_pos
 	var vertical := WallTexture.orientation_from_delta(delta)
 	var step := WallTexture.get_segment_step(vertical)
@@ -253,7 +371,7 @@ func _compute_wall_segments(start_pos: Vector2, end_pos: Vector2) -> Array[Dicti
 	var dir := 1.0 if along >= 0.0 else -1.0
 	for i in count:
 		var pos := start + step * float(i) * dir
-		segments.append({"pos": pos, "vertical": vertical})
+		segments.append({"pos": WallTexture.snap_position(pos), "vertical": vertical})
 
 	return segments
 
@@ -262,19 +380,13 @@ func _snap_wall_position(world_pos: Vector2) -> Vector2:
 	return WallTexture.snap_position(world_pos)
 
 
-func _update_wall_preview(start_pos: Vector2, end_pos: Vector2) -> void:
-	var segments := _compute_wall_segments(start_pos, end_pos)
+func _update_wall_preview_polyline(end_pos: Vector2) -> void:
+	var segments := _compute_wall_polyline_segments(end_pos)
 	_ensure_wall_ghost_count(segments.size())
 
-	var line_valid := not segments.is_empty()
-	if line_valid:
-		if not _can_afford_wall_line(segments.size()):
-			line_valid = false
-		else:
-			for segment in segments:
-				if not _is_valid_wall_segment(segment["pos"], segment["vertical"]):
-					line_valid = false
-					break
+	var occupied_keys: Dictionary = {}
+	var any_valid := false
+	var affordable_left := _max_affordable_wall_segments(segments.size())
 
 	for i in segments.size():
 		var segment: Dictionary = segments[i]
@@ -285,12 +397,22 @@ func _update_wall_preview(start_pos: Vector2, end_pos: Vector2) -> void:
 		if ghost.texture != null:
 			ghost.offset = Vector2(0.0, -ghost.texture.get_height() * 0.5 + 48.0)
 		ghost.visible = true
-		ghost.modulate = Color(0.4, 0.95, 0.55, 0.55) if line_valid else Color(0.95, 0.35, 0.35, 0.55)
+
+		var key := WallTexture.segment_key(segment["pos"], segment["vertical"])
+		var segment_valid := false
+		if not occupied_keys.has(key) and affordable_left > 0:
+			segment_valid = _is_valid_wall_segment(segment["pos"], segment["vertical"], occupied_keys)
+			if segment_valid:
+				occupied_keys[key] = true
+				affordable_left -= 1
+				any_valid = true
+
+		ghost.modulate = Color(0.4, 0.95, 0.55, 0.55) if segment_valid else Color(0.95, 0.35, 0.35, 0.45)
 
 	for i in range(segments.size(), _wall_ghost_sprites.size()):
 		_wall_ghost_sprites[i].visible = false
 
-	ghost_valid = line_valid
+	ghost_valid = any_valid
 
 
 func _ensure_wall_ghost_count(count: int) -> void:
@@ -312,11 +434,133 @@ func _clear_wall_ghosts() -> void:
 
 func _stop_wall_drag() -> void:
 	_wall_dragging = false
+	_wall_corners.clear()
+	_wall_leg_vertical = -1
 	_clear_wall_ghosts()
 
 
-func _is_valid_wall_segment(world_pos: Vector2, vertical: bool) -> bool:
-	return _is_valid_placement_at(world_pos, "wall", vertical)
+func _suggest_wall_orientation(world_pos: Vector2) -> bool:
+	## Prefer the orientation that best fills a gap next to existing walls.
+	var snap := WallTexture.snap_position(world_pos)
+	var se_neighbors := 0
+	var sw_neighbors := 0
+	var spacing := WallTexture.get_segment_spacing()
+	var se_step := WallTexture.get_segment_step(false)
+	var sw_step := WallTexture.get_segment_step(true)
+
+	for node in get_tree().get_nodes_in_group("buildings"):
+		if not (node is Building):
+			continue
+		var other := node as Building
+		if other.building_type_id != "wall" or other.building_state == Building.BuildingState.DESTROYED:
+			continue
+		var other_pos := WallTexture.snap_position(other.global_position)
+		var dist := snap.distance_to(other_pos)
+		if dist > spacing * 1.1 or dist < 0.01:
+			continue
+		if other.is_wall_vertical():
+			# Neighboring SW wall — filling with SW continues the run; SE makes a corner.
+			if _is_near_axis(snap - other_pos, sw_step):
+				sw_neighbors += 2
+			else:
+				se_neighbors += 1
+		else:
+			if _is_near_axis(snap - other_pos, se_step):
+				se_neighbors += 2
+			else:
+				sw_neighbors += 1
+
+	if sw_neighbors > se_neighbors:
+		return true
+	if se_neighbors > sw_neighbors:
+		return false
+	return false
+
+
+func _is_near_axis(delta: Vector2, step: Vector2) -> bool:
+	if delta.length_squared() < 0.01 or step.length_squared() < 0.01:
+		return false
+	var axis := step.normalized()
+	var along := absf(delta.dot(axis))
+	var cross := absf(delta.x * axis.y - delta.y * axis.x)
+	return along > cross
+
+
+func _is_valid_wall_segment(
+	world_pos: Vector2,
+	vertical: bool,
+	pending_keys: Dictionary = {}
+) -> bool:
+	if not _is_construction_allowed():
+		return false
+	if _ground_layer == null:
+		return false
+	if _ground_layer.is_water_at(world_pos):
+		return false
+
+	var key := WallTexture.segment_key(world_pos, vertical)
+	if pending_keys.has(key):
+		return false
+
+	var snap := WallTexture.snap_position(world_pos)
+	var spacing := WallTexture.get_segment_spacing()
+	var footprint := WallTexture.footprint(vertical)
+	var half := footprint * 0.35
+	var test_rect := Rect2(snap - half, half * 2.0)
+
+	for node in get_tree().get_nodes_in_group("buildings"):
+		if not (node is Building):
+			continue
+		var other := node as Building
+		if other.building_state == Building.BuildingState.DESTROYED:
+			continue
+
+		if other.building_type_id == "wall":
+			if not _wall_conflicts_with_existing(snap, vertical, other, spacing):
+				continue
+			return false
+
+		# Non-wall buildings: keep a modest footprint overlap check.
+		if test_rect.intersects(other.get_selection_rect(), true):
+			return false
+
+	for node in get_tree().get_nodes_in_group("terrain_obstacles"):
+		if node is TerrainObstacle and (node as TerrainObstacle).blocks_movement:
+			var obstacle := node as TerrainObstacle
+			if test_rect.has_point(obstacle.global_position):
+				return false
+
+	var cost := BuildingDatabase.get_cost("wall")
+	if _resource_manager != null and not _resource_manager.can_afford(cost):
+		return false
+
+	return true
+
+
+func _wall_conflicts_with_existing(
+	snap: Vector2,
+	vertical: bool,
+	other: Building,
+	spacing: float
+) -> bool:
+	var other_pos := WallTexture.snap_position(other.global_position)
+	var other_vertical := other.is_wall_vertical()
+	var dist := snap.distance_to(other_pos)
+
+	# Exact same anchor + same orientation = duplicate segment.
+	if dist < 1.0 and other_vertical == vertical:
+		return true
+
+	# Same orientation too close along the run — overlapping chain pieces.
+	if other_vertical == vertical:
+		if dist < spacing * 0.85 and _is_near_axis(snap - other_pos, WallTexture.get_segment_step(vertical)):
+			return true
+		return false
+
+	# Perpendicular walls: allow corners / T-junctions. Only reject if stacked on the same anchor.
+	if dist < 1.0:
+		return true
+	return false
 
 
 func _is_valid_placement(world_pos: Vector2) -> bool:
@@ -324,6 +568,9 @@ func _is_valid_placement(world_pos: Vector2) -> bool:
 
 
 func _is_valid_placement_at(world_pos: Vector2, type_id: String, vertical: bool) -> bool:
+	if type_id == "wall":
+		return _is_valid_wall_segment(world_pos, vertical)
+
 	if not _is_construction_allowed():
 		return false
 	if _ground_layer == null:
@@ -333,9 +580,7 @@ func _is_valid_placement_at(world_pos: Vector2, type_id: String, vertical: bool)
 
 	var def := BuildingDatabase.get_definition(type_id)
 	var footprint: Vector2 = def.get("footprint", Vector2(70.0, 45.0))
-	if type_id == "wall":
-		footprint = WallTexture.footprint(vertical)
-	var overlap_scale := 0.45 if type_id == "wall" else 0.55
+	var overlap_scale := 0.55
 	var half: Vector2 = footprint * overlap_scale
 	var test_rect := Rect2(world_pos - half, half * 2.0)
 
@@ -378,11 +623,21 @@ func _is_construction_allowed() -> bool:
 	return not (manager is DayNightManager) or (manager as DayNightManager).is_construction_allowed()
 
 
-func _can_afford_wall_line(segment_count: int) -> bool:
-	if segment_count <= 0 or _resource_manager == null:
-		return false
-	var total_cost := _multiply_cost(BuildingDatabase.get_cost("wall"), segment_count)
-	return _resource_manager.can_afford(total_cost)
+func _max_affordable_wall_segments(desired: int) -> int:
+	if desired <= 0 or _resource_manager == null:
+		return 0
+	var unit_cost := BuildingDatabase.get_cost("wall")
+	var wood_cost: int = unit_cost.get("wood", 0)
+	var gold_cost: int = unit_cost.get("gold", 0)
+	var food_cost: int = unit_cost.get("food", 0)
+	var max_by_res := desired
+	if wood_cost > 0:
+		max_by_res = mini(max_by_res, int(_resource_manager.wood / wood_cost))
+	if gold_cost > 0:
+		max_by_res = mini(max_by_res, int(_resource_manager.gold / gold_cost))
+	if food_cost > 0:
+		max_by_res = mini(max_by_res, int(_resource_manager.food / food_cost))
+	return maxi(0, max_by_res)
 
 
 func _has_gather_node_nearby(world_pos: Vector2, type_id: String) -> bool:

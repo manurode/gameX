@@ -10,6 +10,10 @@ const TEXTURE_SW := "res://assets/tilesets/mediterranean/Buildings/wall_sw.png"
 const ISO_STEP := 56.0
 ## Segment anchors every two lattice units. Sprite span ~170px → ~58px overlap for a seamless run.
 const SEGMENT_UNITS := 2
+## Physical / nav thickness so chained segments form a continuous barrier.
+const BLOCK_THICKNESS := 28.0
+## Slight length overlap so adjacent segments leave no walkable gap.
+const BLOCK_LENGTH_FACTOR := 1.08
 
 static var _cache: Dictionary = {}
 
@@ -41,6 +45,10 @@ static func get_segment_step(vertical: bool) -> Vector2:
 	return Vector2(spacing, -spacing * 0.5)
 
 
+static func get_axis_direction(vertical: bool) -> Vector2:
+	return get_segment_step(vertical).normalized()
+
+
 ## vertical=true when the drag follows the backslash (\) axis.
 static func orientation_from_delta(delta: Vector2) -> bool:
 	if delta.length_squared() < 1.0:
@@ -62,14 +70,46 @@ static func snap_position(world_pos: Vector2) -> Vector2:
 	return Vector2(s * (a - b), (s * 0.5) * (a + b))
 
 
-static func footprint(vertical: bool) -> Vector2:
+## Project `to` onto the wall axis that passes through `from`.
+static func project_to_axis(from: Vector2, to: Vector2, vertical: bool) -> Vector2:
+	var step := get_segment_step(vertical)
+	var axis := step.normalized()
+	var along := (to - from).dot(axis)
+	var count := int(round(along / step.length()))
+	return snap_position(from + step * float(count))
+
+
+static func segment_key(world_pos: Vector2, vertical: bool) -> String:
+	var snap := snap_position(world_pos)
+	return "%d:%d:%d" % [roundi(snap.x), roundi(snap.y), 1 if vertical else 0]
+
+
+static func footprint(_vertical: bool) -> Vector2:
 	# Keep overlap checks smaller than spacing so chained segments don't block each other.
-	if vertical:
-		return Vector2(52.0, 44.0)
 	return Vector2(52.0, 44.0)
 
 
-static func pick_half_size(vertical: bool) -> Vector2:
-	if vertical:
-		return Vector2(42.0, 34.0)
+static func pick_half_size(_vertical: bool) -> Vector2:
 	return Vector2(42.0, 34.0)
+
+
+static func get_block_half_length() -> float:
+	return get_segment_spacing() * BLOCK_LENGTH_FACTOR * 0.5
+
+
+static func get_block_half_thickness() -> float:
+	return BLOCK_THICKNESS * 0.5
+
+
+## Oriented quad covering one wall segment (continuous barrier when chained).
+static func get_block_outline(center: Vector2, vertical: bool) -> PackedVector2Array:
+	var axis := get_axis_direction(vertical)
+	var perp := Vector2(-axis.y, axis.x)
+	var half_len := get_block_half_length()
+	var half_thick := get_block_half_thickness()
+	return PackedVector2Array([
+		center - axis * half_len - perp * half_thick,
+		center + axis * half_len - perp * half_thick,
+		center + axis * half_len + perp * half_thick,
+		center - axis * half_len + perp * half_thick,
+	])

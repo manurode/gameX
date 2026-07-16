@@ -15,8 +15,7 @@ const ENTRY_RANGE := 42.0
 const GARRISON_ATTACK_RANGE := 220.0
 const COLLISION_BODY_SHRINK := Vector2(0.84, 0.84)
 const COLLISION_BODY_CENTER_Y := 0.2
-const WALL_COLLISION_SHRINK := Vector2(0.94, 0.48)
-const WALL_COLLISION_CENTER_Y := 0.42
+const WALL_COLLISION_CENTER_Y := 0.15
 
 @export var building_type_id: String = "house_small"
 @export var team_id: int = Team.PLAYER
@@ -104,6 +103,15 @@ func set_wall_vertical(vertical: bool) -> void:
 	_apply_wall_orientation()
 
 
+func is_wall_vertical() -> bool:
+	return _wall_vertical
+
+
+func notify_world_placed() -> void:
+	if building_type_id == "wall" and blocks_navigation:
+		_request_nav_rebuild()
+
+
 func _apply_definition() -> void:
 	_definition = BuildingDatabase.get_definition(building_type_id)
 	if _definition.is_empty():
@@ -189,15 +197,23 @@ func _setup_collision() -> void:
 	shape.size = body_size
 	collision_shape.shape = shape
 	collision_shape.position = get_collision_center() - global_position
-	# Under construction: no physical collision so builders can reach the site
-	set_collision_layer_value(1, building_state == BuildingState.ACTIVE)
+	if building_type_id == "wall":
+		# Align the box with the painted iso diagonal so segments meet end-to-end.
+		collision_shape.rotation = WallTexture.get_axis_direction(_wall_vertical).angle()
+		# Walls block as soon as they are placed (builders approach from outside).
+		set_collision_layer_value(1, building_state != BuildingState.DESTROYED)
+	else:
+		collision_shape.rotation = 0.0
+		# Under construction: no physical collision so builders can reach the site
+		set_collision_layer_value(1, building_state == BuildingState.ACTIVE)
 
 
 func _get_collision_body_size() -> Vector2:
 	if building_type_id == "wall":
+		# Length along the wall axis, thickness across — continuous with neighbors.
 		return Vector2(
-			_footprint.x * WALL_COLLISION_SHRINK.x,
-			_footprint.y * WALL_COLLISION_SHRINK.y
+			WallTexture.get_segment_spacing() * WallTexture.BLOCK_LENGTH_FACTOR,
+			WallTexture.BLOCK_THICKNESS
 		)
 	return Vector2(
 		_footprint.x * COLLISION_BODY_SHRINK.x,
@@ -551,9 +567,10 @@ func get_interaction_center() -> Vector2:
 
 func get_interaction_half_size() -> Vector2:
 	if building_type_id == "wall":
+		# Axis-aligned bounds that cover the oriented block (used for approach points).
 		return Vector2(
-			_footprint.x * WALL_COLLISION_SHRINK.x * 0.5,
-			_footprint.y * WALL_COLLISION_SHRINK.y * 0.5
+			WallTexture.get_block_half_length(),
+			WallTexture.get_block_half_thickness()
 		)
 	return _footprint * 0.42
 
@@ -986,8 +1003,15 @@ func _update_construction_visual() -> void:
 
 
 func get_nav_block_outline() -> PackedVector2Array:
-	if not blocks_navigation or building_state != BuildingState.ACTIVE:
+	if not blocks_navigation or building_state == BuildingState.DESTROYED:
 		return PackedVector2Array()
+	# Walls block pathfinding while under construction so fortifications close gaps early.
+	# Physical collision stays off until ACTIVE so builders can still reach the site.
+	if building_state != BuildingState.ACTIVE and building_type_id != "wall":
+		return PackedVector2Array()
+
+	if building_type_id == "wall":
+		return WallTexture.get_block_outline(get_collision_center(), _wall_vertical)
 
 	var center := get_interaction_center()
 	var half := get_interaction_half_size()
