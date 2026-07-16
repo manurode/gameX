@@ -592,16 +592,38 @@ func _is_valid_wall_segment(
 			return false
 
 	for node in get_tree().get_nodes_in_group("terrain_obstacles"):
-		if node is TerrainObstacle and (node as TerrainObstacle).blocks_movement:
-			var obstacle := node as TerrainObstacle
-			if test_rect.has_point(obstacle.global_position):
-				return false
+		if node is TerrainObstacle and _placement_overlaps_obstacle(snap, test_rect, node as TerrainObstacle):
+			return false
 
 	var cost := BuildingDatabase.get_cost("wall")
 	if _resource_manager != null and not _resource_manager.can_afford(cost):
 		return false
 
 	return true
+
+
+func _placement_overlaps_obstacle(world_pos: Vector2, test_rect: Rect2, obstacle: TerrainObstacle) -> bool:
+	if obstacle == null or not obstacle.blocks_movement:
+		return false
+	var outline := obstacle.get_nav_block_outline()
+	if outline.size() < 3:
+		return test_rect.has_point(obstacle.global_position)
+	if Geometry2D.is_point_in_polygon(world_pos, outline):
+		return true
+	for point in outline:
+		if test_rect.has_point(point):
+			return true
+	# Sample rect corners against the visual ground diamond.
+	var corners := [
+		test_rect.position,
+		test_rect.position + Vector2(test_rect.size.x, 0.0),
+		test_rect.position + test_rect.size,
+		test_rect.position + Vector2(0.0, test_rect.size.y),
+	]
+	for corner in corners:
+		if Geometry2D.is_point_in_polygon(corner, outline):
+			return true
+	return false
 
 
 func _wall_conflicts_with_existing(
@@ -658,10 +680,8 @@ func _is_valid_placement_at(world_pos: Vector2, type_id: String, vertical: bool)
 				return false
 
 	for node in get_tree().get_nodes_in_group("terrain_obstacles"):
-		if node is TerrainObstacle and (node as TerrainObstacle).blocks_movement:
-			var obstacle := node as TerrainObstacle
-			if test_rect.has_point(obstacle.global_position):
-				return false
+		if node is TerrainObstacle and _placement_overlaps_obstacle(world_pos, test_rect, node as TerrainObstacle):
+			return false
 
 	var cost := BuildingDatabase.get_cost(type_id)
 	if _resource_manager != null and not _resource_manager.can_afford(cost):

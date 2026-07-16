@@ -109,7 +109,8 @@ func is_wall_vertical() -> bool:
 
 
 func notify_world_placed() -> void:
-	if building_type_id == "wall" and blocks_navigation:
+	# Only ACTIVE buildings carve nav; unfinished sites stay walkable.
+	if building_state == BuildingState.ACTIVE and blocks_navigation:
 		_request_nav_rebuild()
 
 
@@ -208,20 +209,28 @@ func _wall_base_rotation() -> float:
 func _setup_collision() -> void:
 	if collision_shape == null:
 		return
-	var shape := RectangleShape2D.new()
-	var body_size := _get_collision_body_size()
-	shape.size = body_size
-	collision_shape.shape = shape
-	collision_shape.position = get_collision_center() - global_position
 	if building_type_id == "wall":
+		var shape := RectangleShape2D.new()
+		shape.size = _get_collision_body_size()
+		collision_shape.shape = shape
+		collision_shape.position = get_collision_center() - global_position
 		# Align the box with the painted iso diagonal so segments meet end-to-end.
 		collision_shape.rotation = WallTexture.get_axis_direction(_wall_vertical).angle()
-		# Walls block as soon as they are placed (builders approach from outside).
-		set_collision_layer_value(1, building_state != BuildingState.DESTROYED)
 	else:
+		# Iso diamond matching the visual ground footprint (avoids AABB corner ghosts).
+		var convex := ConvexPolygonShape2D.new()
+		var half := get_interaction_half_size()
+		convex.points = PackedVector2Array([
+			Vector2(0.0, -half.y),
+			Vector2(half.x, 0.0),
+			Vector2(0.0, half.y),
+			Vector2(-half.x, 0.0),
+		])
+		collision_shape.shape = convex
+		collision_shape.position = get_collision_center() - global_position
 		collision_shape.rotation = 0.0
-		# Under construction: no physical collision so builders can reach the site
-		set_collision_layer_value(1, building_state == BuildingState.ACTIVE)
+	# Unfinished buildings stay walkable; collision only once ACTIVE.
+	set_collision_layer_value(1, building_state == BuildingState.ACTIVE)
 
 
 func _get_collision_body_size() -> Vector2:
@@ -1026,9 +1035,8 @@ func _update_construction_visual() -> void:
 func get_nav_block_outline() -> PackedVector2Array:
 	if not blocks_navigation or building_state == BuildingState.DESTROYED:
 		return PackedVector2Array()
-	# Walls block pathfinding while under construction so fortifications close gaps early.
-	# Physical collision stays off until ACTIVE so builders can still reach the site.
-	if building_state != BuildingState.ACTIVE and building_type_id != "wall":
+	# Unfinished buildings are fully walkable (nav + physics) until construction completes.
+	if building_state != BuildingState.ACTIVE:
 		return PackedVector2Array()
 
 	if building_type_id == "wall":
@@ -1037,10 +1045,10 @@ func get_nav_block_outline() -> PackedVector2Array:
 	var center := get_interaction_center()
 	var half := get_interaction_half_size()
 	return PackedVector2Array([
-		center + Vector2(-half.x, -half.y),
-		center + Vector2(half.x, -half.y),
-		center + Vector2(half.x, half.y),
-		center + Vector2(-half.x, half.y),
+		center + Vector2(0.0, -half.y),
+		center + Vector2(half.x, 0.0),
+		center + Vector2(0.0, half.y),
+		center + Vector2(-half.x, 0.0),
 	])
 
 

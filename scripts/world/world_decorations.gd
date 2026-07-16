@@ -19,10 +19,14 @@ const FOREST_SLOW_RADIUS := 260.0
 const FOREST_BLOCK_HALF := Vector2(210.0, 130.0)
 const FOREST_PICK_RADIUS := 240.0
 const FOREST_VISUAL_SCALE := 1.22
-const MOUNTAIN_PICK_RADIUS := 340.0
-const MOUNTAIN_BLOCK_HALF := Vector2(310.0, 190.0)
+const MOUNTAIN_PICK_RADIUS := 220.0
 const MOUNTAIN_VISUAL_SCALE := 1.32
 const GOLD_VEIN_VISUAL_SCALE := 1.15
+## Ground-plane factors: block only the rocky/ore base, not tall sprite AABB corners.
+const MOUNTAIN_GROUND_WIDTH_FACTOR := 0.20
+const MOUNTAIN_GROUND_HEIGHT_FACTOR := 0.10
+const GOLD_GROUND_WIDTH_FACTOR := 0.22
+const GOLD_GROUND_HEIGHT_FACTOR := 0.14
 ## Farm plot is painted into mill.png; gather zone sits on that front plot.
 const MILL_FARM_OFFSET := Vector2(0.0, 22.0)
 const MILL_FARM_HALF_SIZE := Vector2(44.0, 26.0)
@@ -172,13 +176,35 @@ func _spawn_resource_terrain(
 			true,
 			1.0,
 			0.0,
-			MOUNTAIN_BLOCK_HALF,
+			_ground_block_half_for_kind(kind, texture, visual_scale),
 			false,
 			visual_scale
 		)
 	obstacle.add_to_group("terrain_obstacles")
 	_entity_parent.add_child(obstacle)
 	_obstacles.append(obstacle)
+
+
+func _ground_block_half_for_kind(kind: String, texture: Texture2D, visual_scale: float) -> Vector2:
+	if texture == null:
+		return Vector2(40.0, 25.0)
+	var size := texture.get_size() * visual_scale
+	match kind:
+		"gold":
+			return Vector2(
+				size.x * GOLD_GROUND_WIDTH_FACTOR,
+				size.y * GOLD_GROUND_HEIGHT_FACTOR
+			)
+		"gold_mountain":
+			return Vector2(
+				size.x * MOUNTAIN_GROUND_WIDTH_FACTOR,
+				size.y * MOUNTAIN_GROUND_HEIGHT_FACTOR
+			)
+		_:
+			return Vector2(
+				size.x * MOUNTAIN_GROUND_WIDTH_FACTOR,
+				size.y * MOUNTAIN_GROUND_HEIGHT_FACTOR
+			)
 
 
 func _spawn_decorations(placements: Array[Dictionary]) -> void:
@@ -199,7 +225,7 @@ func _spawn_decorations(placements: Array[Dictionary]) -> void:
 			placement.get("blocks", true),
 			1.0,
 			0.0,
-			MOUNTAIN_BLOCK_HALF,
+			_ground_block_half_for_kind("gold_mountain", texture, MOUNTAIN_VISUAL_SCALE),
 			true,
 			MOUNTAIN_VISUAL_SCALE
 		)

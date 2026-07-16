@@ -43,10 +43,9 @@ func setup(
 		_collision_body.collision_layer = 1
 		_collision_body.collision_mask = 0
 		var shape := CollisionShape2D.new()
-		var rect := RectangleShape2D.new()
-		rect.size = nav_block_half_size * 2.0
-		shape.shape = rect
-		shape.position = Vector2(0.0, -nav_block_half_size.y * 0.5)
+		var convex := ConvexPolygonShape2D.new()
+		convex.points = _local_block_diamond()
+		shape.shape = convex
 		_collision_body.add_child(shape)
 		add_child(_collision_body)
 
@@ -77,11 +76,32 @@ func get_nav_block_outline() -> PackedVector2Array:
 	if not blocks_movement:
 		return PackedVector2Array()
 
-	var center := global_position + Vector2(0.0, -nav_block_half_size.y * 0.5)
+	var center := _block_center_world()
+	var half := nav_block_half_size
+	# Isometric diamond matching the ground footprint (not the tall AABB).
+	return PackedVector2Array([
+		center + Vector2(0.0, -half.y),
+		center + Vector2(half.x, 0.0),
+		center + Vector2(0.0, half.y),
+		center + Vector2(-half.x, 0.0),
+	])
+
+
+func _block_center_local() -> Vector2:
+	# Sit the diamond on the sprite base, not up in the peaks.
+	return Vector2(0.0, -nav_block_half_size.y * 0.12)
+
+
+func _block_center_world() -> Vector2:
+	return global_position + _block_center_local()
+
+
+func _local_block_diamond() -> PackedVector2Array:
+	var center := _block_center_local()
 	var half := nav_block_half_size
 	return PackedVector2Array([
-		center + Vector2(-half.x, -half.y),
-		center + Vector2(half.x, -half.y),
-		center + Vector2(half.x, half.y),
-		center + Vector2(-half.x, half.y),
+		center + Vector2(0.0, -half.y),
+		center + Vector2(half.x, 0.0),
+		center + Vector2(0.0, half.y),
+		center + Vector2(-half.x, 0.0),
 	])
