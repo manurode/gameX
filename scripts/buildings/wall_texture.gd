@@ -1,14 +1,15 @@
 class_name WallTexture
 extends RefCounted
 
-const MORTAR := Color(0.26, 0.24, 0.22, 1.0)
-const STONE_LIGHT := Color(0.62, 0.58, 0.52, 1.0)
-const STONE_MID := Color(0.54, 0.50, 0.45, 1.0)
-const STONE_DARK := Color(0.46, 0.42, 0.38, 1.0)
-const CRENEL_LIGHT := Color(0.66, 0.62, 0.56, 1.0)
-const CRENEL_DARK := Color(0.50, 0.46, 0.42, 1.0)
-const SHADOW := Color(0.18, 0.16, 0.14, 0.85)
-const HIGHLIGHT := Color(0.72, 0.68, 0.62, 1.0)
+# Mediterranean coastal palette: cream stucco body, terracotta cap, stone base.
+const MORTAR := Color(0.72, 0.66, 0.58, 1.0)
+const STONE_LIGHT := Color(0.93, 0.90, 0.84, 1.0)
+const STONE_MID := Color(0.88, 0.84, 0.76, 1.0)
+const STONE_DARK := Color(0.78, 0.73, 0.64, 1.0)
+const CRENEL_LIGHT := Color(0.82, 0.42, 0.28, 1.0)
+const CRENEL_DARK := Color(0.70, 0.34, 0.22, 1.0)
+const SHADOW := Color(0.28, 0.24, 0.20, 0.85)
+const HIGHLIGHT := Color(0.97, 0.94, 0.88, 1.0)
 
 static var _cache: Dictionary = {}
 

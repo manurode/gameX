@@ -83,12 +83,14 @@ func generate(requested_seed: int = 0) -> Dictionary:
 
 
 func _pick_grass_tile(noise: FastNoiseLite, cell: Vector2i) -> int:
+	# Keep most cells on the base grass so diamond seams and variant contrast
+	# do not read as a visible grid. Variants only appear as sparse accents.
 	var value := noise.get_noise_2d(float(cell.x), float(cell.y))
-	if value < -0.38:
+	if value < -0.62:
 		return GRASS_C
-	if value > 0.42:
+	if value > 0.68:
 		return GRASS_B
-	if absf(value) < 0.08:
+	if absf(value) < 0.03:
 		return GRASS_D
 	return GRASS_A
 

@@ -1,7 +1,7 @@
 extends Node
 
-const RIPPLE_A_PATH := "res://assets/tilesets/tiny_tiles/Environment/Terrain/Water/env_water_ripple_a.png"
-const RIPPLE_B_PATH := "res://assets/tilesets/tiny_tiles/Environment/Terrain/Water/env_water_ripple_b.png"
+const RIPPLE_A_PATH := "res://assets/tilesets/mediterranean/Terrain/ripple_a.png"
+const RIPPLE_B_PATH := "res://assets/tilesets/mediterranean/Terrain/ripple_b.png"
 
 @export var pulse_strength := 0.4
 @export var pulse_speed := 0.9

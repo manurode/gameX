@@ -44,7 +44,7 @@ const UPGRADE_PATHS: Dictionary = {
 const DEFINITIONS: Dictionary = {
 	"town_center": {
 		"name": "Centro Urbano",
-		"texture": "res://assets/tilesets/tiny_tiles/Environment/Buildings/Castle Small/env_buildings_castle_small.png",
+		"texture": "res://assets/tilesets/mediterranean/Buildings/town_center.png",
 		"wood": 0,
 		"gold": 0,
 		"food": 0,
@@ -60,11 +60,10 @@ const DEFINITIONS: Dictionary = {
 		"is_core": true,
 		"buildable": false,
 		"produces": ["villager"],
-		"tint": Color(0.85, 0.92, 1.0, 1.0),
 	},
 	"house_small": {
 		"name": "Casa",
-		"texture": "res://assets/tilesets/tiny_tiles/Environment/Buildings/House Small/env_buildings_house_small.png",
+		"texture": "res://assets/tilesets/mediterranean/Buildings/house_small.png",
 		"wood": 80,
 		"gold": 0,
 		"food": 0,
@@ -81,7 +80,7 @@ const DEFINITIONS: Dictionary = {
 	},
 	"house_big": {
 		"name": "Casa grande",
-		"texture": "res://assets/tilesets/tiny_tiles/Environment/Buildings/House Big/env_buildings_house_big.png",
+		"texture": "res://assets/tilesets/mediterranean/Buildings/house_big.png",
 		"wood": 90,
 		"gold": 45,
 		"food": 0,
@@ -98,7 +97,7 @@ const DEFINITIONS: Dictionary = {
 	},
 	"lumber_camp": {
 		"name": "Aserradero",
-		"texture": "res://assets/tilesets/tiny_tiles/Environment/Buildings/House Small/env_buildings_house_small.png",
+		"texture": "res://assets/tilesets/mediterranean/Buildings/lumber_camp.png",
 		"wood": 100,
 		"gold": 0,
 		"food": 0,
@@ -115,11 +114,10 @@ const DEFINITIONS: Dictionary = {
 		"gather_radius_cells": 3,
 		"gather_rate": BalanceConfig.WOOD_PER_SECOND,
 		"max_workers": 3,
-		"tint": Color(0.75, 1.0, 0.75, 1.0),
 	},
 	"mill": {
 		"name": "Molino",
-		"texture": "res://assets/tilesets/tiny_tiles/Environment/Buildings/Mill/env_buildings_mill.png",
+		"texture": "res://assets/tilesets/mediterranean/Buildings/mill.png",
 		"wood": 120,
 		"gold": 0,
 		"food": 0,
@@ -140,7 +138,7 @@ const DEFINITIONS: Dictionary = {
 	},
 	"mine": {
 		"name": "Mina",
-		"texture": "res://assets/tilesets/tiny_tiles/Environment/Buildings/Tower/env_buildings_tower.png",
+		"texture": "res://assets/tilesets/mediterranean/Buildings/mine.png",
 		"wood": 100,
 		"gold": 0,
 		"food": 0,
@@ -157,11 +155,10 @@ const DEFINITIONS: Dictionary = {
 		"gather_radius_cells": 3,
 		"gather_rate": BalanceConfig.GOLD_PER_SECOND,
 		"max_workers": 3,
-		"tint": Color(0.85, 0.85, 0.95, 1.0),
 	},
 	"stable": {
 		"name": "Establo",
-		"texture": "res://assets/tilesets/tiny_tiles/Environment/Buildings/Village/env_buildings_village.png",
+		"texture": "res://assets/tilesets/mediterranean/Buildings/stable.png",
 		"wood": 200,
 		"gold": 80,
 		"food": 0,
@@ -178,7 +175,7 @@ const DEFINITIONS: Dictionary = {
 	},
 	"barracks": {
 		"name": "Cuartel",
-		"texture": "res://assets/tilesets/tiny_tiles/Environment/Buildings/Village/env_buildings_village.png",
+		"texture": "res://assets/tilesets/mediterranean/Buildings/barracks.png",
 		"wood": 200,
 		"gold": 80,
 		"food": 0,
@@ -195,7 +192,7 @@ const DEFINITIONS: Dictionary = {
 	},
 	"tower": {
 		"name": "Torre",
-		"texture": "res://assets/tilesets/tiny_tiles/Environment/Buildings/Tower/env_buildings_tower.png",
+		"texture": "res://assets/tilesets/mediterranean/Buildings/tower.png",
 		"wood": 150,
 		"gold": 40,
 		"food": 0,
@@ -212,7 +209,7 @@ const DEFINITIONS: Dictionary = {
 	},
 	"wall": {
 		"name": "Muralla",
-		"texture": "",
+		"texture": "res://assets/tilesets/mediterranean/Buildings/wall.png",
 		"wood": 15,
 		"gold": 0,
 		"food": 0,
@@ -225,11 +222,12 @@ const DEFINITIONS: Dictionary = {
 		"blocks_nav": true,
 		"footprint": Vector2(80.0, 30.0),
 		"pick_half_size": Vector2(50.0, 25.0),
+		# Segment walls stay procedural so lines chain cleanly; palette matches the pack.
 		"procedural": true,
 	},
 	"castle_small": {
 		"name": "Castillo",
-		"texture": "res://assets/tilesets/tiny_tiles/Environment/Buildings/Castle Small/env_buildings_castle_small.png",
+		"texture": "res://assets/tilesets/mediterranean/Buildings/castle_small.png",
 		"wood": 200,
 		"gold": 300,
 		"food": 50,
@@ -245,7 +243,7 @@ const DEFINITIONS: Dictionary = {
 	},
 	"castle_big": {
 		"name": "Castillo grande",
-		"texture": "res://assets/tilesets/tiny_tiles/Environment/Buildings/Castle Big/env_buildings_castle_big.png",
+		"texture": "res://assets/tilesets/mediterranean/Buildings/castle_big.png",
 		"wood": 400,
 		"gold": 500,
 		"food": 100,

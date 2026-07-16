@@ -1,20 +1,20 @@
 extends Node2D
 
 const TREE_PATHS: Array[String] = [
-	"res://assets/tilesets/tiny_tiles/Environment/Terrain/Trees/env_trees_oaks.png",
-	"res://assets/tilesets/tiny_tiles/Environment/Terrain/Trees/env_trees_pines.png",
+	"res://assets/tilesets/mediterranean/Decor/olive.png",
+	"res://assets/tilesets/mediterranean/Decor/cypress.png",
 ]
 const GOLD_VEIN_PATHS: Array[String] = [
-	"res://assets/tilesets/tiny_tiles/Environment/Terrain/Mountains/env_mountains_a.png",
-	"res://assets/tilesets/tiny_tiles/Environment/Terrain/Mountains/env_mountains_b.png",
+	"res://assets/tilesets/mediterranean/Decor/rocks.png",
+	"res://assets/tilesets/mediterranean/Decor/rocks.png",
 ]
 const HILL_PATHS: Array[String] = [
-	"res://assets/tilesets/tiny_tiles/Environment/Terrain/Hills/env_hills_a.png",
-	"res://assets/tilesets/tiny_tiles/Environment/Terrain/Hills/env_hills_b.png",
+	"res://assets/tilesets/mediterranean/Decor/hills_a.png",
+	"res://assets/tilesets/mediterranean/Decor/hills_b.png",
 ]
 const WHEAT_PATHS: Array[String] = [
-	"res://assets/tilesets/tiny_tiles/Environment/Terrain/Wheat/env_wheat_a.png",
-	"res://assets/tilesets/tiny_tiles/Environment/Terrain/Wheat/env_wheat_b.png",
+	"res://assets/tilesets/mediterranean/Decor/wheat_a.png",
+	"res://assets/tilesets/mediterranean/Decor/wheat_b.png",
 ]
 const FOREST_SLOW_MULTIPLIER := 0.62
 const FOREST_SLOW_RADIUS := 88.0

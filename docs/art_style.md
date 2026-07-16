@@ -4,11 +4,14 @@ Visual reference for keeping assets consistent across the project.
 
 ## Pack principal
 
-**Tiny Tiles** by odiurd ([itch.io](https://odiurd.itch.io/tiny-tiles)) — versión Free Pack.
+**Mediterranean Coastal** (`assets/tilesets/mediterranean/`) — pack activo del juego.
 
-- Licencia: uso personal y comercial permitido. No redistribuir el pack.
+- Edificios, personajes, terreno isométrico y decoración mediterránea (estuco blanco, tejados terracota, verdes y agua turquesa)
 - PPU (Pixels Per Unit): **256**
 - Formato: PNG con transparencia
+- Iconos de UI de recursos: aún desde Tiny Tiles (`assets/tilesets/tiny_tiles/UI/`)
+
+Legacy: **Tiny Tiles** by odiurd ([itch.io](https://odiurd.itch.io/tiny-tiles)) — Free Pack, conservado como referencia / UI.
 
 ## Perspectiva
 
@@ -70,9 +73,9 @@ Proyecto: `textures/canvas_textures/default_texture_filter=0` (Linear).
 
 ## Referencias visuales
 
-- Tiny Tiles (pack activo)
+- Mediterranean Coastal (pack activo)
 - Age of Empires II (composición isométrica, profundidad)
-- Moonlighter (pixel suave con sombreado)
+- Tiny Tiles (legacy / iconos UI)
 
 ## Checklist al añadir assets nuevos
 

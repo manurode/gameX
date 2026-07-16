@@ -1,9 +1,9 @@
 [gd_scene format=3 uid="uid://cunitbuilder"]
 
 [ext_resource type="PackedScene" uid="uid://cunit001" path="res://scenes/units/unit.tscn" id="1_base"]
-[ext_resource type="Texture2D" path="res://assets/tilesets/tiny_tiles/Characters/Builder/chr_builder_idle.png" id="2_idle"]
-[ext_resource type="Texture2D" path="res://assets/tilesets/tiny_tiles/Characters/Builder/chr_builder_run_upward.png" id="3_walk_up"]
-[ext_resource type="Texture2D" path="res://assets/tilesets/tiny_tiles/Characters/Builder/chr_builder_run_downward.png" id="4_walk_down"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/builder/chr_builder_idle.png" id="2_idle"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/builder/chr_builder_run_upward.png" id="3_walk_up"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/builder/chr_builder_run_downward.png" id="4_walk_down"]
 
 [node name="UnitBuilder" instance=ExtResource("1_base")]
 move_speed = 88.0

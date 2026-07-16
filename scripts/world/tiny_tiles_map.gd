@@ -42,14 +42,14 @@ func _build_tileset() -> TileSet:
 	tileset.tile_layout = TileSet.TILE_LAYOUT_DIAMOND_RIGHT
 
 	var grass_paths: Array[String] = [
-		"res://assets/tilesets/tiny_tiles/Environment/Terrain/Grass/env_grass_a.png",
-		"res://assets/tilesets/tiny_tiles/Environment/Terrain/Grass/env_grass_b.png",
-		"res://assets/tilesets/tiny_tiles/Environment/Terrain/Grass/env_grass_c.png",
-		"res://assets/tilesets/tiny_tiles/Environment/Terrain/Grass/env_grass_d.png",
+		"res://assets/tilesets/mediterranean/Terrain/grass_a.png",
+		"res://assets/tilesets/mediterranean/Terrain/grass_b.png",
+		"res://assets/tilesets/mediterranean/Terrain/grass_c.png",
+		"res://assets/tilesets/mediterranean/Terrain/grass_d.png",
 	]
 	var extra_paths: Array[String] = [
-		"res://assets/tilesets/tiny_tiles/Environment/Terrain/Main/env_terrain_water.png",
-		"res://assets/tilesets/tiny_tiles/Environment/Terrain/Main/env_terrain_main.png",
+		"res://assets/tilesets/mediterranean/Terrain/water.png",
+		"res://assets/tilesets/mediterranean/Terrain/main.png",
 	]
 
 	var all_paths: Array[String] = []
@@ -63,12 +63,94 @@ func _build_tileset() -> TileSet:
 			continue
 
 		var source := TileSetAtlasSource.new()
-		source.texture = texture
+		# Soften residual diamond seams so the ground reads as a continuous field.
+		source.texture = _make_seamless_ground_texture(texture, path_idx <= GroundTile.GRASS_D)
 		source.texture_region_size = TILE_SIZE
 		source.create_tile(Vector2i.ZERO)
 		tileset.add_source(source, path_idx)
 
 	return tileset
+
+
+func _make_seamless_ground_texture(texture: Texture2D, flatten_edges: bool) -> Texture2D:
+	if not flatten_edges:
+		return texture
+
+	var image := texture.get_image()
+	if image == null:
+		return texture
+	if image.is_compressed():
+		image.decompress()
+	image.convert(Image.FORMAT_RGBA8)
+	_flatten_ground_edge_vignette(image)
+	return ImageTexture.create_from_image(image)
+
+
+func _flatten_ground_edge_vignette(image: Image) -> void:
+	var size := image.get_size()
+	var rim := 6
+	var dist: Array = []
+	dist.resize(size.x * size.y)
+	var queue: Array[Vector2i] = []
+
+	for y in size.y:
+		for x in size.x:
+			var idx := y * size.x + x
+			if image.get_pixel(x, y).a < 0.5:
+				dist[idx] = 0
+				queue.append(Vector2i(x, y))
+			else:
+				dist[idx] = 999
+
+	var head := 0
+	while head < queue.size():
+		var cell: Vector2i = queue[head]
+		head += 1
+		var cell_dist: int = dist[cell.y * size.x + cell.x]
+		if cell_dist >= rim + 1:
+			continue
+		var neighbors: Array[Vector2i] = [
+			Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1),
+		]
+		for offset in neighbors:
+			var next: Vector2i = cell + offset
+			if next.x < 0 or next.y < 0 or next.x >= size.x or next.y >= size.y:
+				continue
+			var next_idx := next.y * size.x + next.x
+			if dist[next_idx] <= cell_dist + 1:
+				continue
+			if image.get_pixel(next.x, next.y).a < 0.5:
+				continue
+			dist[next_idx] = cell_dist + 1
+			queue.append(next)
+
+	var accum := Color(0, 0, 0, 0)
+	var interior_samples := 0
+	for y in size.y:
+		for x in size.x:
+			var color := image.get_pixel(x, y)
+			if color.a < 0.5:
+				continue
+			if dist[y * size.x + x] > rim:
+				accum += color
+				interior_samples += 1
+
+	if interior_samples == 0:
+		return
+
+	var interior := accum / float(interior_samples)
+	for y in size.y:
+		for x in size.x:
+			var color := image.get_pixel(x, y)
+			if color.a < 0.5:
+				continue
+			var edge_dist: int = dist[y * size.x + x]
+			if edge_dist > rim:
+				continue
+			var blend := clampf(1.0 - (float(edge_dist) / float(rim)), 0.0, 1.0) * 0.85
+			var mixed := color.lerp(interior, blend)
+			mixed.a = color.a
+			image.set_pixel(x, y, mixed)
 
 
 func regenerate(seed_override: int = 0) -> void:
