@@ -161,11 +161,34 @@ def build_builder_work() -> None:
     stitch(frames, CHARS / "builder" / "chr_builder_afk.png")
 
 
+def build_enemy() -> None:
+    build_unit_attack(
+        "enemy",
+        ["enemy_pose_windup.png", "enemy_pose_slash.png", "enemy_pose_follow.png"],
+        [0, 1, 1, 1, 2, 2, 3, 3, 0],
+    )
+
+
+def build_villager_work() -> None:
+    idle = idle_frame("villager")
+    foot_y = content_bbox(idle)[3]
+    ref_h = body_height(idle)
+    print(f"villager: body_h={ref_h} foot_y={foot_y}")
+    raise_p = load_pose("villager_pose_raise.png", ref_h, foot_y)
+    strike = load_pose("villager_pose_strike.png", ref_h, foot_y)
+    frames = [idle, raise_p, raise_p, raise_p, strike, strike, strike, raise_p, idle]
+    stitch(frames, CHARS / "villager" / "chr_villager_afk.png")
+
+
 def main() -> None:
     build_knight()
     build_archer()
     if (POSE_DIR / "builder_pose_raise.png").exists():
         build_builder_work()
+    if (POSE_DIR / "enemy_pose_windup.png").exists():
+        build_enemy()
+    if (POSE_DIR / "villager_pose_raise.png").exists():
+        build_villager_work()
     print("Done normalizing attack/work sheets.")
 
 

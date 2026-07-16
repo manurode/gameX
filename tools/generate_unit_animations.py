@@ -761,9 +761,9 @@ def process_unit(unit: str, *, has_attack: bool, has_work: bool, ranged: bool = 
     save(make_walk(back, True), unit_dir / f"chr_{unit}_run_upward.png")
     save(make_walk(back, True), unit_dir / f"chr_{unit}_run_backward.png")
 
-    # Knight/archer attacks are built from dedicated pose sheets
-    # (tools/build_attack_sheets_from_poses.py) — don't overwrite them here.
-    skip_attack = unit in ("knight", "archer")
+    # Knight/archer/enemy attacks and builder/villager work are built from
+    # dedicated pose sheets (tools/build_attack_sheets_from_poses.py).
+    skip_attack = unit in ("knight", "archer", "enemy")
     if has_attack and not skip_attack:
         melee_kind = "claw" if unit == "enemy" else "sword"
         save(
@@ -775,7 +775,7 @@ def process_unit(unit: str, *, has_attack: bool, has_work: bool, ranged: bool = 
             unit_dir / f"chr_{unit}_attack_back.png",
         )
 
-    skip_work = unit == "builder"  # builder work from AI poses when available
+    skip_work = unit in ("builder", "villager")  # work from AI poses when available
     if has_work and not skip_work:
         save(make_work(front, False, tool=tool, unit=unit), unit_dir / f"chr_{unit}_afk.png")
 

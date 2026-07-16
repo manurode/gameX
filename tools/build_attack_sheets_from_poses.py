@@ -23,6 +23,11 @@ def collect_poses() -> None:
         "archer_pose_release.png",
         "builder_pose_raise.png",
         "builder_pose_strike.png",
+        "enemy_pose_windup.png",
+        "enemy_pose_slash.png",
+        "enemy_pose_follow.png",
+        "villager_pose_raise.png",
+        "villager_pose_strike.png",
     ]
     for name in names:
         src = CURSOR / name
