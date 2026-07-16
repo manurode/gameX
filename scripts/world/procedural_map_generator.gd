@@ -8,7 +8,7 @@ const BASE_CONTENT_CLEAR_RADIUS := 9.0
 const BASE_TERRAIN_FREQUENCY := 0.055
 const BASE_TREE_COUNT := 14
 const BASE_GOLD_COUNT := 18
-const BASE_HILL_COUNT := 34
+const BASE_HILL_COUNT := 8
 const WATER_THRESHOLD := 0.38
 
 ## Relative cells occupied by one forest (~15 tiles, irregular diamond).
@@ -18,6 +18,17 @@ const FOREST_FOOTPRINT: Array[Vector2i] = [
 	Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1),
 	Vector2i(2, 0), Vector2i(-2, 0), Vector2i(0, 2), Vector2i(0, -2),
 	Vector2i(2, 1), Vector2i(-1, 2),
+]
+
+## Relative cells occupied by one mountain chain (~23 tiles, elongated ridge).
+const MOUNTAIN_FOOTPRINT: Array[Vector2i] = [
+	Vector2i(0, 0),
+	Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
+	Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1),
+	Vector2i(2, 0), Vector2i(-2, 0), Vector2i(0, 2), Vector2i(0, -2),
+	Vector2i(2, 1), Vector2i(2, -1), Vector2i(-2, 1), Vector2i(-2, -1),
+	Vector2i(1, 2), Vector2i(-1, 2), Vector2i(1, -2), Vector2i(-1, -2),
+	Vector2i(3, 0), Vector2i(-3, 0),
 ]
 
 const GRASS_A := 0
@@ -136,8 +147,9 @@ func _generate_decorations(
 	var placements: Array[Dictionary] = []
 	_append_random_placements(placements, rng, town_center, water_set, reachable_set, occupied, _scaled_count(BASE_HILL_COUNT), {
 		"kind": "hill",
-		"variant_count": 2,
+		"variant_count": 3,
 		"blocks": true,
+		"footprint": MOUNTAIN_FOOTPRINT,
 	})
 	return placements
 

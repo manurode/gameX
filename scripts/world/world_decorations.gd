@@ -10,8 +10,9 @@ const GOLD_VEIN_PATHS: Array[String] = [
 	"res://assets/tilesets/mediterranean/Decor/rocks.png",
 ]
 const HILL_PATHS: Array[String] = [
-	"res://assets/tilesets/mediterranean/Decor/hills_a.png",
-	"res://assets/tilesets/mediterranean/Decor/hills_b.png",
+	"res://assets/tilesets/mediterranean/Decor/mountain_a.png",
+	"res://assets/tilesets/mediterranean/Decor/mountain_b.png",
+	"res://assets/tilesets/mediterranean/Decor/mountain_c.png",
 ]
 const WHEAT_PATHS: Array[String] = [
 	"res://assets/tilesets/mediterranean/Decor/wheat_a.png",
@@ -21,7 +22,7 @@ const FOREST_SLOW_MULTIPLIER := 0.62
 const FOREST_SLOW_RADIUS := 220.0
 const FOREST_BLOCK_HALF := Vector2(180.0, 110.0)
 const FOREST_PICK_RADIUS := 200.0
-const MOUNTAIN_BLOCK_HALF := Vector2(68.0, 42.0)
+const MOUNTAIN_BLOCK_HALF := Vector2(260.0, 160.0)
 const MILL_WHEAT_COLUMNS := 3
 const MILL_WHEAT_ROWS := 2
 const MILL_WHEAT_OFFSET := Vector2(0.0, 32.0)
@@ -161,7 +162,7 @@ func _spawn_decorations(placements: Array[Dictionary]) -> void:
 			placement.get("blocks", true),
 			1.0,
 			0.0,
-			Vector2(55.0, 30.0)
+			MOUNTAIN_BLOCK_HALF
 		)
 		obstacle.add_to_group("terrain_obstacles")
 		_entity_parent.add_child(obstacle)
