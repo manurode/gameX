@@ -605,24 +605,26 @@ func _is_valid_wall_segment(
 func _placement_overlaps_obstacle(world_pos: Vector2, test_rect: Rect2, obstacle: TerrainObstacle) -> bool:
 	if obstacle == null or not obstacle.blocks_movement:
 		return false
-	var outline := obstacle.get_nav_block_outline()
-	if outline.size() < 3:
+	var outlines := obstacle.get_nav_block_outlines()
+	if outlines.is_empty():
 		return test_rect.has_point(obstacle.global_position)
-	if Geometry2D.is_point_in_polygon(world_pos, outline):
-		return true
-	for point in outline:
-		if test_rect.has_point(point):
-			return true
-	# Sample rect corners against the visual ground diamond.
 	var corners := [
 		test_rect.position,
 		test_rect.position + Vector2(test_rect.size.x, 0.0),
 		test_rect.position + test_rect.size,
 		test_rect.position + Vector2(0.0, test_rect.size.y),
 	]
-	for corner in corners:
-		if Geometry2D.is_point_in_polygon(corner, outline):
+	for outline in outlines:
+		if outline.size() < 3:
+			continue
+		if Geometry2D.is_point_in_polygon(world_pos, outline):
 			return true
+		for point in outline:
+			if test_rect.has_point(point):
+				return true
+		for corner in corners:
+			if Geometry2D.is_point_in_polygon(corner, outline):
+				return true
 	return false
 
 

@@ -22,11 +22,12 @@ const FOREST_VISUAL_SCALE := 1.22
 const MOUNTAIN_PICK_RADIUS := 220.0
 const MOUNTAIN_VISUAL_SCALE := 1.32
 const GOLD_VEIN_VISUAL_SCALE := 1.15
-## Ground-plane factors: block only the rocky/ore base, not tall sprite AABB corners.
-const MOUNTAIN_GROUND_WIDTH_FACTOR := 0.20
-const MOUNTAIN_GROUND_HEIGHT_FACTOR := 0.10
-const GOLD_GROUND_WIDTH_FACTOR := 0.22
-const GOLD_GROUND_HEIGHT_FACTOR := 0.14
+## Bottom fraction of the sprite used as solid footprint (peaks stay walkable behind).
+const MOUNTAIN_FOOTPRINT_BAND := 0.55
+const GOLD_FOOTPRINT_BAND := 0.65
+## Fallback diamond if alpha polygon extraction fails.
+const MOUNTAIN_FALLBACK_HALF := Vector2(260.0, 120.0)
+const GOLD_FALLBACK_HALF := Vector2(70.0, 42.0)
 ## Farm plot is painted into mill.png; gather zone sits on that front plot.
 const MILL_FARM_OFFSET := Vector2(0.0, 22.0)
 const MILL_FARM_HALF_SIZE := Vector2(44.0, 26.0)
@@ -169,6 +170,8 @@ func _spawn_resource_terrain(
 			visual_scale
 		)
 	else:
+		var band := GOLD_FOOTPRINT_BAND if kind == "gold" else MOUNTAIN_FOOTPRINT_BAND
+		var fallback := GOLD_FALLBACK_HALF if kind == "gold" else MOUNTAIN_FALLBACK_HALF
 		obstacle.setup(
 			texture,
 			world_pos,
@@ -176,35 +179,14 @@ func _spawn_resource_terrain(
 			true,
 			1.0,
 			0.0,
-			_ground_block_half_for_kind(kind, texture, visual_scale),
+			fallback,
 			false,
-			visual_scale
+			visual_scale,
+			band
 		)
 	obstacle.add_to_group("terrain_obstacles")
 	_entity_parent.add_child(obstacle)
 	_obstacles.append(obstacle)
-
-
-func _ground_block_half_for_kind(kind: String, texture: Texture2D, visual_scale: float) -> Vector2:
-	if texture == null:
-		return Vector2(40.0, 25.0)
-	var size := texture.get_size() * visual_scale
-	match kind:
-		"gold":
-			return Vector2(
-				size.x * GOLD_GROUND_WIDTH_FACTOR,
-				size.y * GOLD_GROUND_HEIGHT_FACTOR
-			)
-		"gold_mountain":
-			return Vector2(
-				size.x * MOUNTAIN_GROUND_WIDTH_FACTOR,
-				size.y * MOUNTAIN_GROUND_HEIGHT_FACTOR
-			)
-		_:
-			return Vector2(
-				size.x * MOUNTAIN_GROUND_WIDTH_FACTOR,
-				size.y * MOUNTAIN_GROUND_HEIGHT_FACTOR
-			)
 
 
 func _spawn_decorations(placements: Array[Dictionary]) -> void:
@@ -225,9 +207,10 @@ func _spawn_decorations(placements: Array[Dictionary]) -> void:
 			placement.get("blocks", true),
 			1.0,
 			0.0,
-			_ground_block_half_for_kind("gold_mountain", texture, MOUNTAIN_VISUAL_SCALE),
+			MOUNTAIN_FALLBACK_HALF,
 			true,
-			MOUNTAIN_VISUAL_SCALE
+			MOUNTAIN_VISUAL_SCALE,
+			MOUNTAIN_FOOTPRINT_BAND
 		)
 		obstacle.add_to_group("terrain_obstacles")
 		_entity_parent.add_child(obstacle)

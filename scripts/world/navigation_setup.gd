@@ -158,11 +158,8 @@ func _get_blocked_cells(cell_rect: Rect2i) -> Dictionary:
 			and obstacle is TerrainObstacle
 			and (obstacle as TerrainObstacle).blocks_movement
 		):
-			_mark_outline_cells(
-				(obstacle as TerrainObstacle).get_nav_block_outline(),
-				cell_rect,
-				blocked
-			)
+			for outline in (obstacle as TerrainObstacle).get_nav_block_outlines():
+				_mark_outline_cells(outline, cell_rect, blocked)
 	for building in _buildings:
 		if is_instance_valid(building) and building is Building:
 			var active_building := building as Building
@@ -458,15 +455,14 @@ func _is_world_point_walkable(world_position: Vector2) -> bool:
 
 	for obstacle in _obstacles:
 		if (
-			is_instance_valid(obstacle)
-			and obstacle is TerrainObstacle
-			and (obstacle as TerrainObstacle).blocks_movement
-			and _is_point_blocked_by_outline(
-				world_position,
-				(obstacle as TerrainObstacle).get_nav_block_outline()
-			)
+			not is_instance_valid(obstacle)
+			or not (obstacle is TerrainObstacle)
+			or not (obstacle as TerrainObstacle).blocks_movement
 		):
-			return false
+			continue
+		for outline in (obstacle as TerrainObstacle).get_nav_block_outlines():
+			if _is_point_blocked_by_outline(world_position, outline):
+				return false
 
 	for building in _buildings:
 		if (
