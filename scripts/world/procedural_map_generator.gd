@@ -31,10 +31,14 @@ const MOUNTAIN_FOOTPRINT: Array[Vector2i] = [
 	Vector2i(3, 0), Vector2i(-3, 0),
 ]
 
-const GRASS_VARIANT_COUNT := 12
-const GRASS_A := 0
-const GRASS_PRESS := 12
-const WATER := 13
+## Wang grass: 2 edge types (dense/soft) × 4 edges → 16 tiles.
+## Source IDs: 0..15 wang grass, 16 press, 17 water, 18 main.
+const GRASS_VARIANT_COUNT := 16
+const EDGE_DENSE := 0
+const EDGE_SOFT := 1
+const GRASS_A := 0 ## all-dense wang tile (N=E=S=W=dense)
+const GRASS_PRESS := 16
+const WATER := 17
 
 var map_size := DEFAULT_MAP_SIZE
 
@@ -54,11 +58,6 @@ func generate(requested_seed: int = 0) -> Dictionary:
 	terrain_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
 	terrain_noise.fractal_octaves = 4
 
-	var detail_noise := FastNoiseLite.new()
-	detail_noise.seed = world_seed ^ 0x5F3759DF
-	detail_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
-	detail_noise.frequency = 0.16
-
 	var town_center_cell := Vector2i(map_size.x / 2, map_size.y / 2)
 	var ground_tiles: Array[int] = []
 	var water_cells: Array[Vector2i] = []
@@ -71,8 +70,8 @@ func generate(requested_seed: int = 0) -> Dictionary:
 			var distance_to_town := Vector2(cell - town_center_cell).length()
 			var water_value := terrain_noise.get_noise_2d(float(x), float(y))
 			var is_water := distance_to_town > _get_town_clear_radius() and water_value > WATER_THRESHOLD
-			var tile := WATER if is_water else _pick_grass_tile(detail_noise, cell)
-			ground_tiles[_cell_index(cell)] = tile
+			# Placeholder grass; Wang codes resolved after water topology is final.
+			ground_tiles[_cell_index(cell)] = WATER if is_water else GRASS_A
 			if is_water:
 				water_cells.append(cell)
 				water_set[cell] = true
@@ -80,6 +79,7 @@ func generate(requested_seed: int = 0) -> Dictionary:
 	_carve_routes_to_edges(town_center_cell, ground_tiles, water_cells, water_set)
 	var reachable_set := _get_reachable_ground(town_center_cell, water_set)
 	_fill_unreachable_ground(ground_tiles, water_cells, water_set, reachable_set)
+	_assign_wang_grass(ground_tiles, water_set, world_seed)
 
 	var occupied: Dictionary = {}
 	var resource_placements := _generate_resources(
@@ -101,15 +101,58 @@ func generate(requested_seed: int = 0) -> Dictionary:
 	}
 
 
-func _pick_grass_tile(noise: FastNoiseLite, cell: Vector2i) -> int:
-	# Distribute tone-matched painterly variants evenly. Shared edge bands keep
-	# mixed cells from reading as a hard grid; hash breaks stamped repetition.
-	var h := absi(cell.x * 73856093) ^ absi(cell.y * 19349663) ^ absi(cell.x * cell.y * 83492791)
-	var n := noise.get_noise_2d(float(cell.x) * 0.7, float(cell.y) * 0.7)
-	var idx := (h + int(n * 4.0)) % GRASS_VARIANT_COUNT
-	if idx < 0:
-		idx += GRASS_VARIANT_COUNT
-	return idx
+func _assign_wang_grass(ground_tiles: Array[int], water_set: Dictionary, world_seed: int) -> void:
+	## Cell terrain (dense/soft) from low-freq noise → organic meadow patches.
+	## Shared edge = SOFT if either touching grass cell is soft (blob expands),
+	## else DENSE. That yields Wang codes whose art crosses the diamond grid.
+	var field_noise := FastNoiseLite.new()
+	field_noise.seed = world_seed ^ 0xA5A5A5A5
+	field_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	field_noise.frequency = 0.07 * (64.0 / float(map_size.x))
+	field_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	field_noise.fractal_octaves = 3
+
+	var cell_types: Array[int] = []
+	cell_types.resize(map_size.x * map_size.y)
+	for y in map_size.y:
+		for x in map_size.x:
+			var cell := Vector2i(x, y)
+			var idx := _cell_index(cell)
+			if cell in water_set:
+				cell_types[idx] = EDGE_DENSE
+				continue
+			cell_types[idx] = (
+				EDGE_SOFT if field_noise.get_noise_2d(float(x), float(y)) >= 0.0 else EDGE_DENSE
+			)
+
+	for y in map_size.y:
+		for x in map_size.x:
+			var cell := Vector2i(x, y)
+			if cell in water_set:
+				continue
+			var self_type := cell_types[_cell_index(cell)]
+			var n := _shared_edge_type(self_type, Vector2i(x, y - 1), cell_types, water_set)
+			var s := _shared_edge_type(self_type, Vector2i(x, y + 1), cell_types, water_set)
+			var w := _shared_edge_type(self_type, Vector2i(x - 1, y), cell_types, water_set)
+			var e := _shared_edge_type(self_type, Vector2i(x + 1, y), cell_types, water_set)
+			ground_tiles[_cell_index(cell)] = _wang_index(n, e, s, w)
+
+
+func _shared_edge_type(
+	self_type: int,
+	neighbor: Vector2i,
+	cell_types: Array[int],
+	water_set: Dictionary
+) -> int:
+	if not _is_in_bounds(neighbor) or neighbor in water_set:
+		return self_type
+	var other := cell_types[_cell_index(neighbor)]
+	# Soft meadow bleeds one edge into dense neighbors (organic blob, not a hard grid).
+	return EDGE_SOFT if (self_type == EDGE_SOFT or other == EDGE_SOFT) else EDGE_DENSE
+
+
+func _wang_index(n: int, e: int, s: int, w: int) -> int:
+	return (n << 3) | (e << 2) | (s << 1) | w
 
 
 func _generate_resources(

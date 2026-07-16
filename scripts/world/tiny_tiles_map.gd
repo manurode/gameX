@@ -10,9 +10,9 @@ enum GroundTile {
 	MAIN,
 }
 
-## Atlas source IDs: 0..11 floor variants, 12 press, 13 water, 14 main.
-const GRASS_VARIANT_COUNT := 12
-const GRASS_PRESS := 12
+## Atlas source IDs: 0..15 Wang grass (NESW edge codes), 16 press, 17 water, 18 main.
+const GRASS_VARIANT_COUNT := 16
+const GRASS_PRESS := 16
 const TILE_SIZE := Vector2i(256, 128)
 
 @export var fixed_seed: int = 0
@@ -42,10 +42,14 @@ func _build_tileset() -> TileSet:
 	tileset.tile_size = TILE_SIZE
 	tileset.tile_layout = TileSet.TILE_LAYOUT_DIAMOND_RIGHT
 
-	# Painterly floor variants (tone-matched, shared edge band) + press + water.
+	# Wang grass: source id = (N<<3)|(E<<2)|(S<<1)|W with dense=0 soft=1.
 	var grass_paths: Array[String] = []
 	for i in GRASS_VARIANT_COUNT:
-		grass_paths.append(_resolve_grass_path("grass_%02d" % i))
+		var n := (i >> 3) & 1
+		var e := (i >> 2) & 1
+		var s := (i >> 1) & 1
+		var w := i & 1
+		grass_paths.append(_resolve_grass_path("grass_w%d%d%d%d" % [n, e, s, w]))
 	grass_paths.append(_resolve_grass_path("grass_press"))
 	var extra_paths: Array[String] = [
 		"res://assets/tilesets/mediterranean/Terrain/water.png",

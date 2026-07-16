@@ -1,11 +1,21 @@
 #!/usr/bin/env python3
-"""Generate painterly isometric grass tiles from AI/forest ground textures.
+"""Generate Wang/blob isometric grass that hides the diamond grid.
 
-Samples rich meadow textures into 256x128 iso diamonds. Variants are
-tone-matched (same mean RGB) so mixed placement reads as continuous grass
-without a flat shared edge band (those bands showed up as an olive grid).
+Goal (like seamless top-down meadows): same-terrain neighbors must look like ONE
+continuous field — no rim/halo per diamond. Different terrains meet as organic
+blobs that cross tile boundaries.
 
-Creates 12 floor variants + grass_press, then bakes *_field.png.
+Method:
+  1. Build TWO shared materials (dense / soft) — identical on every tile.
+  2. Each Wang code is only a soft-mask: where soft meadow sits vs dense grass.
+  3. Mask is pinned to edge codes so neighbors agree on the shared facet, then
+     warped into an organic blob in the interior (never a border frame).
+
+Godot TILE_LAYOUT_DIAMOND_RIGHT edge → diamond facet:
+  N (0,-1) → top-right    (top → right)
+  E (+1,0) → bottom-right (right → bottom)
+  S (0,+1) → bottom-left  (left → bottom)
+  W (-1,0) → top-left     (top → left)
 """
 
 from __future__ import annotations
@@ -24,23 +34,50 @@ REFS = ROOT / "tools" / "grass_refs"
 PREVIEW = ROOT / "tools" / "seam_preview"
 
 W, H = 256, 128
-# Only neutralize a thin bevel / filter fringe — NOT a wide flat rim.
-RIM = 4
-EXTRUDE_PX = 1
-SPECKLE_CHROMA = 45.0
-# Keep loud accents a few px inside the silhouette so they aren't sheared.
-ACCENT_MARGIN = 5
+EXTRUDE_PX = 2
+ACCENT_MARGIN = 10
 
-FLOOR_STEMS = [f"grass_{i:02d}" for i in range(12)]
+DENSE = 0
+SOFT = 1
+
+TOP = (128.0, 0.0)
+RIGHT = (256.0, 64.0)
+BOTTOM = (128.0, 128.0)
+LEFT = (0.0, 64.0)
+
+EDGE_GEOM = {
+	"N": (TOP, RIGHT),
+	"E": (RIGHT, BOTTOM),
+	"S": (LEFT, BOTTOM),
+	"W": (TOP, LEFT),
+}
+EDGE_ORDER = ("N", "E", "S", "W")
+
 PRESS_STEM = "grass_press"
-ALL_STEMS = FLOOR_STEMS + [PRESS_STEM]
-
-# Playable olive mean — matches forest Decor floors, slightly lifted.
 TARGET_MEAN = np.array([92.0, 122.0, 55.0], dtype=np.float32)
+DENSE_TINT = np.array([70.0, 116.0, 40.0], dtype=np.float32)
+SOFT_TINT = np.array([110.0, 140.0, 68.0], dtype=np.float32)
 
 
-def _hash_seed(stem: str, salt: int = 0) -> int:
-	return int(hashlib.md5(f"{stem}:{salt}".encode()).hexdigest()[:8], 16)
+def _hash_seed(*parts: object) -> int:
+	key = ":".join(str(p) for p in parts)
+	return int(hashlib.md5(key.encode()).hexdigest()[:8], 16)
+
+
+def wang_stem(n: int, e: int, s: int, w: int) -> str:
+	return f"grass_w{n}{e}{s}{w}"
+
+
+def wang_index(n: int, e: int, s: int, w: int) -> int:
+	return (n << 3) | (e << 2) | (s << 1) | w
+
+
+def decode_wang(idx: int) -> tuple[int, int, int, int]:
+	return ((idx >> 3) & 1, (idx >> 2) & 1, (idx >> 1) & 1, idx & 1)
+
+
+def all_wang_stems() -> list[str]:
+	return [wang_stem(*decode_wang(i)) for i in range(16)]
 
 
 def load_diamond_mask() -> np.ndarray:
@@ -49,7 +86,6 @@ def load_diamond_mask() -> np.ndarray:
 
 
 def load_source_textures() -> list[np.ndarray]:
-	"""Prefer full-bleed meadow refs; fall back to center-crops of island arts."""
 	names = [
 		"ref_c.png",
 		"ref_d.png",
@@ -64,7 +100,6 @@ def load_source_textures() -> list[np.ndarray]:
 		if not path.exists():
 			continue
 		im = Image.open(path).convert("RGB")
-		# Mild downscale keeps brush feel at tile resolution
 		im = im.resize((768, 768), Image.Resampling.LANCZOS)
 		textures.append(np.array(im).astype(np.float32))
 		print(f"Loaded source {name} -> {im.size}")
@@ -95,9 +130,8 @@ def value_noise(shape: tuple[int, int], cell: int, rng: np.random.Generator) -> 
 
 
 def sample_patch(tex: np.ndarray, rng: np.random.Generator, out_w: int, out_h: int) -> np.ndarray:
-	"""Sample a diamond-sized region with random offset, scale, and mild warp."""
 	th, tw = tex.shape[:2]
-	scale = float(rng.uniform(0.55, 0.95))
+	scale = float(rng.uniform(0.65, 1.05))
 	src_w = int(out_w / scale)
 	src_h = int(out_h / scale)
 	src_w = min(src_w, tw - 4)
@@ -106,8 +140,7 @@ def sample_patch(tex: np.ndarray, rng: np.random.Generator, out_w: int, out_h: i
 	y0 = int(rng.integers(0, max(th - src_h, 1)))
 	patch = tex[y0 : y0 + src_h, x0 : x0 + src_w]
 	pil = Image.fromarray(np.clip(patch, 0, 255).astype(np.uint8), "RGB")
-	# Slight rotation keeps variants from looking stamped
-	angle = float(rng.uniform(-12, 12))
+	angle = float(rng.uniform(-8, 8))
 	pil = pil.rotate(angle, resample=Image.Resampling.BICUBIC, expand=True, fillcolor=(90, 120, 50))
 	pil = pil.resize((out_w, out_h), Image.Resampling.LANCZOS)
 	if rng.random() < 0.5:
@@ -116,13 +149,10 @@ def sample_patch(tex: np.ndarray, rng: np.random.Generator, out_w: int, out_h: i
 
 
 def suppress_large_props(rgb: np.ndarray, mask_opaque: np.ndarray) -> np.ndarray:
-	"""Tone down oversized rocks/bushes that break seamless floor reading."""
 	out = rgb.copy()
-	# Luminance outliers vs local mean → blend toward neighborhood
 	lum = 0.299 * out[:, :, 0] + 0.587 * out[:, :, 1] + 0.114 * out[:, :, 2]
 	smooth = ndimage.gaussian_filter(lum, sigma=3.0)
 	delta = np.abs(lum - smooth)
-	# Strong outliers (big bright rocks / dark bush blobs)
 	hot = mask_opaque & (delta > 28)
 	if not hot.any():
 		return out
@@ -130,92 +160,205 @@ def suppress_large_props(rgb: np.ndarray, mask_opaque: np.ndarray) -> np.ndarray
 		[ndimage.gaussian_filter(out[:, :, c], sigma=2.5) for c in range(3)],
 		axis=-1,
 	)
-	# Soft weight
 	weight = np.clip((delta - 22.0) / 30.0, 0.0, 0.75)
 	w = weight[..., None]
 	out[hot] = out[hot] * (1.0 - w[hot]) + blurred[hot] * w[hot]
 	return out
 
 
-def paint_tile(
-	mask: np.ndarray,
-	stem: str,
-	sources: list[np.ndarray],
-	press: bool = False,
-) -> np.ndarray:
-	rng = np.random.default_rng(_hash_seed(stem, 11))
-	opaque = mask >= 128.0
-	out = np.zeros((H, W, 4), dtype=np.float32)
-	out[:, :, 3] = mask
+def _point_to_segment(
+	px: np.ndarray,
+	py: np.ndarray,
+	ax: float,
+	ay: float,
+	bx: float,
+	by: float,
+) -> tuple[np.ndarray, np.ndarray]:
+	abx, aby = bx - ax, by - ay
+	apx, apy = px - ax, py - ay
+	ab2 = abx * abx + aby * aby
+	t = np.clip((apx * abx + apy * aby) / ab2, 0.0, 1.0)
+	cx = ax + t * abx
+	cy = ay + t * aby
+	dist = np.sqrt((px - cx) ** 2 + (py - cy) ** 2)
+	return dist.astype(np.float32), t.astype(np.float32)
 
-	# Blend 2 source patches for richer variation
+
+def _build_material(
+	sources: list[np.ndarray],
+	kind: int,
+	opaque: np.ndarray,
+) -> np.ndarray:
+	"""One shared fill texture per terrain kind — reused by every Wang tile."""
+	rng = np.random.default_rng(_hash_seed("shared_mat", kind, 42))
 	a = sample_patch(sources[int(rng.integers(0, len(sources)))], rng, W, H)
 	b = sample_patch(sources[int(rng.integers(0, len(sources)))], rng, W, H)
-	mix = value_noise((H, W), 20, rng)[..., None]
+	mix = value_noise((H, W), 16, rng)[..., None]
 	rgb = a * (0.55 + 0.35 * mix) + b * (0.45 - 0.35 * mix)
-
 	rgb = suppress_large_props(rgb, opaque)
-
-	# Fine storybook grain (subtle)
-	grain = (value_noise((H, W), 4, rng) - 0.5) * 12.0
+	grain = (value_noise((H, W), 3, rng) - 0.5) * 9.0
 	rgb += grain[..., None] * np.array([0.7, 1.0, 0.5], dtype=np.float32)
+	tint = SOFT_TINT if kind == SOFT else DENSE_TINT
+	# Dense reads darker/richer; soft reads sunnier — but same family.
+	if kind == DENSE:
+		rgb = rgb * 0.72 + tint * 0.28
+		rgb *= 0.90
+	else:
+		rgb = rgb * 0.68 + tint * 0.32
+		rgb = rgb * 1.06 + np.array([10.0, 8.0, 5.0], dtype=np.float32)
+	rgb = np.clip(rgb, 0, 255).astype(np.float32)
+	# Critical: opposite diamond edges must match so copies of this material
+	# abut without a texture jump (E↔W, N↔S in Godot diamond-right).
+	return make_diamond_self_seamless(rgb, opaque)
+
+
+def _edge_points(edge_name: str, t: float, inset: float) -> tuple[int, int]:
+	(ax, ay), (bx, by) = EDGE_GEOM[edge_name]
+	x = ax + (bx - ax) * t
+	y = ay + (by - ay) * t
+	# Step toward diamond center so we sample opaque texels.
+	cx, cy = 128.0, 64.0
+	vx, vy = cx - x, cy - y
+	norm = max((vx * vx + vy * vy) ** 0.5, 1e-6)
+	x += vx / norm * inset
+	y += vy / norm * inset
+	return int(np.clip(round(x), 0, W - 1)), int(np.clip(round(y), 0, H - 1))
+
+
+def make_diamond_self_seamless(rgb: np.ndarray, opaque: np.ndarray, band: int = 18) -> np.ndarray:
+	"""Force E↔W and N↔S edge strips to agree so the tile self-tiles in iso."""
+	out = rgb.copy()
+	pairs = (("E", "W"), ("N", "S"))
+	ts = np.linspace(0.01, 0.99, 160)
+	# Two passes: first average, then force outer pixels identical.
+	for _pass in range(2):
+		for edge_a, edge_b in pairs:
+			for t in ts:
+				for inset in range(band):
+					# Outer pixels must be identical; deeper band blends gently.
+					if inset <= 3:
+						strength = 1.0
+					else:
+						strength = (1.0 - (inset - 3) / float(band - 3)) ** 1.1
+					xa, ya = _edge_points(edge_a, float(t), float(inset) + 0.8)
+					xb, yb = _edge_points(edge_b, float(t), float(inset) + 0.8)
+					if not opaque[ya, xa] or not opaque[yb, xb]:
+						continue
+					avg = (out[ya, xa] + out[yb, xb]) * 0.5
+					out[ya, xa] = out[ya, xa] * (1.0 - strength) + avg * strength
+					out[yb, xb] = out[yb, xb] * (1.0 - strength) + avg * strength
+	return np.clip(out, 0, 255).astype(np.float32)
+
+
+def wang_soft_mask(codes: tuple[int, int, int, int]) -> np.ndarray:
+	"""Soft-amount field in [0,1]. Edge-pinned, organically blended inside.
+
+	All-dense → 0 everywhere (pure shared dense material → invisible grid).
+	All-soft  → 1 everywhere.
+	Mixed     → organic blob crossing the tile, continuous with neighbors.
+	"""
+	n, e, s, w = codes
+	types = {"N": float(n), "E": float(e), "S": float(s), "W": float(w)}
+	ys, xs = np.mgrid[0:H, 0:W].astype(np.float32)
+
+	dists: dict[str, np.ndarray] = {}
+	for name in EDGE_ORDER:
+		(ax, ay), (bx, by) = EDGE_GEOM[name]
+		d, _t = _point_to_segment(xs, ys, ax, ay, bx, by)
+		dists[name] = d
+
+	# Inverse-distance blend of the four edge constraints.
+	eps = 2.5
+	num = np.zeros((H, W), dtype=np.float32)
+	den = np.zeros((H, W), dtype=np.float32)
+	for name in EDGE_ORDER:
+		wt = 1.0 / np.maximum(dists[name], eps) ** 2
+		num += wt * types[name]
+		den += wt
+	field = num / np.maximum(den, 1e-6)
+
+	uniform = n == e == s == w
+	if not uniform:
+		# Warp into a blob — seeded only by the Wang code so it's stable.
+		rng = np.random.default_rng(_hash_seed("blobwarp", n, e, s, w))
+		warp = value_noise((H, W), 14, rng)
+		warp = ndimage.gaussian_filter(warp, sigma=2.0)
+		# Stronger warp away from edges so seams stay pinned.
+		min_dist = np.minimum(
+			np.minimum(dists["N"], dists["E"]),
+			np.minimum(dists["S"], dists["W"]),
+		)
+		interior = np.clip((min_dist - 6.0) / 28.0, 0.0, 1.0)
+		field = np.clip(field + (warp - 0.5) * 0.55 * interior, 0.0, 1.0)
+		# Soft threshold → crisp but organic meadow boundary (like ref blobs).
+		field = ndimage.gaussian_filter(field, sigma=1.2)
+		lo, hi = 0.38, 0.62
+		field = np.clip((field - lo) / (hi - lo), 0.0, 1.0)
+		field = field * field * (3.0 - 2.0 * field)
+
+	# Pin a thin band on each facet to the exact edge code (neighbor match).
+	pin_px = 5.0
+	for name in EDGE_ORDER:
+		near = dists[name] <= pin_px
+		# Smooth pin: full force at 0, release by pin_px.
+		strength = np.clip(1.0 - dists[name] / pin_px, 0.0, 1.0)
+		field = np.where(near, field * (1.0 - strength) + types[name] * strength, field)
+
+	return field.astype(np.float32)
+
+
+def paint_wang_tile(
+	mask: np.ndarray,
+	codes: tuple[int, int, int, int],
+	materials: dict[int, np.ndarray],
+	press: bool = False,
+) -> np.ndarray:
+	n, e, s, w = codes
+	opaque = mask >= 128.0
+	# 1px overlap between neighboring diamonds kills hairline cracks that read as a grid.
+	opaque_draw = ndimage.binary_dilation(opaque, iterations=1)
+	out = np.zeros((H, W, 4), dtype=np.float32)
+	out[:, :, 3] = np.where(opaque_draw, 255.0, 0.0)
+
+	soft_m = wang_soft_mask(codes)
+	rgb = materials[DENSE] * (1.0 - soft_m[..., None]) + materials[SOFT] * soft_m[..., None]
+	# Fill the dilated ring from nearest opaque texel (same as extrude).
+	if opaque_draw.any() and (~opaque & opaque_draw).any():
+		inds = ndimage.distance_transform_edt(~opaque, return_distances=False, return_indices=True)
+		ring = opaque_draw & ~opaque
+		rgb[ring] = rgb[inds[0][ring], inds[1][ring]]
+
+	# Sparse accents only deep inside, and only on soft meadow (like ref flowers).
+	if not press:
+		rng = np.random.default_rng(_hash_seed("accent", n, e, s, w))
+		dist_in = ndimage.distance_transform_edt(opaque)
+		interior = opaque & (dist_in > float(ACCENT_MARGIN)) & (soft_m > 0.55)
+		if interior.any():
+			ys_i, xs_i = np.where(interior)
+			n_pick = min(8 if (n + e + s + w) >= 2 else 3, len(ys_i))
+			if n_pick > 0:
+				pick = rng.choice(len(ys_i), size=n_pick, replace=False)
+				palette = [
+					np.array([210.0, 95.0, 85.0]),
+					np.array([230.0, 200.0, 80.0]),
+					np.array([180.0, 145.0, 210.0]),
+					np.array([245.0, 240.0, 220.0]),
+				]
+				for idx in pick:
+					y, x = int(ys_i[idx]), int(xs_i[idx])
+					col = palette[int(rng.integers(0, len(palette)))]
+					rgb[y, x] = rgb[y, x] * 0.3 + col * 0.7
 
 	if press:
 		rgb = rgb * 0.78 + np.array([48.0, 68.0, 30.0], dtype=np.float32) * 0.22
-
-	dist = ndimage.distance_transform_edt(opaque)
-
-	# Micro accents stay a few px inside so bright dots aren't sheared at seams.
-	interior = opaque & (dist > float(ACCENT_MARGIN))
-	if interior.any() and not press:
-		ys, xs = np.where(interior)
-		n = min(10, len(ys))
-		pick = rng.choice(len(ys), size=n, replace=False)
-		flower_palette = [
-			np.array([210.0, 95.0, 85.0]),
-			np.array([230.0, 200.0, 80.0]),
-			np.array([180.0, 145.0, 210.0]),
-			np.array([245.0, 240.0, 220.0]),
-		]
-		for idx in pick:
-			y, x = int(ys[idx]), int(xs[idx])
-			col = flower_palette[int(rng.integers(0, len(flower_palette)))]
-			rgb[y, x] = rgb[y, x] * 0.25 + col * 0.75
-			if y + 1 < H and opaque[y + 1, x]:
-				rgb[y + 1, x] = rgb[y + 1, x] * 0.6 + col * 0.4
 
 	out[:, :, :3] = np.clip(rgb, 0, 255)
 	out[~opaque] = 0
 	return out
 
 
-def flatten_bevel_rim(image: np.ndarray, rim: int = RIM) -> np.ndarray:
-	"""Luminance-only rim fix — keeps texture so we don't paint a flat olive band."""
-	out = image.copy()
-	opaque = out[:, :, 3] >= 128
-	dist = ndimage.distance_transform_edt(opaque)
-	interior = opaque & (dist > rim + 2)
-	if not interior.any():
-		return out
-	body = out[interior, :3]
-	target_lum = float(0.299 * body[:, 0].mean() + 0.587 * body[:, 1].mean() + 0.114 * body[:, 2].mean())
-	lum = 0.299 * out[:, :, 0] + 0.587 * out[:, :, 1] + 0.114 * out[:, :, 2]
-	rim_mask = opaque & (dist <= rim)
-	strength = np.clip(1.0 - (dist - 1.0) / float(rim), 0.0, 1.0)
-	strength = np.where(dist <= 1.5, np.maximum(strength, 0.95), strength)
-	with np.errstate(divide="ignore", invalid="ignore"):
-		scale = np.where(lum > 1.0, np.clip(target_lum / lum, 0.85, 1.2), 1.0)
-	mixed = 1.0 + (scale - 1.0) * strength
-	for c in range(3):
-		out[:, :, c] = np.where(rim_mask, np.clip(out[:, :, c] * mixed, 0, 255), out[:, :, c])
-	# Soften only the outermost pixel toward local blur (anti AA bright fringe).
-	outer = opaque & (dist <= 1.5)
-	blur = np.stack([ndimage.gaussian_filter(out[:, :, c], 1.0) for c in range(3)], axis=-1)
-	out[:, :, :3] = np.where(outer[..., None], out[:, :, :3] * 0.55 + blur * 0.45, out[:, :, :3])
-	return out
-
-
 def extrude_rgb(image: np.ndarray, px: int = EXTRUDE_PX) -> np.ndarray:
+	"""Bleed opaque RGB into the transparent fringe so filtering doesn't darken seams."""
 	out = image.copy()
 	h, w = out.shape[:2]
 	opaque = out[:, :, 3] >= 128
@@ -240,28 +383,14 @@ def extrude_rgb(image: np.ndarray, px: int = EXTRUDE_PX) -> np.ndarray:
 	for y, x in zip(*np.where(zone & ~opaque)):
 		oy, ox = nearest[y, x]
 		out[y, x, :3] = out[oy, ox, :3]
-	return out
-
-
-def color_match(image: np.ndarray, ref_mean: np.ndarray) -> np.ndarray:
-	out = image.copy()
-	opaque = out[:, :, 3] >= 128
-	out[opaque, :3] = np.clip(out[opaque, :3] + (ref_mean - out[opaque, :3].mean(0)), 0, 255)
-	return out
-
-
-def bake(image: np.ndarray, ref_mean: np.ndarray | None) -> np.ndarray:
-	out = image if ref_mean is None else color_match(image, ref_mean)
-	out = flatten_bevel_rim(out)
-	out = extrude_rgb(out)
+		# Keep alpha 0 outside — extrude is only for filter sampling.
 	return out
 
 
 def mild_sharpen(image: np.ndarray) -> np.ndarray:
-	"""Recover brush detail after sampling without reintroducing edge bevel."""
 	pil = Image.fromarray(np.clip(image, 0, 255).astype(np.uint8), "RGBA")
 	rgb = pil.convert("RGB").filter(
-		ImageFilter.UnsharpMask(radius=1.2, percent=85, threshold=2)
+		ImageFilter.UnsharpMask(radius=1.0, percent=60, threshold=3)
 	)
 	arr = np.array(pil).astype(np.float32)
 	arr[:, :, :3] = np.array(rgb).astype(np.float32)
@@ -269,7 +398,7 @@ def mild_sharpen(image: np.ndarray) -> np.ndarray:
 	return arr
 
 
-def write_preview(tiles: list[np.ndarray], path: Path, cols: int = 4, rows: int = 3) -> None:
+def write_iso_preview(tiles: list[np.ndarray], path: Path, cols: int, rows: int) -> None:
 	pad_x, pad_y = 128, 64
 	canvas = Image.new("RGBA", (cols * pad_x + W, rows * pad_y + H), (22, 26, 20, 255))
 	for i, tile in enumerate(tiles[: cols * rows]):
@@ -283,54 +412,163 @@ def write_preview(tiles: list[np.ndarray], path: Path, cols: int = 4, rows: int 
 	print(f"Wrote preview {path}")
 
 
+def _blit_iso(canvas: Image.Image, tile: np.ndarray, cell: tuple[int, int], origin: tuple[int, int]) -> None:
+	cx, cy = cell
+	px = origin[0] + (cx - cy) * 128
+	py = origin[1] + (cx + cy) * 64
+	spr = Image.fromarray(np.clip(tile, 0, 255).astype(np.uint8), "RGBA")
+	canvas.alpha_composite(spr, (px, py))
+
+
+def write_wang_match_preview(baked_by_idx: list[np.ndarray], path: Path) -> None:
+	"""Left: pure dense field (must show NO grid). Right: soft blob into dense."""
+	cw, ch = 1100, 560
+	canvas = Image.new("RGBA", (cw, ch), (22, 26, 20, 255))
+
+	dense = baked_by_idx[wang_index(DENSE, DENSE, DENSE, DENSE)]
+	soft = baked_by_idx[wang_index(SOFT, SOFT, SOFT, SOFT)]
+
+	# --- Pure dense 4x4: if the grid is visible here, art is wrong ---
+	origin_a = (200, 40)
+	for y in range(4):
+		for x in range(4):
+			_blit_iso(canvas, dense, (x, y), origin_a)
+
+	# --- Soft meadow patch inside dense (valid Wang field) ---
+	# Cell types: soft blob at (1,1),(2,1),(1,2) surrounded by dense.
+	# Edge between two cells = SOFT only if BOTH are soft, else DENSE.
+	# Actually for our edge-field wang: build from cell types with
+	# edge = soft if either... use explicit codes that match.
+	origin_b = (720, 40)
+
+	def cell_type(x: int, y: int) -> int:
+		return SOFT if (1 <= x <= 2 and 1 <= y <= 2) else DENSE
+
+	# Derive edge-consistent Wang codes from cell types:
+	# Shared edge type = type of the "from" cell toward neighbor is wrong when differing.
+	# Use: edge between A and B gets type of A∩B when equal, else we put the
+	# transition inside both via edge = neighbor's type on the facing side...
+	# Simpler: edge type = SOFT iff at least one endpoint cell is SOFT? No that breaks.
+	# Correct for material composite: edge type = the terrain that should appear
+	# ON that edge. For two equal cells, that terrain. For unequal, pick one
+	# consistently: use min() so dense(0) wins on boundaries → soft blobs shrink
+	# inside soft cells. Or max() soft expands. Use: edge = type if equal else DENSE
+	# with soft cells having soft interior via... hmm.
+	#
+	# Best for preview: manually set a known-good wang neighborhood.
+	field = {
+		# Pure dense surround
+		(0, 0): wang_index(DENSE, DENSE, DENSE, DENSE),
+		(1, 0): wang_index(DENSE, DENSE, SOFT, DENSE),  # S opens to soft below
+		(2, 0): wang_index(DENSE, DENSE, SOFT, DENSE),
+		(3, 0): wang_index(DENSE, DENSE, DENSE, DENSE),
+		(0, 1): wang_index(DENSE, SOFT, DENSE, DENSE),  # E opens to soft
+		(1, 1): wang_index(SOFT, SOFT, SOFT, SOFT),  # soft core — but edges must match!
+	}
+	# Rebuild properly from cell types with edge = cell_type of the cell that
+	# "owns" the dual: edge H between (x,y-1)-(x,y) = SOFT if BOTH soft else
+	# if one soft one dense → transition edge. Use OR (max): soft bleeds.
+	cells_w, cells_h = 4, 4
+	h_edge = [[DENSE] * cells_w for _ in range(cells_h + 1)]
+	v_edge = [[DENSE] * (cells_w + 1) for _ in range(cells_h)]
+	for y in range(cells_h + 1):
+		for x in range(cells_w):
+			above = cell_type(x, y - 1) if y > 0 else cell_type(x, y)
+			below = cell_type(x, y) if y < cells_h else cell_type(x, y - 1)
+			# Shared facet shows soft only when a soft cell touches it.
+			h_edge[y][x] = SOFT if (above == SOFT or below == SOFT) else DENSE
+	for y in range(cells_h):
+		for x in range(cells_w + 1):
+			left = cell_type(x - 1, y) if x > 0 else cell_type(x, y)
+			right = cell_type(x, y) if x < cells_w else cell_type(x - 1, y)
+			v_edge[y][x] = SOFT if (left == SOFT or right == SOFT) else DENSE
+
+	# Fix boundary edges outside map to match the single cell.
+	for y in range(cells_h + 1):
+		for x in range(cells_w):
+			if y == 0:
+				h_edge[y][x] = cell_type(x, 0)
+			if y == cells_h:
+				h_edge[y][x] = cell_type(x, cells_h - 1)
+	for y in range(cells_h):
+		for x in range(cells_w + 1):
+			if x == 0:
+				v_edge[y][x] = cell_type(0, y)
+			if x == cells_w:
+				v_edge[y][x] = cell_type(cells_w - 1, y)
+
+	for y in range(cells_h):
+		for x in range(cells_w):
+			nn = h_edge[y][x]
+			ss = h_edge[y + 1][x]
+			ww = v_edge[y][x]
+			ee = v_edge[y][x + 1]
+			idx = wang_index(nn, ee, ss, ww)
+			_blit_iso(canvas, baked_by_idx[idx], (x, y), origin_b)
+
+	# Tiny labels via color bars under each cluster
+	path.parent.mkdir(parents=True, exist_ok=True)
+	canvas.save(path)
+	print(f"Wrote Wang match preview {path}")
+	_ = soft  # kept for clarity / future label strip
+
+
 def main() -> None:
 	mask = load_diamond_mask()
 	sources = load_source_textures()
+	opaque = mask >= 128.0
 	print(f"Target mean RGB: {TARGET_MEAN.round(1)}")
+	print("Generating blob Wang grass (shared materials, no edge halos)")
 
-	raw_tiles: list[np.ndarray] = []
-	for stem in FLOOR_STEMS:
-		tile = paint_tile(mask, stem, sources, press=False)
-		tile = mild_sharpen(tile)
-		raw_tiles.append(tile)
-		print(f"Painted {stem}")
+	materials = {
+		DENSE: _build_material(sources, DENSE, opaque),
+		SOFT: _build_material(sources, SOFT, opaque),
+	}
+	# Pull both materials toward a common playable mean so seams don't flash.
+	for kind in (DENSE, SOFT):
+		op = opaque
+		mean = materials[kind][op].mean(0)
+		materials[kind][op] = np.clip(
+			materials[kind][op] + (TARGET_MEAN - mean) * 0.35, 0, 255
+		)
 
-	press = paint_tile(mask, PRESS_STEM, sources, press=True)
-	press = mild_sharpen(press)
-	raw_tiles.append(press)
-	print(f"Painted {PRESS_STEM}")
-
-	# Tone-match all floor tiles to the same mean — no flat edge band.
-	raw_tiles[0] = color_match(raw_tiles[0], TARGET_MEAN)
-	ref_mean = raw_tiles[0][raw_tiles[0][:, :, 3] >= 128, :3].mean(0)
-
+	stems = all_wang_stems()
 	baked: list[np.ndarray] = []
-	for i, stem in enumerate(ALL_STEMS):
-		if stem == PRESS_STEM:
-			field = bake(raw_tiles[i], None)
-			opaque = field[:, :, 3] >= 128
-			press_target = ref_mean * 0.84
-			field[opaque, :3] = np.clip(
-				field[opaque, :3] + (press_target - field[opaque, :3].mean(0)) * 0.7,
-				0,
-				255,
-			)
-			field = flatten_bevel_rim(field)
-			field = extrude_rgb(field)
-		else:
-			field = bake(raw_tiles[i], None if i == 0 else ref_mean)
-			if i > 0:
-				field = color_match(field, baked[0][baked[0][:, :, 3] >= 128, :3].mean(0))
-		baked.append(field)
-		out = TERRAIN / f"{stem}_field.png"
-		Image.fromarray(np.clip(field, 0, 255).astype(np.uint8)).save(out)
-		Image.fromarray(np.clip(field, 0, 255).astype(np.uint8)).save(TERRAIN / f"{stem}.png")
-		mean = field[field[:, :, 3] >= 128, :3].mean(0)
-		print(f"Wrote {out.name} mean={mean.round(1)}")
+	for i, stem in enumerate(stems):
+		codes = decode_wang(i)
+		tile = paint_wang_tile(mask, codes, materials, press=False)
+		tile = mild_sharpen(tile)
+		tile = extrude_rgb(tile)
+		baked.append(tile)
+		Image.fromarray(np.clip(tile, 0, 255).astype(np.uint8)).save(TERRAIN / f"{stem}_field.png")
+		Image.fromarray(np.clip(tile, 0, 255).astype(np.uint8)).save(TERRAIN / f"{stem}.png")
+		mean = tile[tile[:, :, 3] >= 128, :3].mean(0)
+		print(f"Wrote {stem} edges=NESW{codes} mean={mean.round(1)}")
 
-	write_preview(baked[:12], PREVIEW / "painterly_grass_grid.png")
-	write_preview([baked[0]] * 9, PREVIEW / "painterly_grass_same_tile.png", cols=3, rows=3)
-	write_preview([baked[i % 12] for i in range(12)], PREVIEW / "painterly_grass_mixed.png")
+	press = paint_wang_tile(mask, (SOFT, SOFT, SOFT, SOFT), materials, press=True)
+	press = mild_sharpen(press)
+	press = extrude_rgb(press)
+	baked.append(press)
+	Image.fromarray(np.clip(press, 0, 255).astype(np.uint8)).save(TERRAIN / f"{PRESS_STEM}_field.png")
+	Image.fromarray(np.clip(press, 0, 255).astype(np.uint8)).save(TERRAIN / f"{PRESS_STEM}.png")
+	print(f"Wrote {PRESS_STEM}")
+
+	floor = baked[:16]
+	write_iso_preview(floor, PREVIEW / "painterly_grass_grid.png", cols=4, rows=4)
+	write_iso_preview([floor[0]] * 16, PREVIEW / "painterly_grass_same_tile.png", cols=4, rows=4)
+	write_wang_match_preview(floor, PREVIEW / "wang_grass_match.png")
+	write_iso_preview(
+		[
+			floor[wang_index(DENSE, DENSE, DENSE, DENSE)],
+			floor[wang_index(DENSE, DENSE, SOFT, DENSE)],
+			floor[wang_index(SOFT, SOFT, SOFT, SOFT)],
+			floor[wang_index(SOFT, DENSE, DENSE, SOFT)],
+		]
+		* 4,
+		PREVIEW / "painterly_grass_mixed.png",
+		cols=4,
+		rows=4,
+	)
 
 
 if __name__ == "__main__":
