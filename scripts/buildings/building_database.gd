@@ -209,7 +209,8 @@ const DEFINITIONS: Dictionary = {
 	},
 	"wall": {
 		"name": "Muralla",
-		"texture": "res://assets/tilesets/mediterranean/Buildings/wall.png",
+		"texture": "res://assets/tilesets/mediterranean/Buildings/wall_se.png",
+		"texture_vertical": "res://assets/tilesets/mediterranean/Buildings/wall_sw.png",
 		"wood": 15,
 		"gold": 0,
 		"food": 0,
@@ -220,10 +221,8 @@ const DEFINITIONS: Dictionary = {
 		"garrison_weapon": "stone",
 		"can_garrison": true,
 		"blocks_nav": true,
-		"footprint": Vector2(80.0, 30.0),
-		"pick_half_size": Vector2(50.0, 25.0),
-		# Segment walls stay procedural so lines chain cleanly; palette matches the pack.
-		"procedural": true,
+		"footprint": Vector2(90.0, 45.0),
+		"pick_half_size": Vector2(60.0, 35.0),
 	},
 	"castle_small": {
 		"name": "Castillo",

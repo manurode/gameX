@@ -8,4 +8,4 @@ Custom stylized Mediterranean coastal pack for gameX.
 - Active pack at runtime for world art (terrain, decor, buildings, units)
 
 UI resource icons still come from the legacy Tiny Tiles free pack (`assets/tilesets/tiny_tiles/UI/`).
-Wall segments stay procedural with a Mediterranean palette so line placement still chains cleanly.
+Wall segments use painted isometric pieces (`wall_se.png` / `wall_sw.png`) chained along the 2:1 diamond axes.

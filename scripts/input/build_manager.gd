@@ -132,9 +132,9 @@ func _process(_delta: float) -> void:
 		if _wall_dragging:
 			_ghost_sprite.visible = false
 		else:
-			var world_pos := _screen_to_world(get_viewport().get_mouse_position())
+			var world_pos := _snap_wall_position(_screen_to_world(get_viewport().get_mouse_position()))
 			_ghost_sprite.global_position = world_pos
-			ghost_valid = _is_valid_placement(world_pos)
+			ghost_valid = _is_valid_wall_segment(world_pos, false)
 			_ghost_sprite.modulate = Color(0.4, 0.95, 0.55, 0.65) if ghost_valid else Color(0.95, 0.35, 0.35, 0.55)
 			_ghost_sprite.rotation_degrees = 0.0
 			_ghost_sprite.visible = true
@@ -178,14 +178,15 @@ func _update_ghost_texture() -> void:
 	var def := BuildingDatabase.get_definition(selected_building_type)
 	if def.is_empty():
 		return
-	if def.get("procedural", false):
-		_ghost_sprite.texture = WallTexture.get_texture()
+	if selected_building_type == "wall":
+		_ghost_sprite.texture = WallTexture.get_texture(false)
 	else:
 		var texture_path: String = def.get("texture", "")
 		if not texture_path.is_empty():
 			_ghost_sprite.texture = load(texture_path)
 	if _ghost_sprite.texture != null:
-		_ghost_sprite.offset = Vector2(0.0, -_ghost_sprite.texture.get_height() * 0.5 + 64.0)
+		var foot := 48.0 if selected_building_type == "wall" else 64.0
+		_ghost_sprite.offset = Vector2(0.0, -_ghost_sprite.texture.get_height() * 0.5 + foot)
 		_ghost_sprite.modulate = def.get("tint", Color(0.4, 0.95, 0.55, 0.55))
 
 
@@ -237,37 +238,28 @@ func _place_wall_line(start_pos: Vector2, end_pos: Vector2) -> void:
 
 
 func _compute_wall_segments(start_pos: Vector2, end_pos: Vector2) -> Array[Dictionary]:
-	var spacing := WallTexture.get_segment_spacing()
 	var delta := end_pos - start_pos
-	var horizontal := absf(delta.x) >= absf(delta.y)
+	var vertical := WallTexture.orientation_from_delta(delta)
+	var step := WallTexture.get_segment_step(vertical)
 	var segments: Array[Dictionary] = []
 
-	if horizontal:
-		var y := start_pos.y
-		var x_min := minf(start_pos.x, end_pos.x)
-		var x_max := maxf(start_pos.x, end_pos.x)
-		var x := x_min
-		while x <= x_max + 0.01:
-			segments.append({"pos": Vector2(x, y), "vertical": false})
-			x += spacing
-	else:
-		var x := start_pos.x
-		var y_min := minf(start_pos.y, end_pos.y)
-		var y_max := maxf(start_pos.y, end_pos.y)
-		var y := y_min
-		while y <= y_max + 0.01:
-			segments.append({"pos": Vector2(x, y), "vertical": true})
-			y += spacing
+	var start := WallTexture.snap_position(start_pos)
+	if step.length_squared() < 0.01:
+		segments.append({"pos": start, "vertical": vertical})
+		return segments
+
+	var along := (end_pos - start).dot(step.normalized())
+	var count := maxi(1, int(round(absf(along) / step.length())) + 1)
+	var dir := 1.0 if along >= 0.0 else -1.0
+	for i in count:
+		var pos := start + step * float(i) * dir
+		segments.append({"pos": pos, "vertical": vertical})
 
 	return segments
 
 
 func _snap_wall_position(world_pos: Vector2) -> Vector2:
-	var spacing := WallTexture.get_segment_spacing()
-	return Vector2(
-		round(world_pos.x / spacing) * spacing,
-		round(world_pos.y / spacing) * spacing
-	)
+	return WallTexture.snap_position(world_pos)
 
 
 func _update_wall_preview(start_pos: Vector2, end_pos: Vector2) -> void:
@@ -288,7 +280,10 @@ func _update_wall_preview(start_pos: Vector2, end_pos: Vector2) -> void:
 		var segment: Dictionary = segments[i]
 		var ghost := _wall_ghost_sprites[i]
 		ghost.global_position = segment["pos"]
-		ghost.rotation_degrees = 90.0 if segment["vertical"] else 0.0
+		ghost.rotation_degrees = 0.0
+		ghost.texture = WallTexture.get_texture(segment["vertical"])
+		if ghost.texture != null:
+			ghost.offset = Vector2(0.0, -ghost.texture.get_height() * 0.5 + 48.0)
 		ghost.visible = true
 		ghost.modulate = Color(0.4, 0.95, 0.55, 0.55) if line_valid else Color(0.95, 0.35, 0.35, 0.55)
 
@@ -303,8 +298,8 @@ func _ensure_wall_ghost_count(count: int) -> void:
 		var ghost := Sprite2D.new()
 		ghost.centered = true
 		ghost.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-		ghost.texture = WallTexture.get_texture()
-		ghost.offset = Vector2(0.0, -ghost.texture.get_height() * 0.5 + 64.0)
+		ghost.texture = WallTexture.get_texture(false)
+		ghost.offset = Vector2(0.0, -ghost.texture.get_height() * 0.5 + 48.0)
 		ghost.z_index = 49
 		_wall_ghost_container.add_child(ghost)
 		_wall_ghost_sprites.append(ghost)
@@ -338,9 +333,9 @@ func _is_valid_placement_at(world_pos: Vector2, type_id: String, vertical: bool)
 
 	var def := BuildingDatabase.get_definition(type_id)
 	var footprint: Vector2 = def.get("footprint", Vector2(70.0, 45.0))
-	if type_id == "wall" and vertical:
-		footprint = Vector2(footprint.y, footprint.x)
-	var overlap_scale := 0.5 if type_id == "wall" else 0.55
+	if type_id == "wall":
+		footprint = WallTexture.footprint(vertical)
+	var overlap_scale := 0.45 if type_id == "wall" else 0.55
 	var half: Vector2 = footprint * overlap_scale
 	var test_rect := Rect2(world_pos - half, half * 2.0)
 

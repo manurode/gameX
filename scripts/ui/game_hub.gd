@@ -480,8 +480,8 @@ func _draw_dot(image: Image, center: Vector2, size: int, color: Color) -> void:
 
 func _get_building_icon(type_id: String) -> Texture2D:
 	var def := BuildingDatabase.get_definition(type_id)
-	if def.get("procedural", false):
-		return WallTexture.get_texture(64, 32)
+	if type_id == "wall":
+		return WallTexture.get_texture(false)
 	var texture_path: String = def.get("texture", "")
 	if texture_path.is_empty():
 		return null

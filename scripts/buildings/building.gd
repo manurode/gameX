@@ -134,8 +134,8 @@ func _setup_texture() -> void:
 	if sprite == null:
 		return
 
-	if _definition.get("procedural", false):
-		sprite.texture = WallTexture.get_texture()
+	if building_type_id == "wall":
+		sprite.texture = WallTexture.get_texture(_wall_vertical)
 		_apply_wall_orientation()
 	else:
 		var texture_path: String = _definition.get("texture", "")
@@ -143,7 +143,7 @@ func _setup_texture() -> void:
 			sprite.texture = load(texture_path)
 
 	if sprite.texture != null:
-		sprite.offset = Vector2(0.0, -sprite.texture.get_height() * 0.5 + 64.0)
+		sprite.offset = _sprite_draw_offset()
 		sprite_offset = sprite.offset
 		sprite.modulate = _definition.get("tint", Color.WHITE)
 		if damage_overlay != null:
@@ -151,24 +151,34 @@ func _setup_texture() -> void:
 			damage_overlay.offset = sprite.offset
 
 
+func _sprite_draw_offset() -> Vector2:
+	if sprite == null or sprite.texture == null:
+		return Vector2.ZERO
+	# Walls sit lower so the stone base lands on the snap point.
+	if building_type_id == "wall":
+		return Vector2(0.0, -sprite.texture.get_height() * 0.5 + 48.0)
+	return Vector2(0.0, -sprite.texture.get_height() * 0.5 + 64.0)
+
+
 func _apply_wall_orientation() -> void:
 	if building_type_id != "wall" or sprite == null:
 		return
-	if _wall_vertical:
-		sprite.rotation_degrees = 90.0
-		_footprint = Vector2(30.0, 80.0)
-		pick_half_size = Vector2(25.0, 50.0)
-	else:
-		sprite.rotation_degrees = 0.0
-		_footprint = Vector2(80.0, 30.0)
-		pick_half_size = Vector2(50.0, 25.0)
+	sprite.rotation_degrees = 0.0
+	sprite.texture = WallTexture.get_texture(_wall_vertical)
+	_footprint = WallTexture.footprint(_wall_vertical)
+	pick_half_size = WallTexture.pick_half_size(_wall_vertical)
+	if sprite.texture != null:
+		sprite.offset = _sprite_draw_offset()
+		sprite_offset = sprite.offset
 	if damage_overlay != null:
-		damage_overlay.rotation_degrees = sprite.rotation_degrees
+		damage_overlay.rotation_degrees = 0.0
+		damage_overlay.texture = sprite.texture
+		damage_overlay.offset = sprite.offset
 	_setup_collision()
 
 
 func _wall_base_rotation() -> float:
-	return 90.0 if _wall_vertical else 0.0
+	return 0.0
 
 
 func _setup_collision() -> void:
