@@ -100,6 +100,8 @@ var _scan_timer := 0.0
 @onready var dust_particles: GPUParticles2D = $DustParticles
 @onready var health_bar: Node2D = $HealthBar
 
+var _occlusion_silhouette: UnitOcclusionSilhouette
+
 
 func _ready() -> void:
 	hp = max_hp
@@ -109,11 +111,25 @@ func _ready() -> void:
 	_setup_shadow()
 	_setup_dust()
 	_setup_selection_indicator()
+	_setup_occlusion_silhouette()
 	animated_sprite.offset = sprite_offset
 	animated_sprite.frame_changed.connect(_on_animation_frame_changed)
 	animated_sprite.animation_finished.connect(_on_animation_finished)
 	await get_tree().physics_frame
 	_setup_navigation_agent()
+
+
+func _setup_occlusion_silhouette() -> void:
+	var layer := get_tree().get_first_node_in_group("unit_silhouette_layer") as Node2D
+	if layer == null:
+		var world := get_tree().get_first_node_in_group("game_world")
+		if world != null:
+			layer = world.get_node_or_null("UnitSilhouettes") as Node2D
+	if layer == null:
+		return
+	_occlusion_silhouette = UnitOcclusionSilhouette.new()
+	add_child(_occlusion_silhouette)
+	_occlusion_silhouette.setup(self, layer)
 
 
 func set_ground_layer(ground_layer: TinyTilesMap) -> void:
@@ -650,6 +666,8 @@ func on_entered_garrison(building: Building) -> void:
 	navigation_agent.target_position = global_position
 	animated_sprite.visible = false
 	shadow_sprite.visible = false
+	if _occlusion_silhouette != null:
+		_occlusion_silhouette.set_active(false)
 	set_collision_layer_value(2, false)
 	remove_from_group("selectable_units")
 	deselect()
@@ -665,6 +683,8 @@ func on_exited_garrison(exit_position: Vector2) -> void:
 	navigation_agent.target_position = exit_position
 	animated_sprite.visible = true
 	shadow_sprite.visible = true
+	if _occlusion_silhouette != null:
+		_occlusion_silhouette.set_active(true)
 	set_collision_layer_value(2, true)
 	add_to_group("selectable_units")
 	_unit_state = UnitState.IDLE
@@ -879,6 +899,8 @@ func _die() -> void:
 	remove_from_group("selectable_units")
 	set_collision_layer_value(2, false)
 	navigation_agent.target_position = global_position
+	if _occlusion_silhouette != null:
+		_occlusion_silhouette.set_active(false)
 
 	_play_death_sequence()
 

@@ -60,12 +60,22 @@ var _repair_progress: float = 0.0
 func _ready() -> void:
 	add_to_group("buildings")
 	add_to_group("selectable_buildings")
+	add_to_group("occlusion_props")
 	_apply_definition()
 	_update_visual_damage()
 	_update_construction_visual()
 	_setup_selection_indicator()
 	selection_indicator.visible = false
 	set_process(true)
+
+
+func get_occlusion_sprites() -> Array[Sprite2D]:
+	var sprites: Array[Sprite2D] = []
+	if building_state == BuildingState.DESTROYED:
+		return sprites
+	if sprite != null and sprite.visible and sprite.texture != null:
+		sprites.append(sprite)
+	return sprites
 
 
 func _process(delta: float) -> void:

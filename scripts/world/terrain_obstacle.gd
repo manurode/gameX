@@ -34,6 +34,7 @@ func setup(
 		_sprite.offset = sprite_offset
 		_sprite.y_sort_enabled = true
 		add_child(_sprite)
+		add_to_group("occlusion_props")
 
 	if blocks_movement:
 		_collision_body = StaticBody2D.new()
@@ -49,6 +50,13 @@ func setup(
 
 	if slow_multiplier < 1.0 and slow_radius > 0.0:
 		add_to_group("slow_zones")
+
+
+func get_occlusion_sprites() -> Array[Sprite2D]:
+	var sprites: Array[Sprite2D] = []
+	if _sprite != null and _sprite.visible and _sprite.texture != null:
+		sprites.append(_sprite)
+	return sprites
 
 
 func is_point_in_slow_zone(world_point: Vector2) -> bool:

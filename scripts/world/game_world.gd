@@ -3,10 +3,12 @@ extends Node2D
 @onready var camera: Camera2D = $Camera2D
 @onready var navigation_region: NavigationRegion2D = $NavigationRegion2D
 @onready var ground_layer: TinyTilesMap = $Terrain/Ground
-@onready var decorations: Node2D = $DecorationsHigh
+@onready var y_sort_world: Node2D = $YSortWorld
+@onready var unit_silhouettes: Node2D = $UnitSilhouettes
+@onready var decorations: Node = $WorldDecorations
 @onready var water_animator: Node2D = $Terrain/WaterAnimator
-@onready var units: Node2D = $Units
-@onready var buildings: Node2D = $Buildings
+@onready var units: Node2D = $YSortWorld
+@onready var buildings: Node2D = $YSortWorld
 @onready var selection_manager: Node = $SelectionManager
 @onready var build_manager: Node = $BuildManager
 @onready var unit_spawn_manager: Node = $UnitSpawnManager
@@ -28,6 +30,7 @@ var _town_center: Building
 
 func _ready() -> void:
 	add_to_group("game_world")
+	unit_silhouettes.add_to_group("unit_silhouette_layer")
 	population_manager.add_to_group("population_manager")
 	job_manager.add_to_group("job_manager")
 	production_manager.add_to_group("production_manager")
@@ -38,7 +41,7 @@ func on_ground_ready(ground: TinyTilesMap) -> void:
 	var bounds := ground.get_map_bounds()
 	camera.set_map_bounds(bounds)
 	navigation_region.setup_from_ground(ground)
-	decorations.setup(ground)
+	decorations.setup(ground, y_sort_world)
 	water_animator.setup(ground)
 
 	population_manager.setup(resource_manager)
@@ -52,8 +55,9 @@ func on_ground_ready(ground: TinyTilesMap) -> void:
 		ground
 	)
 
-	for child in units.get_children():
-		child.queue_free()
+	for node in get_tree().get_nodes_in_group("units"):
+		if is_instance_valid(node):
+			node.queue_free()
 
 	_spawn_starting_settlement(ground)
 	rebuild_navigation()
@@ -191,9 +195,9 @@ func rebuild_navigation(changed_node: Node2D = null) -> void:
 		obstacle_list = decorations.call("get_obstacles")
 
 	var building_list: Array = []
-	for child in buildings.get_children():
-		if child is Building:
-			building_list.append(child)
+	for node in get_tree().get_nodes_in_group("buildings"):
+		if node is Building and is_instance_valid(node):
+			building_list.append(node)
 
 	if changed_node == null:
 		navigation_region.rebuild_navigation(obstacle_list, building_list)

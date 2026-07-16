@@ -28,6 +28,17 @@ func setup(texture: Texture2D, world_pos: Vector2, kind: ResourceKind, amount: i
 	is_infinite = false
 	global_position = world_pos
 	_add_sprite(texture, Vector2.ZERO, sprite_offset)
+	# Tall resource visuals (trees, gold rocks) occlude units; crop fields do not.
+	if kind != ResourceKind.FOOD:
+		add_to_group("occlusion_props")
+
+
+func get_occlusion_sprites() -> Array[Sprite2D]:
+	var sprites: Array[Sprite2D] = []
+	for sprite in _sprites:
+		if sprite != null and sprite.visible and sprite.texture != null:
+			sprites.append(sprite)
+	return sprites
 
 
 func setup_crop_field(

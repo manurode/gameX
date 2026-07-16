@@ -1,4 +1,4 @@
-extends Node2D
+extends Node
 
 const TREE_PATHS: Array[String] = [
 	"res://assets/tilesets/mediterranean/Decor/forest_a.png",
@@ -26,15 +26,18 @@ const MILL_WHEAT_COLUMNS := 3
 const MILL_WHEAT_ROWS := 2
 const MILL_WHEAT_OFFSET := Vector2(0.0, 32.0)
 var _ground_layer: TileMapLayer
+var _entity_parent: Node2D
 var _obstacles: Array[TerrainObstacle] = []
 var _resource_nodes: Array[ResourceNode] = []
 
 
-func setup(ground_layer: TinyTilesMap) -> void:
+func setup(ground_layer: TinyTilesMap, entity_parent: Node2D) -> void:
 	add_to_group("world_decorations")
 	_clear_generated_content()
 	_ground_layer = ground_layer
-	y_sort_enabled = true
+	_entity_parent = entity_parent
+	if _entity_parent != null:
+		_entity_parent.y_sort_enabled = true
 	_spawn_resources(ground_layer.get_resource_placements())
 	_spawn_decorations(ground_layer.get_decoration_placements())
 
@@ -48,7 +51,7 @@ func get_resource_nodes() -> Array[ResourceNode]:
 
 
 func spawn_mill_wheat_for_building(building: Building) -> ResourceNode:
-	if building == null or not is_instance_valid(building):
+	if building == null or not is_instance_valid(building) or _entity_parent == null:
 		return null
 	if building.has_meta("mill_wheat_node"):
 		var existing = building.get_meta("mill_wheat_node")
@@ -62,7 +65,7 @@ func spawn_mill_wheat_for_building(building: Building) -> ResourceNode:
 	var world_pos := building.get_base_center() + MILL_WHEAT_OFFSET
 	var node := ResourceNode.new()
 	node.setup_crop_field(world_pos, textures, MILL_WHEAT_COLUMNS, MILL_WHEAT_ROWS)
-	add_child(node)
+	_entity_parent.add_child(node)
 	_resource_nodes.append(node)
 	building.set_meta("mill_wheat_node", node)
 	return node
@@ -81,7 +84,7 @@ func remove_mill_wheat_for_building(building: Building) -> void:
 
 
 func _spawn_resources(placements: Array[Dictionary]) -> void:
-	if _ground_layer == null:
+	if _ground_layer == null or _entity_parent == null:
 		return
 
 	for placement in placements:
@@ -104,12 +107,14 @@ func _spawn_resources(placements: Array[Dictionary]) -> void:
 		node.setup(texture, world_pos, resource_kind, placement.get("amount", 100), offset)
 		if kind == "wood":
 			node.pick_radius = FOREST_PICK_RADIUS
-		add_child(node)
+		_entity_parent.add_child(node)
 		_resource_nodes.append(node)
 		_spawn_resource_terrain(kind, texture, world_pos, offset)
 
 
 func _spawn_resource_terrain(kind: String, texture: Texture2D, world_pos: Vector2, offset: Vector2) -> void:
+	if _entity_parent == null:
+		return
 	var obstacle := TerrainObstacle.new()
 	if kind == "wood":
 		obstacle.setup(
@@ -134,12 +139,12 @@ func _spawn_resource_terrain(kind: String, texture: Texture2D, world_pos: Vector
 			false
 		)
 	obstacle.add_to_group("terrain_obstacles")
-	add_child(obstacle)
+	_entity_parent.add_child(obstacle)
 	_obstacles.append(obstacle)
 
 
 func _spawn_decorations(placements: Array[Dictionary]) -> void:
-	if _ground_layer == null:
+	if _ground_layer == null or _entity_parent == null:
 		return
 	for placement in placements:
 		var variant := clampi(placement.get("variant", 0), 0, HILL_PATHS.size() - 1)
@@ -159,13 +164,16 @@ func _spawn_decorations(placements: Array[Dictionary]) -> void:
 			Vector2(55.0, 30.0)
 		)
 		obstacle.add_to_group("terrain_obstacles")
-		add_child(obstacle)
+		_entity_parent.add_child(obstacle)
 		_obstacles.append(obstacle)
 
 
 func _clear_generated_content() -> void:
+	for obstacle in _obstacles:
+		if is_instance_valid(obstacle):
+			obstacle.queue_free()
+	for node in _resource_nodes:
+		if is_instance_valid(node):
+			node.queue_free()
 	_obstacles.clear()
 	_resource_nodes.clear()
-	for child in get_children():
-		remove_child(child)
-		child.queue_free()

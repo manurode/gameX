@@ -37,15 +37,14 @@ script = ExtResource("4_ground")
 [node name="WaterAnimator" type="Node2D" parent="Terrain"]
 script = ExtResource("6_water")
 
-[node name="DecorationsHigh" type="Node2D" parent="."]
+[node name="YSortWorld" type="Node2D" parent="."]
 y_sort_enabled = true
+
+[node name="UnitSilhouettes" type="Node2D" parent="." groups=["unit_silhouette_layer"]]
+y_sort_enabled = false
+
+[node name="WorldDecorations" type="Node" parent="."]
 script = ExtResource("5_decorations")
-
-[node name="Buildings" type="Node2D" parent="."]
-y_sort_enabled = true
-
-[node name="Units" type="Node2D" parent="."]
-y_sort_enabled = true
 
 [node name="SelectionManager" type="Node" parent="."]
 script = ExtResource("7_selection")
