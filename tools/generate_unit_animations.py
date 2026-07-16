@@ -3,8 +3,7 @@ Generate walk / attack / work sprite strips from idle base frames.
 
 - Preserves true alpha (no opaque black boxes)
 - Walk = upright stride bob + leg split (no drunken whole-body sway)
-- Attack = short lunge + light lean + slash cue
-- Work = tool swing + impact bob
+- Attack / work = upright body; weapon arm rotates around the shoulder
 """
 
 from __future__ import annotations
@@ -120,21 +119,27 @@ def split_legs(sprite: Image.Image, stride: float, lift: float = 0.0) -> Image.I
     return Image.fromarray(out, "RGBA")
 
 
-def swing_arm_band(sprite: Image.Image, amount: float, right_side: bool) -> Image.Image:
-    """Nudge one side of the torso horizontally to suggest arm swing."""
+def character_bounds(sprite: Image.Image) -> tuple[int, int, int, int, float, float]:
     arr = np.array(sprite)
     alpha = arr[:, :, 3] > 8
     ys, xs = np.where(alpha)
     if len(xs) == 0:
-        return sprite
+        return 0, 0, FRAME - 1, FRAME - 1, FRAME * 0.5, FRAME * 0.4
     y0, y1 = int(ys.min()), int(ys.max())
     x0, x1 = int(xs.min()), int(xs.max())
     mid_x = (x0 + x1) * 0.5
+    shoulder_y = y0 + (y1 - y0) * 0.38
+    return x0, y0, x1, y1, mid_x, shoulder_y
+
+
+def swing_arm_band(sprite: Image.Image, amount: float, right_side: bool) -> Image.Image:
+    """Nudge one side of the torso horizontally to suggest arm swing (walk)."""
+    arr = np.array(sprite)
+    x0, y0, x1, y1, mid_x, _shoulder = character_bounds(sprite)
     shoulder = y0 + int((y1 - y0) * 0.34)
     waist = y0 + int((y1 - y0) * 0.58)
 
     out = arr.copy()
-    # clear arm band on chosen side
     for y in range(shoulder, waist + 1):
         for x in range(FRAME):
             if arr[y, x, 3] < 8:
@@ -159,50 +164,162 @@ def swing_arm_band(sprite: Image.Image, amount: float, right_side: bool) -> Imag
     return Image.fromarray(out, "RGBA")
 
 
-def draw_melee_slash(frame: Image.Image, progress: float, facing_back: bool) -> Image.Image:
-    if progress < 0.35 or progress > 0.72:
-        return frame
-    overlay = transparent_canvas()
-    draw = ImageDraw.Draw(overlay)
-    cx = 30 if facing_back else 50
-    cy = 44
-    t = (progress - 0.35) / 0.37
-    start = -95 + t * 120
-    end = start + 50
-    bbox = [cx - 26, cy - 26, cx + 26, cy + 26]
-    alpha = int(180 * (1.0 - abs(t - 0.5) * 2))
-    color = (245, 245, 255, max(0, alpha))
-    if facing_back:
-        draw.arc(bbox, start=180 - end, end=180 - start, fill=color, width=2)
+def move_weapon_arm(
+    sprite: Image.Image,
+    *,
+    right_side: bool,
+    dx: float,
+    dy: float,
+    stretch_down: float = 0.0,
+) -> Image.Image:
+    """
+    Move the outer weapon/forearm only (painted pixels), like walk does for legs.
+    Includes blades/handles that hang below the hip so the sword doesn't double.
+    """
+    if abs(dx) < 0.1 and abs(dy) < 0.1 and abs(stretch_down) < 0.1:
+        return sprite
+
+    arr = np.array(sprite)
+    x0, y0, x1, y1, mid_x, shoulder_y = character_bounds(sprite)
+    height = max(y1 - y0, 1)
+    width = max(x1 - x0, 1)
+    hip_y = y0 + int(height * 0.62)
+    y_top = max(y0, int(shoulder_y - height * 0.08))
+    y_bot = min(FRAME - 1, y1)
+
+    # Outer fringe on the weapon side (keeps shield/torso core still)
+    if right_side:
+        fringe = mid_x + width * 0.10
     else:
-        draw.arc(bbox, start=start, end=end, fill=color, width=2)
-    return Image.alpha_composite(frame, overlay)
+        fringe = mid_x - width * 0.10
+
+    def is_weapon_pixel(x: int, y: int) -> bool:
+        if arr[y, x, 3] < 8:
+            return False
+        # Never touch the head
+        if y < shoulder_y and abs(x - mid_x) < width * 0.22:
+            return False
+        on_side = x >= fringe if right_side else x <= fringe
+        if not on_side:
+            return False
+        r, g, b = int(arr[y, x, 0]), int(arr[y, x, 1]), int(arr[y, x, 2])
+        is_metal = abs(r - g) < 40 and abs(g - b) < 40 and 50 <= r <= 230
+        is_wood = r > g + 10 and g >= b - 5 and 45 < r < 200
+        # Forearm band: all outer pixels between shoulder and hip
+        if y_top <= y <= hip_y:
+            return True
+        # Below hip: only blade/handle colors (not armored legs / pants bulk)
+        if y > hip_y and (is_metal or is_wood):
+            # Prefer thin outer sticks (sword/bow) over wide leg plates
+            edge = x1 if right_side else x0
+            if abs(x - edge) <= width * 0.42:
+                return True
+        return False
+
+    # Collect then clear — avoids duplicates
+    moves: list[tuple[int, int, np.ndarray, float, float]] = []
+    for y in range(y_top, y_bot + 1):
+        t = (y - y_top) / max(y_bot - y_top, 1)
+        strength = 0.35 + 0.65 * t
+        local_dx = dx * strength
+        local_dy = dy * strength + stretch_down * t
+        for x in range(FRAME):
+            if is_weapon_pixel(x, y):
+                moves.append((x, y, arr[y, x].copy(), local_dx, local_dy))
+
+    out = arr.copy()
+    for x, y, _pix, _ldx, _ldy in moves:
+        out[y, x] = 0
+
+    arm_layer = np.zeros_like(arr)
+    for x, y, pix, local_dx, local_dy in moves:
+        sx = int(round(x + local_dx))
+        sy = int(round(y + local_dy))
+        if 0 <= sx < FRAME and 0 <= sy < FRAME and pix[3] >= arm_layer[sy, sx, 3]:
+            arm_layer[sy, sx] = pix
+
+    body = Image.fromarray(out, "RGBA")
+    arm = Image.fromarray(arm_layer, "RGBA")
+    return Image.alpha_composite(body, arm)
 
 
-def draw_work_tool(frame: Image.Image, angle_deg: float, facing_back: bool, tool: str = "axe") -> Image.Image:
+def hand_point(sprite: Image.Image, right_side: bool) -> tuple[float, float]:
+    """Approximate hand position on the weapon side (for attaching drawn tools)."""
+    x0, y0, x1, y1, mid_x, shoulder_y = character_bounds(sprite)
+    # Hand sits below shoulder on the outer side
+    hx = mid_x + (12 if right_side else -12)
+    hy = shoulder_y + (y1 - y0) * 0.28
+    return hx, hy
+
+
+def draw_attached_tool(
+    frame: Image.Image,
+    *,
+    pivot: tuple[float, float],
+    angle_deg: float,
+    tool: str,
+) -> Image.Image:
+    """Draw axe/hoe attached to the hand, rotating with the arm swing."""
     overlay = transparent_canvas()
     draw = ImageDraw.Draw(overlay)
-    px = 34 if facing_back else 46
-    py = 40
-    length = 17
+    px, py = pivot
+    length = 16 if tool == "axe" else 15
     rad = math.radians(angle_deg)
     ex = px + math.cos(rad) * length
     ey = py + math.sin(rad) * length
-    handle = (118, 76, 40, 255)
-    head = (168, 168, 178, 255) if tool == "axe" else (150, 110, 60, 255)
+    handle = (125, 82, 45, 255)
     draw.line([(px, py), (ex, ey)], fill=handle, width=2)
+    # grip knuckle
+    draw.ellipse([px - 1.5, py - 1.5, px + 1.5, py + 1.5], fill=(210, 170, 130, 255))
     hx = ex + math.cos(rad) * 2
     hy = ey + math.sin(rad) * 2
     perp = rad + math.pi / 2
     if tool == "axe":
+        head = (175, 175, 185, 255)
         p1 = (hx + math.cos(perp) * 5, hy + math.sin(perp) * 5)
         p2 = (hx - math.cos(perp) * 2, hy - math.sin(perp) * 2)
-        p3 = (hx + math.cos(rad) * 4, hy + math.sin(rad) * 4)
+        p3 = (hx + math.cos(rad) * 5, hy + math.sin(rad) * 5)
         draw.polygon([p1, p2, p3], fill=head)
     else:
+        head = (155, 115, 65, 255)
         p1 = (hx + math.cos(perp) * 6, hy + math.sin(perp) * 6)
         p2 = (hx - math.cos(perp) * 6, hy - math.sin(perp) * 6)
         draw.line([p1, p2], fill=head, width=3)
+    return Image.alpha_composite(frame, overlay)
+
+
+def draw_slash_trail(
+    frame: Image.Image,
+    *,
+    pivot: tuple[float, float],
+    angle_deg: float,
+    length: float = 22.0,
+) -> Image.Image:
+    overlay = transparent_canvas()
+    draw = ImageDraw.Draw(overlay)
+    rad = math.radians(angle_deg)
+    cx, cy = pivot
+    # short arc centered on current swing angle
+    bbox = [cx - length, cy - length, cx + length, cy + length]
+    start = angle_deg - 28
+    end = angle_deg + 8
+    draw.arc(bbox, start=start, end=end, fill=(240, 240, 255, 150), width=2)
+    return Image.alpha_composite(frame, overlay)
+
+
+def draw_bow_draw(frame: Image.Image, pull: float, facing_back: bool) -> Image.Image:
+    """pull 0..1 — string pulled back on the bow."""
+    if pull <= 0.05:
+        return frame
+    overlay = transparent_canvas()
+    draw = ImageDraw.Draw(overlay)
+    x0, y0, x1, y1, mid_x, shoulder_y = character_bounds(frame)
+    # Bow roughly on the outer side opposite the draw hand
+    bow_x = mid_x + (10 if not facing_back else -10)
+    bow_y0 = shoulder_y - 2
+    bow_y1 = shoulder_y + 18
+    string_x = bow_x - pull * (10 if not facing_back else -10)
+    draw.line([(bow_x, bow_y0), (string_x, (bow_y0 + bow_y1) / 2), (bow_x, bow_y1)], fill=(90, 60, 35, 220), width=1)
     return Image.alpha_composite(frame, overlay)
 
 
@@ -240,69 +357,284 @@ def make_walk(base: Image.Image, facing_back: bool = False) -> Image.Image:
     return stitch(frames)
 
 
-def make_attack(base: Image.Image, facing_back: bool = False, ranged: bool = False) -> Image.Image:
+def detect_weapon_side(sprite: Image.Image) -> bool:
+    """
+    Return True if the weapon/tool is on the viewer's-right half.
+
+    Prefers thin metal/wood extremities that stick outward — not bulky shields.
+    """
+    arr = np.array(sprite)
+    x0, y0, x1, y1, mid_x, shoulder_y = character_bounds(sprite)
+    width = max(x1 - x0, 1)
+    left_score = 0.0
+    right_score = 0.0
+    y_start = int(shoulder_y - (y1 - y0) * 0.05)
+    for y in range(max(0, y_start), min(FRAME, y1 + 1)):
+        for x in range(FRAME):
+            if arr[y, x, 3] < 8:
+                continue
+            r, g, b = int(arr[y, x, 0]), int(arr[y, x, 1]), int(arr[y, x, 2])
+            is_metal = abs(r - g) < 36 and abs(g - b) < 36 and 55 <= r <= 220
+            is_wood = r > g + 12 and g >= b and 50 < r < 190
+            if not (is_metal or is_wood):
+                continue
+            # Distance from center — weapons stick out further than shield face
+            dist = abs(x - mid_x) / width
+            weight = dist * dist
+            if is_wood:
+                weight *= 1.25
+            if x < mid_x:
+                left_score += weight
+            else:
+                right_score += weight
+    if left_score < 0.5 and right_score < 0.5:
+        # Fallback: left (sword/hammer side on most front sheets)
+        return False
+    return right_score > left_score
+
+
+def suppress_static_weapon(sprite: Image.Image, right_side: bool) -> Image.Image:
+    """Erase idle-painted sword/hammer pixels (alpha only — no torso fill holes)."""
+    arr = np.array(sprite).copy()
+    x0, y0, x1, y1, mid_x, shoulder_y = character_bounds(sprite)
+    # Include raised hammers above the shoulder on the outer side only
+    y_top = max(y0, int(shoulder_y - (y1 - y0) * 0.25))
+    y_bot = min(FRAME - 1, int(shoulder_y + (y1 - y0) * 0.55))
+    if right_side:
+        x_a, x_b = int(mid_x + 3), x1 + 1
+    else:
+        x_a, x_b = x0, int(mid_x - 3)
+
+    for y in range(y_top, y_bot + 1):
+        for x in range(max(0, x_a), min(FRAME, x_b)):
+            if arr[y, x, 3] < 8:
+                continue
+            # Never erase head core
+            if y < shoulder_y and abs(x - mid_x) < (x1 - x0) * 0.16:
+                continue
+            r, g, b = int(arr[y, x, 0]), int(arr[y, x, 1]), int(arr[y, x, 2])
+            is_metal = abs(r - g) < 36 and abs(g - b) < 36 and 55 <= r <= 220
+            is_wood = r > g + 15 and g >= b and 50 < r < 180
+            if is_metal or is_wood:
+                arr[y, x, 3] = 0
+    return Image.fromarray(arr, "RGBA")
+
+
+def draw_swinging_weapon(
+    frame: Image.Image,
+    *,
+    angle_deg: float,
+    right_side: bool,
+    kind: str,
+    show_trail: bool = False,
+) -> Image.Image:
+    """Weapon arcs around a hand pivot glued to the shoulder; body stays intact."""
+    hx, hy = hand_point(frame, right_side)
+    # Pull pivot slightly toward shoulder so it reads as held, not floating
+    _x0, _y0, _x1, _y1, mid_x, shoulder_y = character_bounds(frame)
+    pivot_x = (hx + mid_x + (8 if right_side else -8)) * 0.5
+    pivot_y = (hy + shoulder_y + 4) * 0.5
+    overlay = transparent_canvas()
+    draw = ImageDraw.Draw(overlay)
+    rad = math.radians(angle_deg)
+    length = 18 if kind == "sword" else 15
+    ex = pivot_x + math.cos(rad) * length
+    ey = pivot_y + math.sin(rad) * length
+    perp = rad + math.pi / 2
+
+    if kind == "sword":
+        draw.line([(pivot_x, pivot_y), (ex, ey)], fill=(200, 205, 215, 255), width=2)
+        tx = pivot_x + math.cos(rad) * (length + 3)
+        ty = pivot_y + math.sin(rad) * (length + 3)
+        draw.line([(ex, ey), (tx, ty)], fill=(235, 235, 245, 255), width=1)
+        gx = pivot_x + math.cos(rad) * 3.5
+        gy = pivot_y + math.sin(rad) * 3.5
+        draw.line(
+            [
+                (gx + math.cos(perp) * 3.5, gy + math.sin(perp) * 3.5),
+                (gx - math.cos(perp) * 3.5, gy - math.sin(perp) * 3.5),
+            ],
+            fill=(170, 145, 70, 255),
+            width=2,
+        )
+    elif kind == "hammer":
+        # Short mallet matching the builder idle prop
+        draw.line([(pivot_x, pivot_y), (ex, ey)], fill=(110, 72, 40, 255), width=2)
+        hx2 = ex + math.cos(rad) * 0.5
+        hy2 = ey + math.sin(rad) * 0.5
+        p1 = (
+            hx2 + math.cos(perp) * 3.5 + math.cos(rad) * 2.5,
+            hy2 + math.sin(perp) * 3.5 + math.sin(rad) * 2.5,
+        )
+        p2 = (
+            hx2 - math.cos(perp) * 3.5 + math.cos(rad) * 2.5,
+            hy2 - math.sin(perp) * 3.5 + math.sin(rad) * 2.5,
+        )
+        p3 = (
+            hx2 - math.cos(perp) * 3.5 - math.cos(rad) * 2.5,
+            hy2 - math.sin(perp) * 3.5 - math.sin(rad) * 2.5,
+        )
+        p4 = (
+            hx2 + math.cos(perp) * 3.5 - math.cos(rad) * 2.5,
+            hy2 + math.sin(perp) * 3.5 - math.sin(rad) * 2.5,
+        )
+        draw.polygon([p1, p2, p3, p4], fill=(145, 150, 160, 255))
+    else:
+        draw.line([(pivot_x, pivot_y), (ex, ey)], fill=(125, 82, 45, 255), width=2)
+        hx2 = ex + math.cos(rad) * 2
+        hy2 = ey + math.sin(rad) * 2
+        p1 = (hx2 + math.cos(perp) * 5.5, hy2 + math.sin(perp) * 5.5)
+        p2 = (hx2 - math.cos(perp) * 5.5, hy2 - math.sin(perp) * 5.5)
+        draw.line([p1, p2], fill=(155, 115, 65, 255), width=3)
+
+    # Grip — sits on top of the handle so it reads as held
+    draw.ellipse([pivot_x - 2.2, pivot_y - 2.2, pivot_x + 2.2, pivot_y + 2.2], fill=(215, 175, 135, 255))
+    composed = Image.alpha_composite(frame, overlay)
+    if show_trail:
+        composed = draw_slash_trail(composed, pivot=(pivot_x, pivot_y), angle_deg=angle_deg, length=18)
+    return composed
+
+
+def _outward(right_side: bool) -> float:
+    return 1.0 if right_side else -1.0
+
+
+# Front-sheet weapon side (viewer's right == True). Back sheets flip.
+# Knight sword is on the left; shield must not win detection.
+WEAPON_SIDE_FRONT: dict[str, bool] = {
+    "knight": False,   # sword on viewer's left
+    "archer": True,    # bow on viewer's right
+    "builder": True,   # hammer on viewer's right when facing right
+    "villager": False,
+    "enemy": False,
+}
+
+
+def make_attack(
+    base: Image.Image,
+    facing_back: bool = False,
+    ranged: bool = False,
+    melee_kind: str = "sword",
+    unit: str = "",
+) -> Image.Image:
+    """
+    Attack using ONLY the painted weapon/arm already on the sprite.
+    No second sword/bow overlays — same limb-shift approach as walk.
+    """
     sprite = to_sprite(base)
+    if unit in WEAPON_SIDE_FRONT:
+        weapon_right = WEAPON_SIDE_FRONT[unit]
+    else:
+        weapon_right = detect_weapon_side(sprite)
+    if facing_back:
+        weapon_right = not weapon_right
+    out = _outward(weapon_right)
+
     frames = []
-    sign = -1.0 if facing_back else 1.0
     for i in range(9):
-        p = i / 8.0
         if ranged:
+            # Bow stays on weapon side; draw-hand is the opposite side.
+            draw_right = not weapon_right
             if i <= 6:
                 pull = i / 6.0
-                angle = -5 * pull * sign
-                dx = -3.5 * pull * sign
-                dy = -1.5 * pull
-                scale = 1.0 - pull * 0.02
+                # Draw hand pulls back toward quiver; bow arm raises slightly
+                draw_dx = -_outward(draw_right) * pull * 3.5
+                draw_dy = -pull * 2.5
+                bow_dx = out * pull * 0.8
+                bow_dy = -pull * 1.5
+                bob = -pull * 1.0
             else:
                 release = (i - 6) / 2.0
-                angle = (-5 + release * 8) * sign
-                dx = (-3.5 + release * 5) * sign
-                dy = -1.5 + release * 1.5
-                scale = 0.98 + release * 0.03
-            fr = place_sprite(sprite, angle=angle, dx=dx, dy=dy, scale=scale)
+                pull = max(0.0, 1.0 - release * 1.6)
+                draw_dx = -_outward(draw_right) * pull * 3.5
+                draw_dy = -pull * 2.5
+                bow_dx = out * (0.8 - release * 1.2)
+                bow_dy = -1.5 + release * 2.0
+                bob = -1.0 + release * 1.0
+
+            posed = move_weapon_arm(sprite, right_side=draw_right, dx=draw_dx, dy=draw_dy)
+            posed = move_weapon_arm(posed, right_side=weapon_right, dx=bow_dx, dy=bow_dy)
+            fr = place_sprite(posed, angle=0.0, dx=0.0, dy=bob)
         else:
-            if i <= 3:
-                wind = i / 3.0
-                angle = -8 * wind * sign
-                dx = -3.5 * wind * sign
-                dy = -1.5 * wind
-                scale = 1.0
-            elif i <= 5:
-                strike = (i - 3) / 2.0
-                angle = (-8 + strike * 18) * sign
-                dx = (-3.5 + strike * 9) * sign
-                dy = -1.5 + strike * 3
-                scale = 1.0 + strike * 0.03
-            else:
-                rec = (i - 5) / 3.0
-                angle = (10 * (1.0 - rec)) * sign
-                dx = (5.5 * (1.0 - rec)) * sign
-                dy = 1.2 * (1.0 - rec)
-                scale = 1.03 - rec * 0.03
-            fr = place_sprite(sprite, angle=angle, dx=dx, dy=dy, scale=scale)
-            fr = draw_melee_slash(fr, p, facing_back)
+            # Melee keyframes: (weapon_dx, weapon_dy, stretch, bob, lunge)
+            # Moves the EXISTING sword/claw arm — windup up/back, strike down/forward.
+            poses = [
+                (0.0, 0.0, 0.0, 0.0, 0.0),       # 0 ready
+                (-1.2, -3.0, 0.0, -0.4, -0.4),   # 1 windup
+                (-2.0, -5.5, 0.0, -0.8, -0.8),   # 2
+                (-2.4, -7.0, 0.0, -1.0, -1.2),   # 3 peak raise
+                (1.5, -2.0, 0.8, 0.2, 0.8),      # 4 start swing
+                (4.5, 3.0, 1.8, 1.2, 2.2),       # 5 HIT
+                (3.2, 2.2, 1.0, 0.8, 1.4),       # 6 follow
+                (1.4, 0.8, 0.3, 0.3, 0.5),       # 7
+                (0.3, 0.0, 0.0, 0.0, 0.0),       # 8 recover
+            ]
+            wdx, wdy, stretch, bob, lunge = poses[i]
+            posed = move_weapon_arm(
+                sprite,
+                right_side=weapon_right,
+                dx=out * wdx,
+                dy=wdy,
+                stretch_down=stretch,
+            )
+            # Tiny weight shift on the plant foot side (readable, not a sway)
+            if abs(lunge) > 0.2:
+                posed = split_legs(posed, stride=out * lunge * 0.35, lift=0.0)
+            fr = place_sprite(
+                posed,
+                angle=0.0,
+                dx=lunge * (0.6 if not facing_back else -0.6),
+                dy=bob,
+            )
         frames.append(fr)
     return stitch(frames)
 
 
-def make_work(base: Image.Image, facing_back: bool = False, tool: str = "axe") -> Image.Image:
+def make_work(
+    base: Image.Image,
+    facing_back: bool = False,
+    tool: str = "axe",
+    unit: str = "",
+) -> Image.Image:
+    """
+    Work using the painted arm/tool already on the sprite (builder hammer).
+    Villagers (no tool) get a chopping arm pose only — no floating prop.
+    """
     sprite = to_sprite(base)
+    if unit in WEAPON_SIDE_FRONT:
+        weapon_right = WEAPON_SIDE_FRONT[unit]
+    else:
+        weapon_right = detect_weapon_side(sprite)
+    if facing_back:
+        weapon_right = not weapon_right
+    out = _outward(weapon_right)
+
+    # (weapon_dx, weapon_dy, stretch, impact_bob)
+    poses = [
+        (0.0, -0.5, 0.0, 0.0),   # ready
+        (-1.0, -5.5, 0.0, 0.0),  # raise
+        (-0.8, -6.5, 0.0, 0.0),  # hold high
+        (2.2, 3.5, 1.5, 1.0),    # impact
+        (1.4, 1.8, 0.6, 0.4),    # follow
+        (0.3, 0.0, 0.0, 0.0),    # recover
+    ]
+
     frames = []
-    sign = -1.0 if facing_back else 1.0
-    for i in range(6):
-        t = i / 6.0 * math.tau
-        # Impact bob, tiny lean only
-        body_angle = math.sin(t) * 4.0 * sign
-        dy = (1.0 - math.cos(t)) * 3.0
-        fr = place_sprite(
+    for wdx, wdy, stretch, impact in poses:
+        posed = move_weapon_arm(
             sprite,
-            angle=body_angle,
-            dy=dy,
-            squash_y=1.0 - (1.0 - math.cos(t)) * 0.04,
-            dx=math.sin(t) * 1.2 * sign,
+            right_side=weapon_right,
+            dx=out * wdx,
+            dy=wdy,
+            stretch_down=stretch,
         )
-        tool_angle = 25 + (0.5 - 0.5 * math.cos(t)) * 95
-        fr = draw_work_tool(fr, tool_angle, facing_back, tool=tool)
+        fr = place_sprite(
+            posed,
+            angle=0.0,
+            dx=0.0,
+            dy=impact * 2.0,
+            squash_y=1.0 - impact * 0.03,
+        )
         frames.append(fr)
     return stitch(frames)
 
@@ -333,12 +665,23 @@ def process_unit(unit: str, *, has_attack: bool, has_work: bool, ranged: bool = 
     save(make_walk(back, True), unit_dir / f"chr_{unit}_run_upward.png")
     save(make_walk(back, True), unit_dir / f"chr_{unit}_run_backward.png")
 
-    if has_attack:
-        save(make_attack(front, False, ranged=ranged), unit_dir / f"chr_{unit}_attack.png")
-        save(make_attack(back, True, ranged=ranged), unit_dir / f"chr_{unit}_attack_back.png")
+    # Knight/archer attacks are built from dedicated pose sheets
+    # (tools/build_attack_sheets_from_poses.py) — don't overwrite them here.
+    skip_attack = unit in ("knight", "archer")
+    if has_attack and not skip_attack:
+        melee_kind = "claw" if unit == "enemy" else "sword"
+        save(
+            make_attack(front, False, ranged=ranged, melee_kind=melee_kind, unit=unit),
+            unit_dir / f"chr_{unit}_attack.png",
+        )
+        save(
+            make_attack(back, True, ranged=ranged, melee_kind=melee_kind, unit=unit),
+            unit_dir / f"chr_{unit}_attack_back.png",
+        )
 
-    if has_work:
-        save(make_work(front, False, tool=tool), unit_dir / f"chr_{unit}_afk.png")
+    skip_work = unit == "builder"  # builder work from AI poses when available
+    if has_work and not skip_work:
+        save(make_work(front, False, tool=tool, unit=unit), unit_dir / f"chr_{unit}_afk.png")
 
 
 def main() -> None:
