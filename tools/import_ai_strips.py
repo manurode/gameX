@@ -104,22 +104,29 @@ def extract_characters(im: Image.Image, expected: int) -> list[Image.Image]:
     return frames
 
 
-def fit_frame(char: Image.Image) -> Image.Image:
+def fit_frame(char: Image.Image, target_body_h: int = 40) -> Image.Image:
+    """Fit a character into 80x80 matching idle body height (no upscale-to-fill)."""
     char = char.convert("RGBA")
     bbox = char.getbbox()
     canvas = Image.new("RGBA", (FRAME, FRAME), (0, 0, 0, 0))
     if bbox is None:
         return canvas
     cropped = char.crop(bbox)
-    max_h, max_w = 70, 68
-    scale = min(max_w / max(cropped.width, 1), max_h / max(cropped.height, 1), 1.35)
+    # Match idle-sized bodies; AI art is chunkier so shrink a bit more
+    style = 0.78
+    scale = (target_body_h * style) / max(cropped.height, 1)
+    max_scale = min((FRAME - 2) / max(cropped.width, 1), (FRAME - 2) / max(cropped.height, 1))
+    scale = min(scale, max_scale)
     nw = max(1, int(cropped.width * scale))
     nh = max(1, int(cropped.height * scale))
     cropped = cropped.resize((nw, nh), Image.Resampling.LANCZOS)
     px = (FRAME - cropped.width) // 2
-    py = FRAME - cropped.height - 3
+    py = FRAME - cropped.height - 2
     canvas.alpha_composite(cropped, dest=(max(0, px), max(0, py)))
-    return canvas
+    arr = np.array(canvas)
+    arr[arr[:, :, 3] < 48, 3] = 0
+    arr[arr[:, :, 3] >= 48, 3] = 255
+    return Image.fromarray(arr, "RGBA")
 
 
 def process(src_name: str, dest: Path, frame_count: int) -> None:

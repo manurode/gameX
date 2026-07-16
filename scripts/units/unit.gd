@@ -160,7 +160,7 @@ func _setup_sprite_frames() -> void:
 		7.0,
 		DEATH_FRAME_COUNT if death_up_sheet != null or death_down_sheet != null else -1,
 		gather_sheet,
-		10.0
+		12.0
 	)
 	if frames.get_animation_names().is_empty():
 		return

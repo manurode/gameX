@@ -263,7 +263,7 @@ def draw_attached_tool(
     overlay = transparent_canvas()
     draw = ImageDraw.Draw(overlay)
     px, py = pivot
-    length = 16 if tool == "axe" else 15
+    length = 16 if tool == "axe" else 18
     rad = math.radians(angle_deg)
     ex = px + math.cos(rad) * length
     ey = py + math.sin(rad) * length
@@ -590,6 +590,102 @@ def make_attack(
     return stitch(frames)
 
 
+def harden_alpha(sprite: Image.Image, cut: int = 40) -> Image.Image:
+    """Remove soft/ghost fringes left by pixel arm moves."""
+    arr = np.array(sprite.convert("RGBA"))
+    arr[arr[:, :, 3] < cut, 3] = 0
+    arr[arr[:, :, 3] >= cut, 3] = 255
+    return Image.fromarray(arr, "RGBA")
+
+
+def _is_green_staff_pixel(r: int, g: int, b: int) -> bool:
+    """Villager painted staff is green — never match the brown vest."""
+    return g > r + 12 and g > b + 8 and 55 < g < 200
+
+
+def _plot_line(
+    arr: np.ndarray,
+    x0: float,
+    y0: float,
+    x1: float,
+    y1: float,
+    color: tuple[int, int, int, int],
+) -> None:
+    """Bresenham-style solid line — no antialias dark fringes."""
+    steps = max(int(math.hypot(x1 - x0, y1 - y0) * 2), 1)
+    for i in range(steps + 1):
+        t = i / steps
+        x = int(round(x0 + (x1 - x0) * t))
+        y = int(round(y0 + (y1 - y0) * t))
+        if 0 <= x < FRAME and 0 <= y < FRAME:
+            arr[y, x] = color
+
+
+def draw_hoe_crisp(frame: Image.Image, pivot: tuple[float, float], angle_deg: float) -> Image.Image:
+    """Crisp hoe with no ImageDraw antialias ghosts."""
+    arr = np.array(frame.convert("RGBA"))
+    px, py = pivot
+    rad = math.radians(angle_deg)
+    length = 17.0
+    ex = px + math.cos(rad) * length
+    ey = py + math.sin(rad) * length
+    handle = (168, 112, 58, 255)
+    head = (176, 132, 72, 255)
+    grip = (220, 180, 130, 255)
+    _plot_line(arr, px, py, ex, ey, handle)
+    # tip blade perpendicular
+    perp = rad + math.pi / 2
+    bx0 = ex + math.cos(perp) * 5
+    by0 = ey + math.sin(perp) * 5
+    bx1 = ex - math.cos(perp) * 5
+    by1 = ey - math.sin(perp) * 5
+    _plot_line(arr, bx0, by0, bx1, by1, head)
+    gx, gy = int(round(px)), int(round(py))
+    if 0 <= gx < FRAME and 0 <= gy < FRAME:
+        arr[gy, gx] = grip
+    return Image.fromarray(arr, "RGBA")
+
+
+def make_villager_work(base: Image.Image) -> Image.Image:
+    """
+    9-frame farming chop matching attack cadence.
+    Idle-sized body + crisp hoe on the outer hand (no antialias ghosts).
+    """
+    sprite = harden_alpha(to_sprite(base), cut=30)
+    # Remove green sash-drape streaks that read as a second stick
+    arr = np.array(sprite)
+    x0, y0, x1, y1, mid_x, shoulder_y = character_bounds(sprite)
+    for y in range(int(shoulder_y + (y1 - y0) * 0.35), y1 + 1):
+        for x in range(FRAME):
+            if arr[y, x, 3] < 8:
+                continue
+            r, g, b = int(arr[y, x, 0]), int(arr[y, x, 1]), int(arr[y, x, 2])
+            # Only erase thin green drips below the waist (not the sash band itself)
+            if _is_green_staff_pixel(r, g, b) and abs(x - mid_x) <= 3:
+                arr[y, x] = 0
+    body = harden_alpha(Image.fromarray(arr, "RGBA"), cut=40)
+
+    grip_x = float(mid_x + (x1 - x0) * 0.32)
+    grip_y = float(shoulder_y + (y1 - y0) * 0.20)
+
+    # Stay on the right side of the body (0°=right, 90°=down)
+    # Full chop arc: ready → raise → strike → follow (no long idle tail)
+    angles = [88.0, 60.0, 28.0, -20.0, 15.0, 55.0, 78.0, 90.0, 88.0]
+    bobs = [0.0, -0.8, -1.4, -1.8, 0.2, 2.0, 1.0, 0.4, 0.0]
+    leans = [0.0, -0.8, -1.2, -1.5, 1.0, 2.0, 1.0, 0.4, 0.0]
+    grip_dy = [0.0, -2.8, -5.0, -6.8, -2.0, 2.5, 1.0, 0.3, 0.0]
+    grip_dx = [0.0, 0.8, 1.4, 1.8, 1.2, 2.0, 1.0, 0.4, 0.0]
+
+    frames = []
+    for i in range(9):
+        # No swing_arm_band — pixel warps leave black seams on this sprite
+        pivot = (grip_x + grip_dx[i], grip_y + grip_dy[i])
+        posed = draw_hoe_crisp(body, pivot, angles[i])
+        fr = place_sprite(posed, angle=0.0, dx=leans[i], dy=bobs[i])
+        frames.append(harden_alpha(fr, cut=40))
+    return stitch(frames)
+
+
 def make_work(
     base: Image.Image,
     facing_back: bool = False,
@@ -597,10 +693,13 @@ def make_work(
     unit: str = "",
 ) -> Image.Image:
     """
-    Work using the painted arm/tool already on the sprite (builder hammer).
-    Villagers (no tool) get a chopping arm pose only — no floating prop.
+    Fluid 9-frame work loop matching attack cadence.
+    Villagers use a dedicated staff/hoe swing (vest browns must not be warped).
     """
-    sprite = to_sprite(base)
+    if unit == "villager" or tool == "hoe":
+        return make_villager_work(base)
+
+    sprite = harden_alpha(to_sprite(base), cut=30)
     if unit in WEAPON_SIDE_FRONT:
         weapon_right = WEAPON_SIDE_FRONT[unit]
     else:
@@ -609,18 +708,20 @@ def make_work(
         weapon_right = not weapon_right
     out = _outward(weapon_right)
 
-    # (weapon_dx, weapon_dy, stretch, impact_bob)
     poses = [
-        (0.0, -0.5, 0.0, 0.0),   # ready
-        (-1.0, -5.5, 0.0, 0.0),  # raise
-        (-0.8, -6.5, 0.0, 0.0),  # hold high
-        (2.2, 3.5, 1.5, 1.0),    # impact
-        (1.4, 1.8, 0.6, 0.4),    # follow
-        (0.3, 0.0, 0.0, 0.0),    # recover
+        (0.0, 0.0, 0.0, 0.0),
+        (-1.0, -3.0, 0.0, -0.3),
+        (-1.6, -5.5, 0.0, -0.6),
+        (-2.0, -7.0, 0.0, -0.9),
+        (1.2, -1.5, 0.6, 0.2),
+        (3.8, 3.2, 1.6, 1.1),
+        (2.6, 2.0, 0.8, 0.7),
+        (1.2, 0.7, 0.25, 0.3),
+        (0.3, 0.0, 0.0, 0.0),
     ]
 
     frames = []
-    for wdx, wdy, stretch, impact in poses:
+    for wdx, wdy, stretch, bob in poses:
         posed = move_weapon_arm(
             sprite,
             right_side=weapon_right,
@@ -628,14 +729,9 @@ def make_work(
             dy=wdy,
             stretch_down=stretch,
         )
-        fr = place_sprite(
-            posed,
-            angle=0.0,
-            dx=0.0,
-            dy=impact * 2.0,
-            squash_y=1.0 - impact * 0.03,
-        )
-        frames.append(fr)
+        posed = harden_alpha(posed, cut=48)
+        fr = place_sprite(posed, angle=0.0, dx=0.0, dy=bob)
+        frames.append(harden_alpha(fr, cut=40))
     return stitch(frames)
 
 
