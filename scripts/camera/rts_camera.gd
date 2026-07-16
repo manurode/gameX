@@ -47,6 +47,8 @@ func _handle_keyboard_pan(delta: float) -> void:
 func _handle_edge_pan(delta: float) -> void:
 	if not _mouse_in_window or not get_viewport().get_window().has_focus():
 		return
+	if _is_pointer_over_hub():
+		return
 
 	var viewport_size := get_viewport().get_visible_rect().size
 	var mouse_pos := get_viewport().get_mouse_position()
@@ -64,6 +66,14 @@ func _handle_edge_pan(delta: float) -> void:
 
 	if direction != Vector2.ZERO:
 		position += direction.normalized() * EDGE_PAN_SPEED * delta / zoom.x
+
+
+func _is_pointer_over_hub() -> bool:
+	var hub := get_node_or_null("/root/Main/Layout/GameHub")
+	if hub is Control:
+		var root_mouse := get_tree().root.get_mouse_position()
+		return (hub as Control).get_global_rect().has_point(root_mouse)
+	return false
 
 
 func _clamp_to_map() -> void:
