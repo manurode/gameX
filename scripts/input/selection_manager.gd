@@ -2,6 +2,7 @@ extends Node
 
 signal selection_changed(selected_units: Array)
 signal building_selection_changed(selected_building: Building)
+signal resource_selection_changed(selected_resource: ResourceNode)
 signal formation_changed(formation: Unit.FormationType)
 
 const DRAG_THRESHOLD := 6.0
@@ -11,6 +12,7 @@ const GARRISON_ATTACK_PICK_RADIUS := 80.0
 
 var selected_units: Array[Unit] = []
 var selected_building: Building = null
+var selected_resource: ResourceNode = null
 var move_formation: Unit.FormationType = Unit.FormationType.WEDGE
 
 var _drag_start_screen: Vector2
@@ -182,7 +184,7 @@ func _try_gather_resource_command(world_point: Vector2) -> bool:
 
 func _pick_resource_node_at(world_point: Vector2) -> ResourceNode:
 	var best_node: ResourceNode = null
-	var best_dist := INF
+	var best_depth := -INF
 	for node in get_tree().get_nodes_in_group("resource_nodes"):
 		if not node is ResourceNode:
 			continue
@@ -191,9 +193,10 @@ func _pick_resource_node_at(world_point: Vector2) -> ResourceNode:
 			continue
 		if not resource_node.contains_point(world_point):
 			continue
-		var dist := resource_node.global_position.distance_squared_to(world_point)
-		if dist < best_dist:
-			best_dist = dist
+		# Prefer the front-most resource in y-sort (higher y draws in front).
+		var depth := resource_node.global_position.y
+		if depth > best_depth:
+			best_depth = depth
 			best_node = resource_node
 	return best_node
 
@@ -319,11 +322,16 @@ func _select_unit_at(world_point: Vector2, add_to_selection: bool) -> void:
 		if picked_building != null:
 			_select_building_at(picked_building, add_to_selection)
 			return
+		var picked_resource := _pick_resource_node_at(world_point)
+		if picked_resource != null and not picked_resource.is_infinite:
+			_select_resource_at(picked_resource, add_to_selection)
+			return
 		if not add_to_selection:
 			_clear_selection()
 		return
 
 	_deselect_building()
+	_deselect_resource()
 
 	if add_to_selection:
 		if picked_unit.is_selected:
@@ -345,6 +353,7 @@ func _select_units_in_box(world_rect: Rect2, add_to_selection: bool = false) -> 
 		_clear_selection(false)
 	else:
 		_deselect_building(false)
+		_deselect_resource(false)
 
 	for unit in _pick_units_in_rect(world_rect):
 		if add_to_selection and unit.is_selected:
@@ -389,6 +398,7 @@ func _select_building_at(building: Building, add_to_selection: bool) -> void:
 		_clear_selection(false)
 	else:
 		_clear_unit_selection(false)
+		_deselect_resource(false)
 
 	if selected_building == building and not add_to_selection:
 		return
@@ -401,12 +411,48 @@ func _select_building_at(building: Building, add_to_selection: bool) -> void:
 	building_selection_changed.emit(selected_building)
 
 
+func _select_resource_at(resource: ResourceNode, add_to_selection: bool) -> void:
+	if not add_to_selection:
+		_clear_selection(false)
+	else:
+		_clear_unit_selection(false)
+		_deselect_building(false)
+
+	if selected_resource == resource and not add_to_selection:
+		return
+
+	if selected_resource != null and is_instance_valid(selected_resource):
+		if selected_resource.depleted.is_connected(_on_selected_resource_depleted):
+			selected_resource.depleted.disconnect(_on_selected_resource_depleted)
+		selected_resource.deselect()
+
+	selected_resource = resource
+	resource.select()
+	if not resource.depleted.is_connected(_on_selected_resource_depleted):
+		resource.depleted.connect(_on_selected_resource_depleted)
+	resource_selection_changed.emit(selected_resource)
+
+
 func _deselect_building(notify: bool = true) -> void:
 	if selected_building != null and is_instance_valid(selected_building):
 		selected_building.deselect()
 	selected_building = null
 	if notify:
 		building_selection_changed.emit(null)
+
+
+func _deselect_resource(notify: bool = true) -> void:
+	if selected_resource != null and is_instance_valid(selected_resource):
+		if selected_resource.depleted.is_connected(_on_selected_resource_depleted):
+			selected_resource.depleted.disconnect(_on_selected_resource_depleted)
+		selected_resource.deselect()
+	selected_resource = null
+	if notify:
+		resource_selection_changed.emit(null)
+
+
+func _on_selected_resource_depleted() -> void:
+	_deselect_resource()
 
 
 func _clear_unit_selection(notify: bool = true) -> void:
@@ -556,9 +602,11 @@ func _order_garrison_attack(building: Building, target_unit: Unit, target_buildi
 func _clear_selection(notify: bool = true) -> void:
 	_clear_unit_selection(false)
 	_deselect_building(false)
+	_deselect_resource(false)
 	if notify:
 		_notify_selection_changed()
 		building_selection_changed.emit(null)
+		resource_selection_changed.emit(null)
 
 
 func _screen_to_world(screen_point: Vector2) -> Vector2:
