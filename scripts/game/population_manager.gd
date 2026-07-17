@@ -40,7 +40,7 @@ func get_food_upkeep_per_second() -> float:
 	var upkeep := float(civilian_count) * BalanceConfig.VILLAGER_FOOD_PER_SECOND
 	if _is_night():
 		upkeep += float(squad_ids.size() + military_without_squad) * BalanceConfig.SQUAD_FOOD_PER_SECOND_AT_NIGHT
-	return upkeep
+	return upkeep * _get_food_upkeep_multiplier()
 
 
 func get_food_upkeep_label() -> String:
@@ -121,6 +121,15 @@ func _is_night() -> bool:
 	return manager is DayNightManager and (manager as DayNightManager).is_night()
 
 
+func _get_food_upkeep_multiplier() -> float:
+	var manager := get_tree().get_first_node_in_group("day_night_manager")
+	if manager is DayNightManager:
+		var day_night := manager as DayNightManager
+		if day_night.is_night() and day_night.night_duration_multiplier > 1.0:
+			return BalanceConfig.ECLIPSE_FOOD_UPKEEP_MULT
+	return 1.0
+
+
 func _apply_starvation_damage(delta: float) -> void:
 	_starvation_damage_accumulator += BalanceConfig.STARVATION_DAMAGE_PER_SECOND * delta
 	if _starvation_damage_accumulator < 1.0:
@@ -139,7 +148,7 @@ func _cleanup_invalid_units() -> void:
 
 
 func recalculate_cap_from_buildings() -> void:
-	var cap := BASE_POPULATION_CAP
+	var cap := BASE_POPULATION_CAP + MetaProgression.get_extra_villagers()
 	for node in get_tree().get_nodes_in_group("buildings"):
 		if not node is Building:
 			continue

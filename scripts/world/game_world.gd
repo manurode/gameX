@@ -21,9 +21,11 @@ extends Node2D
 @onready var day_night_manager: DayNightManager = $DayNightManager
 @onready var night_wave_manager: NightWaveManager = $NightWaveManager
 @onready var curfew_manager: CurfewManager = $CurfewManager
+@onready var run_boon_manager: RunBoonManager = $RunBoonManager
 
 const BUILDING_SCENE: PackedScene = preload("res://scenes/buildings/building.tscn")
 const VILLAGER_SCENE: PackedScene = preload("res://scenes/units/unit_villager.tscn")
+const ARCHER_SCENE: PackedScene = preload("res://scenes/units/unit_archer.tscn")
 
 var _town_center: Building
 
@@ -44,6 +46,7 @@ func on_ground_ready(ground: TinyTilesMap) -> void:
 	decorations.setup(ground, y_sort_world)
 	water_animator.setup(ground)
 
+	_apply_meta_start_resources()
 	population_manager.setup(resource_manager)
 	job_manager.setup(resource_manager, population_manager, ground)
 	curfew_manager.setup(job_manager)
@@ -60,6 +63,7 @@ func on_ground_ready(ground: TinyTilesMap) -> void:
 			node.queue_free()
 
 	_spawn_starting_settlement(ground)
+	_apply_meta_start_buildings(ground)
 	rebuild_navigation()
 
 	build_manager.setup(ground, buildings, resource_manager, selection_manager, job_manager)
@@ -69,9 +73,10 @@ func on_ground_ready(ground: TinyTilesMap) -> void:
 	selection_manager.setup(buildings, resource_manager)
 	day_night_manager.setup(day_night_modulate, water_animator)
 	night_wave_manager.setup(day_night_manager, units, ground)
+	run_boon_manager.setup(day_night_manager, self, curfew_manager, resource_manager)
 
 	if _town_center != null:
-		game_state_manager.setup(_town_center)
+		game_state_manager.setup(_town_center, day_night_manager)
 
 	population_manager.recalculate_cap_from_buildings()
 
@@ -88,8 +93,25 @@ func on_ground_ready(ground: TinyTilesMap) -> void:
 			production_manager,
 			curfew_manager,
 			camera,
-			ground
+			ground,
+			run_boon_manager,
+			game_state_manager,
+			night_wave_manager
 		)
+
+
+func _apply_meta_start_resources() -> void:
+	resource_manager.wood = BalanceConfig.INITIAL_WOOD + MetaProgression.get_start_wood_bonus()
+	resource_manager.gold = BalanceConfig.INITIAL_GOLD
+	resource_manager.food = BalanceConfig.INITIAL_FOOD + MetaProgression.get_start_food_bonus()
+	resource_manager.refresh()
+
+
+func _apply_meta_start_buildings(ground: TinyTilesMap) -> void:
+	if MetaProgression.has_free_tower():
+		spawn_free_tower()
+	if MetaProgression.has_starter_walls():
+		spawn_starter_walls(4)
 
 
 func _spawn_starting_settlement(ground: TinyTilesMap) -> void:
@@ -103,6 +125,9 @@ func _spawn_starting_settlement(ground: TinyTilesMap) -> void:
 		Vector2i(-1, 1),
 		Vector2i(1, 1),
 	]
+	var extra := MetaProgression.get_extra_villagers()
+	if extra > 0:
+		villager_offsets.append(Vector2i(0, 1))
 	var villager_cells: Array[Vector2i] = []
 	for offset in villager_offsets:
 		villager_cells.append(center_cell + offset)
@@ -127,7 +152,88 @@ func _spawn_building(
 		var produces: Array = BuildingDatabase.get_definition(type_id).get("produces", [])
 		if not produces.is_empty():
 			production_manager.register_producer(building)
+		if type_id == "wall":
+			building.notify_world_placed()
 	return building
+
+
+func spawn_free_tower() -> void:
+	if ground_layer == null or _town_center == null:
+		return
+	var center := ground_layer.get_town_center_cell()
+	var candidates: Array[Vector2i] = [
+		center + Vector2i(3, 0),
+		center + Vector2i(-3, 0),
+		center + Vector2i(0, 3),
+		center + Vector2i(0, -3),
+		center + Vector2i(2, 2),
+	]
+	for cell in candidates:
+		if not ground_layer.is_cell_in_bounds(cell):
+			continue
+		_spawn_building("tower", cell, ground_layer, Building.BuildingState.ACTIVE, 1.0)
+		rebuild_navigation()
+		return
+	_spawn_building("tower", center + Vector2i(3, 1), ground_layer, Building.BuildingState.ACTIVE, 1.0)
+	rebuild_navigation()
+
+
+func spawn_starter_walls(count: int) -> void:
+	if ground_layer == null or _town_center == null:
+		return
+	var center := ground_layer.get_town_center_cell()
+	var offsets: Array[Vector2i] = [
+		Vector2i(2, -1),
+		Vector2i(2, 0),
+		Vector2i(2, 1),
+		Vector2i(-2, -1),
+		Vector2i(-2, 0),
+		Vector2i(-2, 1),
+	]
+	var placed := 0
+	for offset in offsets:
+		if placed >= count:
+			break
+		var building := _spawn_building(
+			"wall",
+			center + offset,
+			ground_layer,
+			Building.BuildingState.ACTIVE,
+			1.0
+		)
+		building.set_wall_vertical(offset.x != 0)
+		placed += 1
+	rebuild_navigation()
+
+
+func spawn_bonus_villagers(count: int) -> void:
+	if ground_layer == null or _town_center == null:
+		return
+	var center := ground_layer.get_town_center_cell()
+	for i in count:
+		if not population_manager.can_add_population():
+			break
+		_spawn_villager(ground_layer, center + Vector2i(i + 1, 1), i)
+
+
+func spawn_temp_archers(count: int) -> void:
+	if ground_layer == null or _town_center == null:
+		return
+	var center := ground_layer.get_town_center_cell()
+	for i in count:
+		if not population_manager.can_add_population():
+			break
+		var archer: Unit = ARCHER_SCENE.instantiate()
+		units.add_child(archer)
+		archer.global_position = ground_layer.map_to_local(center + Vector2i(i - 1, -2))
+		archer.set_ground_layer(ground_layer)
+		archer.reset_navigation()
+		archer.unit_type_id = "archer"
+		archer.set_meta("temp_boon_unit", true)
+		population_manager.register_unit(archer)
+		register_player_unit(archer)
+		if day_night_manager.is_night():
+			archer.apply_cycle_visuals(true)
 
 
 func register_player_unit(unit: Unit) -> void:
@@ -161,6 +267,11 @@ func spawn_squad_members(
 		member.reset_navigation()
 		if not squad_id.is_empty():
 			member.set_meta("squad_id", squad_id)
+		if unit_type_id == "knight":
+			var bonus := MetaProgression.get_knight_hp_bonus()
+			if bonus > 0:
+				member.max_hp += bonus
+				member.hp = member.max_hp
 		population_manager.register_unit(member)
 		register_player_unit(member)
 		if day_night_manager.is_night():

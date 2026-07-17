@@ -952,6 +952,8 @@ func take_damage(amount: int, attacker: Unit = null) -> void:
 	_update_visual_damage()
 	_play_hit_effect(attacker)
 	_try_garrison_self_defense(attacker)
+	if attacker is EnemyUnit:
+		(attacker as EnemyUnit).notify_building_hit(self)
 
 	if hp <= 0:
 		_destroy()

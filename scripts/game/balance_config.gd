@@ -1,12 +1,15 @@
 class_name BalanceConfig
 extends RefCounted
 
+## Blitz pacing: short frenetic runs (~8–12 min for 5 nights).
 const PHASE_DURATIONS := {
-	"day": 120.0,
-	"dusk": 30.0,
-	"night": 60.0,
-	"dawn": 30.0,
+	"day": 55.0,
+	"dusk": 12.0,
+	"night": 45.0,
+	"dawn": 10.0,
 }
+
+const WIN_NIGHTS := 5
 
 const INITIAL_WOOD := 2000
 const INITIAL_GOLD := 2000
@@ -34,6 +37,11 @@ const SQUAD_TRAIN_TIME := 6.0
 const GARRISON_SOLDIER_DAMAGE_WEIGHT := 1.0
 const GARRISON_CIVILIAN_DAMAGE_WEIGHT := 0.35
 const GARRISON_CIVILIAN_ATTACK_COOLDOWN := 1.6
+
+const META_REWARD_PER_NIGHT := 5
+const META_REWARD_VICTORY := 25
+const ECLIPSE_NIGHT_DURATION_MULT := 1.4
+const ECLIPSE_FOOD_UPKEEP_MULT := 1.5
 
 
 static func get_gather_rate(resource_key: String) -> float:

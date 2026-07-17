@@ -186,6 +186,7 @@ func get_gather_duration(unit: Unit) -> float:
 	var work_multiplier := 1.0
 	if _population_manager != null:
 		work_multiplier = _population_manager.get_civilian_work_multiplier()
+	work_multiplier *= _get_run_gather_multiplier()
 	return float(GATHER_CARRY_AMOUNT) / maxf(rate * work_multiplier, 0.01)
 
 
@@ -203,6 +204,7 @@ func get_food_income_per_second() -> float:
 		var work_multiplier := 1.0
 		if _population_manager != null:
 			work_multiplier = _population_manager.get_civilian_work_multiplier()
+		work_multiplier *= _get_run_gather_multiplier()
 		var cycle_time := float(GATHER_CARRY_AMOUNT) / maxf(
 			BalanceConfig.FOOD_PER_SECOND * work_multiplier,
 			0.01
@@ -586,3 +588,11 @@ func _forget_return_buildings_for_building(building: Building) -> void:
 			stale_villagers.append(villager)
 	for villager in stale_villagers:
 		_return_buildings.erase(villager)
+
+
+func _get_run_gather_multiplier() -> float:
+	var mult := MetaProgression.get_gather_multiplier()
+	var boons := get_tree().get_first_node_in_group("run_boon_manager")
+	if boons is RunBoonManager:
+		mult *= (boons as RunBoonManager).get_gather_multiplier()
+	return mult

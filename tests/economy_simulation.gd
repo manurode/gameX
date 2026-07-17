@@ -7,10 +7,20 @@ func _init() -> void:
 
 func _run() -> void:
 	_test_cycle()
+	_test_victory()
 	_test_balance_data()
 	_simulate_ten_cycles()
 	print("BALANCE_TESTS_OK")
 	quit(0)
+
+
+func _cycle_length() -> float:
+	return (
+		BalanceConfig.PHASE_DURATIONS.day
+		+ BalanceConfig.PHASE_DURATIONS.dusk
+		+ BalanceConfig.PHASE_DURATIONS.night
+		+ BalanceConfig.PHASE_DURATIONS.dawn
+	)
 
 
 func _test_cycle() -> void:
@@ -19,21 +29,44 @@ func _test_cycle() -> void:
 	manager.automatic_cycle = false
 	manager.setup(null)
 	assert(manager.current_phase == DayNightManager.CyclePhase.DAY)
-	manager.advance_time(120.0)
+	manager.advance_time(BalanceConfig.PHASE_DURATIONS.day)
 	assert(manager.current_phase == DayNightManager.CyclePhase.DUSK)
-	manager.advance_time(30.0)
+	manager.advance_time(BalanceConfig.PHASE_DURATIONS.dusk)
 	assert(manager.current_phase == DayNightManager.CyclePhase.NIGHT)
 	assert(not manager.is_construction_allowed())
-	manager.advance_time(60.0)
+	manager.advance_time(BalanceConfig.PHASE_DURATIONS.night)
 	assert(manager.current_phase == DayNightManager.CyclePhase.DAWN)
-	manager.advance_time(30.0)
+	assert(manager.nights_survived == 1)
+	manager.advance_time(BalanceConfig.PHASE_DURATIONS.dawn)
 	assert(manager.current_phase == DayNightManager.CyclePhase.DAY)
 	assert(manager.cycle_number == 2)
 	manager.free()
 
 
+func _test_victory() -> void:
+	var manager := DayNightManager.new()
+	root.add_child(manager)
+	manager.automatic_cycle = false
+	manager.setup(null)
+	var won := false
+	manager.victory_reached.connect(func() -> void: won = true)
+	# Survive 5 nights, then complete the final dawn.
+	for _i in BalanceConfig.WIN_NIGHTS:
+		manager.advance_time(
+			BalanceConfig.PHASE_DURATIONS.day
+			+ BalanceConfig.PHASE_DURATIONS.dusk
+			+ BalanceConfig.PHASE_DURATIONS.night
+			+ BalanceConfig.PHASE_DURATIONS.dawn
+		)
+	assert(manager.nights_survived == BalanceConfig.WIN_NIGHTS)
+	assert(won)
+	assert(manager.is_run_finished())
+	manager.free()
+
+
 func _test_balance_data() -> void:
-	assert(BalanceConfig.PHASE_DURATIONS.values().reduce(func(total, value): return total + value, 0.0) == 240.0)
+	assert(is_equal_approx(_cycle_length(), 122.0))
+	assert(BalanceConfig.WIN_NIGHTS == 5)
 	assert(BalanceConfig.TREE_CAPACITY == 2400)
 	assert(BalanceConfig.GOLD_VEIN_CAPACITY / BalanceConfig.SQUAD_GOLD_COST == 22)
 	assert(BalanceConfig.GOLD_MOUNTAIN_CAPACITY == BalanceConfig.GOLD_VEIN_CAPACITY * 5)
@@ -57,15 +90,17 @@ func _simulate_ten_cycles() -> void:
 	var gold := float(BalanceConfig.INITIAL_GOLD)
 	var villagers := 5
 	var squads := 0
+	var cycle_len := _cycle_length()
+	var night_len: float = BalanceConfig.PHASE_DURATIONS.night
 	for cycle in range(1, 11):
 		var farmers := mini(3, villagers)
 		var miners := 1 if villagers > farmers else 0
 		var lumberjacks := maxi(0, villagers - farmers - miners)
-		food += float(farmers) * BalanceConfig.FOOD_PER_SECOND * 240.0
-		wood += float(lumberjacks) * BalanceConfig.WOOD_PER_SECOND * 240.0
-		gold += float(miners) * BalanceConfig.GOLD_PER_SECOND * 240.0
-		food -= float(villagers) * BalanceConfig.VILLAGER_FOOD_PER_SECOND * 240.0
-		food -= float(squads) * BalanceConfig.SQUAD_FOOD_PER_SECOND_AT_NIGHT * 60.0
+		food += float(farmers) * BalanceConfig.FOOD_PER_SECOND * cycle_len
+		wood += float(lumberjacks) * BalanceConfig.WOOD_PER_SECOND * cycle_len
+		gold += float(miners) * BalanceConfig.GOLD_PER_SECOND * cycle_len
+		food -= float(villagers) * BalanceConfig.VILLAGER_FOOD_PER_SECOND * cycle_len
+		food -= float(squads) * BalanceConfig.SQUAD_FOOD_PER_SECOND_AT_NIGHT * night_len
 		if cycle >= 3 and food >= BalanceConfig.SQUAD_FOOD_COST and gold >= BalanceConfig.SQUAD_GOLD_COST:
 			food -= BalanceConfig.SQUAD_FOOD_COST
 			gold -= BalanceConfig.SQUAD_GOLD_COST

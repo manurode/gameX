@@ -72,6 +72,7 @@ const DEFINITIONS: Dictionary = {
 		"name": "Monstruo",
 		"scene": "res://scenes/units/unit_enemy.tscn",
 		"preview": "res://assets/tilesets/mediterranean/Characters/enemy/chr_enemy_idle.png",
+		"kinds": ["normal", "swarm", "siege", "elite", "raider"],
 	},
 }
 
@@ -116,6 +117,8 @@ static func apply_definition_to_unit(unit: Unit, type_id: String) -> void:
 	unit.unit_type_id = type_id
 	unit.move_speed = def.get("move_speed", unit.move_speed)
 	unit.max_hp = def.get("max_hp", unit.max_hp)
+	if type_id == "knight":
+		unit.max_hp += MetaProgression.get_knight_hp_bonus()
 	unit.hp = unit.max_hp
 	unit.can_attack = def.get("can_attack", unit.can_attack)
 	unit.can_build = def.get("can_build", unit.can_build)

@@ -56,3 +56,7 @@ func consume_food_up_to(amount: int) -> int:
 
 func _emit_changed() -> void:
 	resources_changed.emit(wood, gold, food)
+
+
+func refresh() -> void:
+	_emit_changed()
