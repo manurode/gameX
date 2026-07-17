@@ -10,6 +10,8 @@ const RIPPLE_B_PATH := "res://assets/tilesets/mediterranean/Terrain/ripple_b.png
 var _ground_layer: TinyTilesMap
 var _ripple_a_overlays: Array[Sprite2D] = []
 var _ripple_b_overlays: Array[Sprite2D] = []
+var _ripple_a_root: Node2D
+var _ripple_b_root: Node2D
 var _time := 0.0
 var _update_accumulator := 0.0
 var _night_mode := false
@@ -35,16 +37,25 @@ func _create_water_overlays() -> void:
 	if _ground_layer == null:
 		return
 
+	_ripple_a_root = Node2D.new()
+	_ripple_a_root.name = "RippleA"
+	_ripple_b_root = Node2D.new()
+	_ripple_b_root.name = "RippleB"
+	add_child(_ripple_a_root)
+	add_child(_ripple_b_root)
+
 	var ripple_a: Texture2D = load(RIPPLE_A_PATH)
 	var ripple_b: Texture2D = load(RIPPLE_B_PATH)
 	for cell in _ground_layer.get_water_cells():
 		var pos := _ground_layer.map_to_local(cell)
 		var sprite_a := _make_ripple_sprite(ripple_a, pos)
 		var sprite_b := _make_ripple_sprite(ripple_b, pos)
-		add_child(sprite_a)
-		add_child(sprite_b)
+		_ripple_a_root.add_child(sprite_a)
+		_ripple_b_root.add_child(sprite_b)
 		_ripple_a_overlays.append(sprite_a)
 		_ripple_b_overlays.append(sprite_b)
+	_ripple_a_root.modulate.a = 0.0
+	_ripple_b_root.modulate.a = 0.0
 
 
 func _make_ripple_sprite(texture: Texture2D, pos: Vector2) -> Sprite2D:
@@ -53,7 +64,7 @@ func _make_ripple_sprite(texture: Texture2D, pos: Vector2) -> Sprite2D:
 	sprite.centered = true
 	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	sprite.position = pos
-	sprite.modulate = Color(1.0, 1.0, 1.0, 0.0)
+	sprite.modulate = Color(1.0, 1.0, 1.0, 1.0)
 	return sprite
 
 
@@ -69,17 +80,18 @@ func _process(delta: float) -> void:
 	var alpha_a := alpha_peak * (1.0 - blend)
 	var alpha_b := alpha_peak * blend
 
-	for overlay in _ripple_a_overlays:
-		if is_instance_valid(overlay):
-			overlay.modulate.a = alpha_a
-	for overlay in _ripple_b_overlays:
-		if is_instance_valid(overlay):
-			overlay.modulate.a = alpha_b
+	# One modulate write per layer instead of one per water tile.
+	if _ripple_a_root != null:
+		_ripple_a_root.modulate.a = alpha_a
+	if _ripple_b_root != null:
+		_ripple_b_root.modulate.a = alpha_b
 
 
 func _clear_overlays() -> void:
 	_ripple_a_overlays.clear()
 	_ripple_b_overlays.clear()
+	_ripple_a_root = null
+	_ripple_b_root = null
 	for child in get_children():
 		remove_child(child)
 		child.queue_free()

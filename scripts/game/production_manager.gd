@@ -35,6 +35,8 @@ func setup(
 
 
 func _process(delta: float) -> void:
+	if _queues.is_empty() and _pending_recruitment.is_empty():
+		return
 	for building in _queues.keys():
 		if not is_instance_valid(building):
 			_queues.erase(building)

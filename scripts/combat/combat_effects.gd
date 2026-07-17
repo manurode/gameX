@@ -7,6 +7,9 @@ const VFX_SHEET: Texture2D = preload(
 const VFX_SCENE: PackedScene = preload("res://scenes/combat/animated_vfx.tscn")
 const FRAME_SIZE := 80
 
+static var _frames_cache: Dictionary = {}
+
+
 static func spawn_melee_impact(parent: Node, world_position: Vector2) -> void:
 	_spawn_vfx(parent, world_position, 1, 3, 14.0, 24)
 
@@ -20,6 +23,10 @@ static func spawn_death_burst(parent: Node, world_position: Vector2) -> void:
 
 
 static func create_vfx_frames(from_frame: int, to_frame: int, fps: float) -> SpriteFrames:
+	var cache_key := "%d:%d:%.1f" % [from_frame, to_frame, fps]
+	if _frames_cache.has(cache_key):
+		return _frames_cache[cache_key]
+
 	var frames := SpriteFrames.new()
 	frames.add_animation(&"play")
 	frames.set_animation_loop(&"play", false)
@@ -31,6 +38,7 @@ static func create_vfx_frames(from_frame: int, to_frame: int, fps: float) -> Spr
 		atlas.region = Rect2(frame_idx * FRAME_SIZE, 0, FRAME_SIZE, FRAME_SIZE)
 		frames.add_frame(&"play", atlas)
 
+	_frames_cache[cache_key] = frames
 	return frames
 
 

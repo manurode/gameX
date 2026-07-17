@@ -1,6 +1,13 @@
 class_name SpriteSheetUtils
 extends RefCounted
 
+static var _frames_cache: Dictionary = {}
+
+
+static func _sheet_id(sheet: Texture2D) -> int:
+	return sheet.get_rid().get_id() if sheet != null else 0
+
+
 static func build_character_frames(
 	idle_sheet: Texture2D,
 	walk_up_sheet: Texture2D,
@@ -18,6 +25,26 @@ static func build_character_frames(
 	gather_sheet: Texture2D = null,
 	gather_fps: float = 9.0
 ) -> SpriteFrames:
+	var cache_key := "%d_%d_%d_%d_%d_%d_%d_%d_%d_%.1f_%.1f_%.1f_%.1f_%d_%.1f" % [
+		_sheet_id(idle_sheet),
+		_sheet_id(walk_up_sheet),
+		_sheet_id(walk_down_sheet),
+		_sheet_id(attack_up_sheet),
+		_sheet_id(attack_down_sheet),
+		_sheet_id(death_up_sheet),
+		_sheet_id(death_down_sheet),
+		_sheet_id(gather_sheet),
+		frame_size,
+		idle_fps,
+		walk_fps,
+		attack_fps,
+		death_fps,
+		death_frame_count,
+		gather_fps,
+	]
+	if _frames_cache.has(cache_key):
+		return _frames_cache[cache_key]
+
 	var frames := SpriteFrames.new()
 
 	if idle_sheet != null:
@@ -66,6 +93,7 @@ static func build_character_frames(
 			frames.set_animation_speed(&"idle", idle_fps)
 			frames.set_animation_loop(&"idle", true)
 
+	_frames_cache[cache_key] = frames
 	return frames
 
 

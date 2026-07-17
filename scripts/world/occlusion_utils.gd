@@ -6,6 +6,7 @@ extends RefCounted
 const ALPHA_THRESHOLD := 0.35
 
 static var _image_cache: Dictionary = {}  # RID -> Image
+static var _opaque_sample_cache: Dictionary = {}  # String -> PackedVector2Array of texels
 
 
 static func get_texture_image(texture: Texture2D) -> Image:
@@ -134,11 +135,28 @@ static func is_animated_sprite_occluded(
 	return animated_sprite_occlusion_ratio(unit_sprite, occluder_sprites, sample_step) > 0.0
 
 
+static func _get_opaque_sample_points(texture: Texture2D, unit_img: Image, step: int) -> PackedVector2Array:
+	var cache_key := "%d:%d" % [texture.get_rid().get_id(), step]
+	if _opaque_sample_cache.has(cache_key):
+		return _opaque_sample_cache[cache_key]
+	var samples := PackedVector2Array()
+	var width := unit_img.get_width()
+	var height := unit_img.get_height()
+	for ty in range(0, height, step):
+		for tx in range(0, width, step):
+			if unit_img.get_pixel(tx, ty).a >= ALPHA_THRESHOLD:
+				samples.append(Vector2(tx, ty))
+	_opaque_sample_cache[cache_key] = samples
+	return samples
+
+
 ## Fraction of opaque unit pixels covered by occluders (0..1).
+## early_exit_ratio: stop early once coverage is known above/below the threshold.
 static func animated_sprite_occlusion_ratio(
 	unit_sprite: AnimatedSprite2D,
 	occluder_sprites: Array,
-	sample_step: int = 2
+	sample_step: int = 2,
+	early_exit_ratio: float = -1.0
 ) -> float:
 	if unit_sprite == null or occluder_sprites.is_empty():
 		return 0.0
@@ -152,23 +170,30 @@ static func animated_sprite_occlusion_ratio(
 	var width := unit_img.get_width()
 	var height := unit_img.get_height()
 	var step := maxi(1, sample_step)
-	var opaque_samples := 0
-	var covered_samples := 0
-
-	for ty in range(0, height, step):
-		for tx in range(0, width, step):
-			var src_color := unit_img.get_pixel(tx, ty)
-			if src_color.a < ALPHA_THRESHOLD:
-				continue
-			opaque_samples += 1
-			var dx := (width - 1 - tx) if unit_sprite.flip_h else tx
-			var dy := (height - 1 - ty) if unit_sprite.flip_v else ty
-			var world_pos := animated_display_pixel_to_world(unit_sprite, dx, dy)
-			if any_sprite_opaque_at(occluder_sprites, world_pos):
-				covered_samples += 1
-
+	var samples := _get_opaque_sample_points(frame_tex, unit_img, step)
+	var opaque_samples := samples.size()
 	if opaque_samples <= 0:
 		return 0.0
+
+	var covered_samples := 0
+	var checked := 0
+	for sample in samples:
+		var tx := int(sample.x)
+		var ty := int(sample.y)
+		var dx := (width - 1 - tx) if unit_sprite.flip_h else tx
+		var dy := (height - 1 - ty) if unit_sprite.flip_v else ty
+		var world_pos := animated_display_pixel_to_world(unit_sprite, dx, dy)
+		if any_sprite_opaque_at(occluder_sprites, world_pos):
+			covered_samples += 1
+		checked += 1
+		if early_exit_ratio > 0.0:
+			var remaining := opaque_samples - checked
+			var max_possible := float(covered_samples + remaining) / float(opaque_samples)
+			if max_possible < early_exit_ratio:
+				return float(covered_samples) / float(opaque_samples)
+			if float(covered_samples) / float(opaque_samples) >= early_exit_ratio:
+				return float(covered_samples) / float(opaque_samples)
+
 	return float(covered_samples) / float(opaque_samples)
 
 

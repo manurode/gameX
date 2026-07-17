@@ -29,6 +29,10 @@ const DEATH_LINGER_SECONDS := 2.8
 const HIT_FLASH_DURATION := 0.14
 const DEATH_FRAME_COUNT := 3
 const STONE_SCENE: PackedScene = preload("res://scenes/combat/stone.tscn")
+const SEPARATION_UPDATE_INTERVAL := 0.08
+
+static var _shared_shadow_texture: Texture2D
+static var _shared_dust_texture: Texture2D
 
 @export var move_speed: float = 95.0
 @export var max_hp: int = 100
@@ -94,6 +98,11 @@ var _navigation_path_target := Vector2.INF
 var _resolved_navigation_target := Vector2.INF
 var _navigation_map_version := -1
 var _scan_timer := 0.0
+var _separation_timer := 0.0
+var _cached_navigation_manager: Node = null
+var _cached_move_speed_mult := 1.0
+var _move_speed_mult_timer := 0.0
+var _last_separation_nudge := Vector2.ZERO
 
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var navigation_agent: NavigationAgent2D = $NavigationAgent2D
@@ -109,6 +118,9 @@ func _ready() -> void:
 	hp = max_hp
 	add_to_group("selectable_units")
 	add_to_group("units")
+	# Stagger AI scans so not every unit evaluates on the same frame.
+	_scan_timer = randf() * TARGET_SCAN_INTERVAL
+	_separation_timer = randf() * SEPARATION_UPDATE_INTERVAL
 	_setup_sprite_frames()
 	_setup_shadow()
 	_setup_dust()
@@ -220,7 +232,7 @@ func assign_gather_at_node(node: ResourceNode) -> void:
 	if garrisoned_building != null:
 		exit_garrison()
 	attack_target = null
-	attack_target_building = null
+	_set_attack_target_building(null)
 	construction_target = null
 	repair_target = null
 	gather_target = node
@@ -256,7 +268,7 @@ func begin_recruitment(
 	release_construction()
 	release_repair()
 	attack_target = null
-	attack_target_building = null
+	_set_attack_target_building(null)
 	recruitment_building = building
 	recruitment_type_id = target_type_id
 	recruitment_squad_size = squad_size
@@ -292,18 +304,19 @@ func release_repair() -> void:
 
 
 func _setup_shadow() -> void:
-	var image := Image.create(48, 16, false, Image.FORMAT_RGBA8)
-	image.fill(Color(0, 0, 0, 0))
-	for y in 16:
-		for x in 48:
-			var dx := (x - 24.0) / 24.0
-			var dy := (y - 8.0) / 8.0
-			var dist := dx * dx + dy * dy
-			if dist <= 1.0:
-				var alpha := 0.3 * (1.0 - dist) * (1.0 - dist)
-				image.set_pixel(x, y, Color(0.0, 0.0, 0.0, alpha))
-	var texture := ImageTexture.create_from_image(image)
-	shadow_sprite.texture = texture
+	if _shared_shadow_texture == null:
+		var image := Image.create(48, 16, false, Image.FORMAT_RGBA8)
+		image.fill(Color(0, 0, 0, 0))
+		for y in 16:
+			for x in 48:
+				var dx := (x - 24.0) / 24.0
+				var dy := (y - 8.0) / 8.0
+				var dist := dx * dx + dy * dy
+				if dist <= 1.0:
+					var alpha := 0.3 * (1.0 - dist) * (1.0 - dist)
+					image.set_pixel(x, y, Color(0.0, 0.0, 0.0, alpha))
+		_shared_shadow_texture = ImageTexture.create_from_image(image)
+	shadow_sprite.texture = _shared_shadow_texture
 	shadow_sprite.position = Vector2.ZERO
 	shadow_sprite.scale = Vector2(VISUAL_SCALE, VISUAL_SCALE)
 	shadow_sprite.y_sort_enabled = false
@@ -312,16 +325,18 @@ func _setup_shadow() -> void:
 
 
 func _setup_dust() -> void:
-	var size := 8
-	var image := Image.create(size, size, false, Image.FORMAT_RGBA8)
-	image.fill(Color(0, 0, 0, 0))
-	var center := (size - 1) * 0.5
-	for y in size:
-		for x in size:
-			var dist := Vector2(x - center, y - center).length() / center
-			if dist <= 1.0:
-				image.set_pixel(x, y, Color(1.0, 1.0, 1.0, (1.0 - dist) * 0.9))
-	dust_particles.texture = ImageTexture.create_from_image(image)
+	if _shared_dust_texture == null:
+		var size := 8
+		var image := Image.create(size, size, false, Image.FORMAT_RGBA8)
+		image.fill(Color(0, 0, 0, 0))
+		var center := (size - 1) * 0.5
+		for y in size:
+			for x in size:
+				var dist := Vector2(x - center, y - center).length() / center
+				if dist <= 1.0:
+					image.set_pixel(x, y, Color(1.0, 1.0, 1.0, (1.0 - dist) * 0.9))
+		_shared_dust_texture = ImageTexture.create_from_image(image)
+	dust_particles.texture = _shared_dust_texture
 	dust_particles.position = Vector2(0, -2)
 	dust_particles.y_sort_enabled = false
 
@@ -482,11 +497,15 @@ static func assign_move_destinations(
 func select() -> void:
 	is_selected = true
 	selection_indicator.visible = true
+	if health_bar != null and health_bar.has_method("notify_selection_changed"):
+		health_bar.notify_selection_changed()
 
 
 func deselect() -> void:
 	is_selected = false
 	selection_indicator.visible = false
+	if health_bar != null and health_bar.has_method("notify_selection_changed"):
+		health_bar.notify_selection_changed()
 
 
 func get_sprite_center() -> Vector2:
@@ -522,7 +541,7 @@ func move_to(target: Vector2) -> void:
 	release_repair()
 	clear_gather_job()
 	attack_target = null
-	attack_target_building = null
+	_set_attack_target_building(null)
 	construction_target = null
 	repair_target = null
 	_unit_state = UnitState.MOVING
@@ -552,7 +571,7 @@ func attack_target_unit(target: Unit) -> void:
 		return
 
 	garrison_approach_target = null
-	attack_target_building = null
+	_set_attack_target_building(null)
 	construction_target = null
 	repair_target = null
 	attack_target = target
@@ -572,10 +591,20 @@ func attack_target_building_node(target: Building) -> void:
 	attack_target = null
 	construction_target = null
 	repair_target = null
-	attack_target_building = target
+	_set_attack_target_building(target)
 	_unit_state = UnitState.CHASING if garrisoned_building == null else UnitState.IDLE
 	_is_attack_animating = false
 	_reset_navigation_recovery()
+
+
+func _set_attack_target_building(target: Building) -> void:
+	if attack_target_building == target:
+		return
+	if attack_target_building != null and is_instance_valid(attack_target_building):
+		attack_target_building.unregister_attacker(self)
+	attack_target_building = target
+	if attack_target_building != null and is_instance_valid(attack_target_building):
+		attack_target_building.register_attacker(self)
 
 
 func approach_garrison(building: Building) -> void:
@@ -593,7 +622,7 @@ func approach_garrison(building: Building) -> void:
 		(job_manager as JobManager).release_unit_job(self)
 
 	attack_target = null
-	attack_target_building = null
+	_set_attack_target_building(null)
 	construction_target = null
 	repair_target = null
 	garrison_approach_target = building
@@ -615,7 +644,7 @@ func assign_construction(site: Building) -> void:
 	if garrisoned_building != null:
 		exit_garrison()
 	attack_target = null
-	attack_target_building = null
+	_set_attack_target_building(null)
 	construction_target = site
 	_unit_state = UnitState.CONSTRUCTING
 	_is_attack_animating = false
@@ -635,7 +664,7 @@ func assign_repair(target: Building) -> void:
 	if garrisoned_building != null:
 		exit_garrison()
 	attack_target = null
-	attack_target_building = null
+	_set_attack_target_building(null)
 	construction_target = null
 	repair_target = target
 	_unit_state = UnitState.REPAIRING
@@ -677,7 +706,7 @@ func on_entered_garrison(building: Building) -> void:
 	deselect()
 	_remove_from_selection()
 	attack_target = building.garrison_attack_target
-	attack_target_building = building.garrison_attack_target_building
+	_set_attack_target_building(building.garrison_attack_target_building)
 
 
 func on_exited_garrison(exit_position: Vector2) -> void:
@@ -811,21 +840,20 @@ func _evaluate_nearby_enemies() -> void:
 
 func _find_nearest_hostile_unit(max_range: float) -> Unit:
 	var best_unit: Unit = null
-	var best_distance := max_range
+	var best_distance_sq := max_range * max_range
+	var origin := global_position
 
-	for node in get_tree().get_nodes_in_group("enemies"):
-		if not node is Unit:
+	for item in UnitSpatialIndex.query_nearby(get_tree(), origin, max_range):
+		if not item is Unit:
 			continue
-
-		var enemy := node as Unit
-		if enemy._is_dying or enemy.hp <= 0:
+		var enemy := item as Unit
+		if enemy == self or enemy._is_dying or enemy.hp <= 0:
 			continue
 		if not is_hostile_to(enemy):
 			continue
-
-		var distance := global_position.distance_to(enemy.global_position)
-		if distance < best_distance:
-			best_distance = distance
+		var distance_sq := origin.distance_squared_to(enemy.global_position)
+		if distance_sq < best_distance_sq:
+			best_distance_sq = distance_sq
 			best_unit = enemy
 
 	return best_unit
@@ -844,21 +872,15 @@ func _can_help_defend_ally() -> bool:
 
 
 func _alert_nearby_allies(attacker: Unit) -> void:
-	var radius_sq := ALLY_DEFEND_RADIUS * ALLY_DEFEND_RADIUS
 	var victim_pos := global_position
-
-	for node in get_tree().get_nodes_in_group("units"):
-		if node == self or not node is Unit:
+	for item in UnitSpatialIndex.query_nearby(get_tree(), victim_pos, ALLY_DEFEND_RADIUS):
+		if not item is Unit:
 			continue
-
-		var ally := node as Unit
-		if ally.team_id != team_id:
-			continue
-		if ally.global_position.distance_squared_to(victim_pos) > radius_sq:
+		var ally := item as Unit
+		if ally == self or ally.team_id != team_id:
 			continue
 		if not ally._can_help_defend_ally():
 			continue
-
 		ally.attack_target_unit(attacker)
 
 
@@ -893,7 +915,7 @@ func _die() -> void:
 	garrisoned_building = null
 	garrison_approach_target = null
 	attack_target = null
-	attack_target_building = null
+	_set_attack_target_building(null)
 	_unit_state = UnitState.DYING
 	_is_attack_animating = false
 	velocity = Vector2.ZERO
@@ -989,7 +1011,7 @@ func _physics_process(delta: float) -> void:
 		not is_instance_valid(attack_target_building)
 		or not attack_target_building.can_be_damaged()
 	):
-		attack_target_building = null
+		_set_attack_target_building(null)
 		_unit_state = UnitState.IDLE
 		_is_attack_animating = false
 
@@ -1271,8 +1293,11 @@ func _get_current_navigation_goal(fallback_target: Vector2) -> Vector2:
 
 
 func _get_navigation_manager() -> Node:
+	if _cached_navigation_manager != null and is_instance_valid(_cached_navigation_manager):
+		return _cached_navigation_manager
 	var manager := get_tree().get_first_node_in_group("navigation_manager")
 	if manager != null and manager.has_method("get_navigation_path"):
+		_cached_navigation_manager = manager
 		return manager
 	return null
 
@@ -1603,6 +1628,7 @@ func cancel_recruitment() -> void:
 
 
 func _exit_tree() -> void:
+	_set_attack_target_building(null)
 	cancel_recruitment()
 
 
@@ -1679,29 +1705,32 @@ func _should_stop_move_order() -> bool:
 
 
 func _is_adjacent_to_other_unit() -> bool:
-	var touch_distance_sq := PERSONAL_SPACE_RADIUS * PERSONAL_SPACE_RADIUS * 1.44
-	for node in get_tree().get_nodes_in_group("units"):
-		if node == self or not node is Unit:
+	var touch_radius := PERSONAL_SPACE_RADIUS * 1.2
+	var touch_distance_sq := touch_radius * touch_radius
+	var origin := global_position
+	for item in UnitSpatialIndex.query_nearby(get_tree(), origin, touch_radius):
+		if not item is Unit:
 			continue
-
-		var other := node as Unit
-		if other._is_dying or other.garrisoned_building != null:
+		var other := item as Unit
+		if other == self or other._is_dying or other.garrisoned_building != null:
 			continue
-
-		if global_position.distance_squared_to(other.global_position) <= touch_distance_sq:
+		if origin.distance_squared_to(other.global_position) <= touch_distance_sq:
 			return true
-
 	return false
 
 
 func _get_effective_move_speed() -> float:
-	var multiplier := 1.0
-	for node in get_tree().get_nodes_in_group("slow_zones"):
-		if node is TerrainObstacle:
-			multiplier = minf(multiplier, node.get_slow_multiplier_at(global_position))
-	if _ground_layer != null and _ground_layer.is_water_at(global_position):
-		multiplier = minf(multiplier, 0.65)
-	return move_speed * multiplier
+	_move_speed_mult_timer -= get_physics_process_delta_time()
+	if _move_speed_mult_timer <= 0.0:
+		_move_speed_mult_timer = 0.2
+		var multiplier := 1.0
+		for node in get_tree().get_nodes_in_group("slow_zones"):
+			if node is TerrainObstacle:
+				multiplier = minf(multiplier, node.get_slow_multiplier_at(global_position))
+		if _ground_layer != null and _ground_layer.is_water_at(global_position):
+			multiplier = minf(multiplier, 0.65)
+		_cached_move_speed_mult = multiplier
+	return move_speed * _cached_move_speed_mult
 
 
 func _is_in_attack_range() -> bool:
@@ -2027,7 +2056,7 @@ func _on_animation_finished() -> void:
 		_unit_state = UnitState.CHASING
 	else:
 		attack_target = null
-		attack_target_building = null
+		_set_attack_target_building(null)
 		_unit_state = UnitState.IDLE
 
 
@@ -2064,26 +2093,35 @@ func _update_visual_separation() -> void:
 	if garrisoned_building != null or _is_dying:
 		return
 
+	_separation_timer -= get_physics_process_delta_time()
+	if _separation_timer > 0.0:
+		animated_sprite.offset = sprite_offset + _last_separation_nudge
+		return
+	_separation_timer = SEPARATION_UPDATE_INTERVAL
+
 	var nudge := Vector2.ZERO
 	var separation_radius := PERSONAL_SPACE_RADIUS * 1.5
-	for node in get_tree().get_nodes_in_group("units"):
-		if node == self or not node is Unit:
+	var separation_radius_sq := separation_radius * separation_radius
+	var origin := global_position
+	for item in UnitSpatialIndex.query_nearby(get_tree(), origin, separation_radius):
+		if not item is Unit:
 			continue
-
-		var other := node as Unit
-		if other._is_dying or other.garrisoned_building != null:
+		var other := item as Unit
+		if other == self or other._is_dying or other.garrisoned_building != null:
 			continue
-
-		var offset := global_position - other.global_position
-		var dist := offset.length()
-		if dist >= separation_radius or dist < 0.01:
+		var offset := origin - other.global_position
+		var dist_sq := offset.length_squared()
+		if dist_sq >= separation_radius_sq or dist_sq < 0.0001:
 			continue
-		nudge += offset.normalized() * (separation_radius - dist) * 0.25
+		var dist := sqrt(dist_sq)
+		nudge += offset * ((separation_radius - dist) * 0.25 / dist)
 
 	const MAX_NUDGE := 14.0
-	if nudge.length() > MAX_NUDGE:
-		nudge = nudge.normalized() * MAX_NUDGE
+	var nudge_len_sq := nudge.length_squared()
+	if nudge_len_sq > MAX_NUDGE * MAX_NUDGE:
+		nudge = nudge * (MAX_NUDGE / sqrt(nudge_len_sq))
 
+	_last_separation_nudge = nudge
 	animated_sprite.offset = sprite_offset + nudge
 
 

@@ -23,6 +23,10 @@ var _path_grid_size := Vector2i.ZERO
 var _navigation_version := 0
 var _path_cache: Dictionary = {}
 var _path_queue: Array[Dictionary] = []
+var _path_queue_keys: Dictionary = {}
+var _path_queue_head := 0
+var _blocker_bounds_cache: Array = []
+var _blocker_bounds_version := -1
 
 
 func setup_from_ground(ground_layer: TinyTilesMap) -> void:
@@ -50,6 +54,8 @@ func rebuild_navigation(obstacles: Array = [], buildings: Array = []) -> void:
 func update_sources(obstacles: Array, buildings: Array) -> void:
 	_obstacles = obstacles.duplicate()
 	_buildings = buildings.duplicate()
+	_blocker_bounds_cache.clear()
+	_blocker_bounds_version = -1
 
 
 func request_rebuild_at(world_position: Vector2) -> void:
@@ -269,13 +275,10 @@ func queue_navigation_path(from_position: Vector2, target_position: Vector2) -> 
 		return
 
 	var cache_key := _make_path_cache_key(from_position, target_position)
-	if _path_cache.has(cache_key):
+	if _path_cache.has(cache_key) or _path_queue_keys.has(cache_key):
 		return
 
-	for request in _path_queue:
-		if request.get("key", "") == cache_key:
-			return
-
+	_path_queue_keys[cache_key] = true
 	_path_queue.append({
 		"from": from_position,
 		"to": target_position,
@@ -291,9 +294,11 @@ func queue_navigation_paths(requests: Array) -> void:
 
 func _process_path_queue() -> void:
 	var processed := 0
-	while not _path_queue.is_empty() and processed < PATHS_PER_FRAME:
-		var request: Dictionary = _path_queue.pop_front()
+	while _path_queue_head < _path_queue.size() and processed < PATHS_PER_FRAME:
+		var request: Dictionary = _path_queue[_path_queue_head]
+		_path_queue_head += 1
 		var cache_key: String = request.get("key", "")
+		_path_queue_keys.erase(cache_key)
 		if cache_key.is_empty() or _path_cache.has(cache_key):
 			processed += 1
 			continue
@@ -302,8 +307,20 @@ func _process_path_queue() -> void:
 		var target_position: Vector2 = request.get("to", Vector2.ZERO)
 		_path_cache[cache_key] = _compute_navigation_path(from_position, target_position)
 		if _path_cache.size() > PATH_CACHE_LIMIT:
-			_path_cache.clear()
+			_evict_path_cache()
 		processed += 1
+
+	if _path_queue_head > 64 and _path_queue_head * 2 > _path_queue.size():
+		_path_queue = _path_queue.slice(_path_queue_head)
+		_path_queue_head = 0
+
+
+func _evict_path_cache() -> void:
+	# Drop roughly half the entries instead of wiping the whole cache.
+	var keys := _path_cache.keys()
+	var drop_count := keys.size() / 2
+	for i in drop_count:
+		_path_cache.erase(keys[i])
 
 
 func _compute_navigation_path(from_position: Vector2, target_position: Vector2) -> PackedVector2Array:
@@ -336,7 +353,8 @@ func _compute_navigation_path(from_position: Vector2, target_position: Vector2) 
 func _make_path_cache_key(from_position: Vector2, target_position: Vector2) -> String:
 	var start_id := _world_to_grid(from_position)
 	var target_id := _world_to_grid(target_position)
-	return "%d:%d:%d:%d:%d" % [
+	# Compact integer key string avoids Dictionary Array-key pitfalls.
+	return "%d_%d_%d_%d_%d" % [
 		_navigation_version,
 		start_id.x,
 		start_id.y,
@@ -349,6 +367,9 @@ func _bump_navigation_version() -> void:
 	_navigation_version += 1
 	_path_cache.clear()
 	_path_queue.clear()
+	_path_queue_keys.clear()
+	_path_queue_head = 0
+	_blocker_bounds_version = -1
 
 
 func get_closest_walkable_point(world_position: Vector2) -> Vector2:
@@ -447,12 +468,11 @@ func _find_closest_walkable_id(center_id: Vector2i) -> Vector2i:
 	return Vector2i(-1, -1)
 
 
-func _is_world_point_walkable(world_position: Vector2) -> bool:
-	if _ground_layer == null:
-		return false
-	if not _ground_layer.is_walkable_cell(_ground_layer.get_cell_at_world(world_position)):
-		return false
-
+func _ensure_blocker_bounds_cache() -> void:
+	if _blocker_bounds_version == _navigation_version and not _blocker_bounds_cache.is_empty():
+		return
+	_blocker_bounds_version = _navigation_version
+	_blocker_bounds_cache.clear()
 	for obstacle in _obstacles:
 		if (
 			not is_instance_valid(obstacle)
@@ -461,19 +481,48 @@ func _is_world_point_walkable(world_position: Vector2) -> bool:
 		):
 			continue
 		for outline in (obstacle as TerrainObstacle).get_nav_block_outlines():
-			if _is_point_blocked_by_outline(world_position, outline):
-				return false
-
+			if outline.size() < 3:
+				continue
+			_blocker_bounds_cache.append({
+				"outline": outline,
+				"rect": _outline_bounds(outline).grow(AGENT_CLEARANCE),
+			})
 	for building in _buildings:
-		if (
-			is_instance_valid(building)
-			and building is Building
-			and (building as Building).blocks_navigation
-			and _is_point_blocked_by_outline(
-				world_position,
-				(building as Building).get_nav_block_outline()
-			)
-		):
+		if not is_instance_valid(building) or not (building is Building):
+			continue
+		var active_building := building as Building
+		if not active_building.blocks_navigation:
+			continue
+		var outline := active_building.get_nav_block_outline()
+		if outline.size() < 3:
+			continue
+		_blocker_bounds_cache.append({
+			"outline": outline,
+			"rect": _outline_bounds(outline).grow(AGENT_CLEARANCE),
+		})
+
+
+func _outline_bounds(outline: PackedVector2Array) -> Rect2:
+	var min_v := outline[0]
+	var max_v := outline[0]
+	for i in range(1, outline.size()):
+		min_v = min_v.min(outline[i])
+		max_v = max_v.max(outline[i])
+	return Rect2(min_v, max_v - min_v)
+
+
+func _is_world_point_walkable(world_position: Vector2) -> bool:
+	if _ground_layer == null:
+		return false
+	if not _ground_layer.is_walkable_cell(_ground_layer.get_cell_at_world(world_position)):
+		return false
+
+	_ensure_blocker_bounds_cache()
+	for blocker in _blocker_bounds_cache:
+		var rect: Rect2 = blocker["rect"]
+		if not rect.has_point(world_position):
+			continue
+		if _is_point_blocked_by_outline(world_position, blocker["outline"]):
 			return false
 
 	return true

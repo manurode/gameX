@@ -4,6 +4,7 @@ const BAR_WIDTH := 52.0
 const BAR_HEIGHT := 6.0
 
 var _building: Building
+var _last_drawn_progress := -1.0
 
 
 func _ready() -> void:
@@ -11,15 +12,11 @@ func _ready() -> void:
 	z_index = 11
 	y_sort_enabled = false
 	visible = false
-
-
-func _process(_delta: float) -> void:
-	position = _building.sprite_offset + Vector2(0.0, -62.0)
-	queue_redraw()
+	set_process(false)
 
 
 func _draw() -> void:
-	if _building.building_state != Building.BuildingState.CONSTRUCTING:
+	if _building == null or _building.building_state != Building.BuildingState.CONSTRUCTING:
 		return
 
 	var ratio := clampf(_building.construction_progress, 0.0, 1.0)
@@ -35,3 +32,20 @@ func _draw() -> void:
 	draw_rect(bg_rect, Color(0.1, 0.1, 0.12, 0.9))
 	draw_rect(fg_rect, Color(0.35, 0.75, 0.95, 0.95))
 	draw_rect(bg_rect, Color(0.0, 0.0, 0.0, 0.55), false, 1.0)
+
+
+func refresh_from_building() -> void:
+	if _building == null:
+		visible = false
+		return
+	var constructing := _building.building_state == Building.BuildingState.CONSTRUCTING
+	visible = constructing
+	if not constructing:
+		_last_drawn_progress = -1.0
+		return
+	position = _building.sprite_offset + Vector2(0.0, -62.0)
+	var progress := _building.construction_progress
+	if absf(progress - _last_drawn_progress) < 0.01 and _last_drawn_progress >= 0.0:
+		return
+	_last_drawn_progress = progress
+	queue_redraw()

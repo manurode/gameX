@@ -42,12 +42,14 @@ var garrison_attack_target: Unit = null
 var garrison_attack_target_building: Building = null
 var _garrison_attack_cooldown: float = 0.0
 var _last_damage_time: int = 0
+var _active_attackers: int = 0
 var _definition: Dictionary = {}
 var _visual_scale: float = 1.0
 var _footprint := Vector2(70.0, 45.0)
 var _wall_vertical: bool = false
 var _repair_start_hp: int = 0
 var _repair_progress: float = 0.0
+var _last_construction_visual_progress := -1.0
 
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var damage_overlay: Sprite2D = $DamageOverlay
@@ -371,18 +373,20 @@ func _process_automatic_defense(delta: float) -> void:
 	if _garrison_attack_cooldown > 0.0:
 		return
 	var nearest: Unit = null
-	var nearest_distance := INF
+	var nearest_distance_sq := INF
 	var attack_range := get_garrison_attack_range()
-	for node in get_tree().get_nodes_in_group("enemies"):
-		if not node is Unit:
+	var attack_range_sq := attack_range * attack_range
+	var origin := get_attack_point()
+	for item in UnitSpatialIndex.query_nearby(get_tree(), origin, attack_range):
+		if not item is Unit:
 			continue
-		var enemy := node as Unit
-		if enemy._is_dying or enemy.hp <= 0:
+		var enemy := item as Unit
+		if enemy.team_id != Team.ENEMY or enemy._is_dying or enemy.hp <= 0:
 			continue
-		var distance := get_attack_point().distance_to(enemy.get_sprite_center())
-		if distance <= attack_range and distance < nearest_distance:
+		var distance_sq := origin.distance_squared_to(enemy.get_sprite_center())
+		if distance_sq <= attack_range_sq and distance_sq < nearest_distance_sq:
 			nearest = enemy
-			nearest_distance = distance
+			nearest_distance_sq = distance_sq
 	if nearest == null:
 		return
 	var weapon_stats := get_weapon_stats()
@@ -695,24 +699,36 @@ func should_show_health_bar() -> bool:
 
 
 func is_being_attacked() -> bool:
-	for node in get_tree().get_nodes_in_group("enemies"):
-		if node is Unit:
-			var enemy := node as Unit
-			if enemy.attack_target_building == self and enemy.hp > 0 and not enemy._is_dying:
-				return true
-	return false
+	return _active_attackers > 0
+
+
+func register_attacker(_attacker: Unit) -> void:
+	_active_attackers += 1
+	_notify_health_bar()
+
+
+func unregister_attacker(_attacker: Unit) -> void:
+	_active_attackers = maxi(0, _active_attackers - 1)
+	_notify_health_bar()
+
+
+func _notify_health_bar() -> void:
+	if health_bar != null and health_bar.has_method("notify_selection_changed"):
+		health_bar.notify_selection_changed()
 
 
 func select() -> void:
 	is_selected = true
 	if selection_indicator != null:
 		selection_indicator.visible = true
+	_notify_health_bar()
 
 
 func deselect() -> void:
 	is_selected = false
 	if selection_indicator != null:
 		selection_indicator.visible = false
+	_notify_health_bar()
 
 
 func get_garrison_space() -> int:
@@ -847,10 +863,10 @@ func _get_nearby_unit_positions(center: Vector2, radius: float) -> Array[Vector2
 	if not is_inside_tree():
 		return result
 	var radius_sq := radius * radius
-	for node in get_tree().get_nodes_in_group("units"):
-		if not node is Unit:
+	for item in UnitSpatialIndex.query_nearby(get_tree(), center, radius):
+		if not item is Unit:
 			continue
-		var unit := node as Unit
+		var unit := item as Unit
 		if not is_instance_valid(unit) or unit._is_dying or unit.hp <= 0:
 			continue
 		if unit.garrisoned_building != null:
@@ -891,7 +907,14 @@ func add_construction_progress(amount: float) -> void:
 	if building_state != BuildingState.CONSTRUCTING:
 		return
 	construction_progress = clampf(construction_progress + amount, 0.0, 1.0)
-	_update_construction_visual()
+	# Skip visual work until progress crosses a visible threshold (or completes).
+	var progress_bucket := floorf(construction_progress * 50.0)
+	if (
+		construction_progress >= 1.0
+		or progress_bucket != _last_construction_visual_progress
+	):
+		_last_construction_visual_progress = progress_bucket
+		_update_construction_visual()
 	if construction_progress >= 1.0:
 		_complete_construction()
 
@@ -1036,7 +1059,9 @@ func _update_visual_damage() -> void:
 
 
 func _update_construction_visual() -> void:
-	if progress_bar != null:
+	if progress_bar != null and progress_bar.has_method("refresh_from_building"):
+		progress_bar.refresh_from_building()
+	elif progress_bar != null:
 		progress_bar.visible = building_state == BuildingState.CONSTRUCTING
 		progress_bar.queue_redraw()
 	if sprite == null or building_state != BuildingState.CONSTRUCTING:
@@ -1085,6 +1110,7 @@ func get_nav_block_outline() -> PackedVector2Array:
 
 func _destroy() -> void:
 	building_state = BuildingState.DESTROYED
+	_active_attackers = 0
 	var job_manager := get_tree().get_first_node_in_group("job_manager")
 	if job_manager is JobManager:
 		(job_manager as JobManager).on_building_destroyed(self)

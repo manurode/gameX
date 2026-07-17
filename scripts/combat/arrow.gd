@@ -26,11 +26,11 @@ func _physics_process(delta: float) -> void:
 	_lifetime += delta
 
 	if not _has_hit and target != null and _can_hit_unit(target):
-		if global_position.distance_to(target.get_sprite_center()) <= 18.0:
+		if global_position.distance_squared_to(target.get_sprite_center()) <= 324.0:
 			_hit_unit(target)
 
 	if not _has_hit and building_target != null and _can_hit_building(building_target):
-		if global_position.distance_to(building_target.get_attack_point()) <= 22.0:
+		if global_position.distance_squared_to(building_target.get_attack_point()) <= 484.0:
 			_hit_building(building_target)
 
 	if _lifetime >= MAX_LIFETIME:

@@ -5,24 +5,83 @@ const BAR_HEIGHT := 5.0
 const GARRISON_FONT_SIZE := 11
 
 var _building: Building
+var _was_visible := false
 
 
 func _ready() -> void:
 	_building = get_parent() as Building
 	z_index = 10
 	y_sort_enabled = false
-	if _building.has_signal("garrison_changed"):
-		_building.garrison_changed.connect(queue_redraw)
+	visible = false
+	set_process(false)
+	if _building != null:
+		if _building.has_signal("garrison_changed"):
+			_building.garrison_changed.connect(_on_visual_state_changed)
+		if _building.has_signal("health_changed"):
+			_building.health_changed.connect(_on_health_changed)
+		_refresh_visibility()
+
+
+func _exit_tree() -> void:
+	if _building == null or not is_instance_valid(_building):
+		return
+	if _building.garrison_changed.is_connected(_on_visual_state_changed):
+		_building.garrison_changed.disconnect(_on_visual_state_changed)
+	if _building.health_changed.is_connected(_on_health_changed):
+		_building.health_changed.disconnect(_on_health_changed)
 
 
 func _process(_delta: float) -> void:
-	visible = _building.should_show_health_bar()
+	if not _building.should_show_health_bar():
+		_set_bar_visible(false)
+		set_process(false)
+		return
 	position = _building.sprite_offset + Vector2(0.0, -52.0)
-	queue_redraw()
+
+
+func _on_health_changed(_current_hp: int, _max_hp: int) -> void:
+	_refresh_visibility()
+	if visible:
+		queue_redraw()
+
+
+func _on_visual_state_changed() -> void:
+	_refresh_visibility()
+	if visible:
+		queue_redraw()
+
+
+func notify_selection_changed() -> void:
+	_refresh_visibility()
+
+
+func _refresh_visibility() -> void:
+	if _building == null:
+		_set_bar_visible(false)
+		set_process(false)
+		return
+	var show_bar := _building.should_show_health_bar()
+	_set_bar_visible(show_bar)
+	if show_bar:
+		position = _building.sprite_offset + Vector2(0.0, -52.0)
+		queue_redraw()
+		set_process(
+			not _building.is_selected
+			and _building.building_state != Building.BuildingState.CONSTRUCTING
+		)
+	else:
+		set_process(false)
+
+
+func _set_bar_visible(value: bool) -> void:
+	if _was_visible == value and visible == value:
+		return
+	_was_visible = value
+	visible = value
 
 
 func _draw() -> void:
-	if _building.max_hp <= 0:
+	if _building == null or _building.max_hp <= 0:
 		return
 
 	var ratio := clampf(float(_building.hp) / float(_building.max_hp), 0.0, 1.0)

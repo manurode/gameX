@@ -78,6 +78,7 @@ var _production_box: VBoxContainer
 var _production_title: Label
 var _production_items_box: BoxContainer
 var _production_item_buttons: Dictionary = {}
+var _food_ui_timer := 0.0
 var _production_queue_label: Label
 var _production_progress_label: Label
 var _production_pending_label: Label
@@ -600,8 +601,10 @@ func _on_production_queue_changed(building: Building) -> void:
 		_update_production_status_labels()
 
 
-func _process(_delta: float) -> void:
-	if _population_manager != null:
+func _process(delta: float) -> void:
+	_food_ui_timer -= delta
+	if _food_ui_timer <= 0.0 and _population_manager != null:
+		_food_ui_timer = 0.35
 		_on_food_upkeep_changed(_population_manager.get_food_upkeep_per_second())
 	if _production_box == null or not _production_box.visible:
 		return

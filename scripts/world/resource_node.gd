@@ -359,12 +359,16 @@ func select() -> void:
 	is_selected = true
 	if _selection_indicator != null:
 		_selection_indicator.visible = true
+	if _amount_bar != null and _amount_bar.has_method("notify_selection_changed"):
+		_amount_bar.notify_selection_changed()
 
 
 func deselect() -> void:
 	is_selected = false
 	if _selection_indicator != null:
 		_selection_indicator.visible = false
+	if _amount_bar != null and _amount_bar.has_method("notify_selection_changed"):
+		_amount_bar.notify_selection_changed()
 
 
 func _update_field_visual() -> void:

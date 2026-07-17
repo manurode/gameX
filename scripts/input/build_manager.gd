@@ -38,6 +38,8 @@ var _job_manager: JobManager
 var _building_scene: PackedScene = preload("res://scenes/buildings/building.tscn")
 var _wall_anchor_cache: Array[Vector2] = []
 var _wall_anchor_cache_frame: int = -1
+var _last_ghost_cell := Vector2i(1 << 30, 1 << 30)
+var _last_ghost_type := ""
 
 
 func setup(
@@ -139,6 +141,7 @@ func _process(_delta: float) -> void:
 	if not build_mode_active:
 		_ghost_sprite.visible = false
 		_clear_wall_ghosts()
+		_last_ghost_cell = Vector2i(1 << 30, 1 << 30)
 		return
 
 	if selected_building_type == "wall":
@@ -146,6 +149,11 @@ func _process(_delta: float) -> void:
 			_ghost_sprite.visible = false
 		else:
 			var world_pos := _snap_wall_position(_screen_to_world(get_viewport().get_mouse_position()))
+			var cell := _ground_layer.get_cell_at_world(world_pos) if _ground_layer != null else Vector2i.ZERO
+			if cell == _last_ghost_cell and _last_ghost_type == "wall" and _ghost_sprite.visible:
+				return
+			_last_ghost_cell = cell
+			_last_ghost_type = "wall"
 			# Idle ghost always shows the horizontal wall; drag-up selects vertical.
 			var vertical := WallTexture.default_orientation()
 			_ghost_sprite.global_position = world_pos
@@ -160,8 +168,12 @@ func _process(_delta: float) -> void:
 		return
 
 	var world_pos := _screen_to_world(get_viewport().get_mouse_position())
+	var place_cell := _ground_layer.get_cell_at_world(world_pos) if _ground_layer != null else Vector2i.ZERO
 	_ghost_sprite.global_position = world_pos
-	ghost_valid = _is_valid_placement(world_pos)
+	if place_cell != _last_ghost_cell or _last_ghost_type != selected_building_type:
+		_last_ghost_cell = place_cell
+		_last_ghost_type = selected_building_type
+		ghost_valid = _is_valid_placement(world_pos)
 	_ghost_sprite.modulate = Color(0.4, 0.95, 0.55, 0.65) if ghost_valid else Color(0.95, 0.35, 0.35, 0.55)
 	_ghost_sprite.visible = true
 

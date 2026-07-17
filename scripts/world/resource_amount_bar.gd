@@ -5,20 +5,47 @@ const BAR_HEIGHT := 5.0
 const AMOUNT_FONT_SIZE := 11
 
 var _resource: ResourceNode
+var _cached_offset := Vector2.ZERO
 
 
 func _ready() -> void:
 	_resource = get_parent() as ResourceNode
 	z_index = 10
 	y_sort_enabled = false
+	visible = false
+	set_process(false)
+	if _resource != null:
+		if _resource.has_signal("amount_changed"):
+			_resource.amount_changed.connect(_on_amount_changed)
+		_refresh()
 
 
-func _process(_delta: float) -> void:
+func _exit_tree() -> void:
+	if (
+		_resource != null
+		and is_instance_valid(_resource)
+		and _resource.amount_changed.is_connected(_on_amount_changed)
+	):
+		_resource.amount_changed.disconnect(_on_amount_changed)
+
+
+func _on_amount_changed(_remaining: int, _initial_amount: int) -> void:
+	_refresh()
+
+
+func notify_selection_changed() -> void:
+	_refresh()
+
+
+func _refresh() -> void:
 	if _resource == null:
 		visible = false
 		return
 	visible = _resource.should_show_amount_bar()
-	position = _resource.get_amount_bar_offset()
+	if not visible:
+		return
+	_cached_offset = _resource.get_amount_bar_offset()
+	position = _cached_offset
 	queue_redraw()
 
 

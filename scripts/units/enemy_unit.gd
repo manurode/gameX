@@ -29,6 +29,8 @@ func _ready() -> void:
 	super._ready()
 	remove_from_group("selectable_units")
 	add_to_group("enemies")
+	# Offset enemy scans so wave units do not all evaluate on the same tick.
+	_scan_timer = randf() * TARGET_SCAN_INTERVAL
 
 	var day_night := get_tree().get_first_node_in_group("day_night_manager")
 	if day_night != null and day_night.has_method("is_night") and day_night.call("is_night"):
@@ -151,19 +153,22 @@ func _acquire_target() -> void:
 
 func _find_nearest_player_unit(max_range: float) -> Unit:
 	var best_unit: Unit = null
-	var best_distance := max_range
+	var best_distance_sq := max_range * max_range
+	var origin := global_position
 
-	for node in get_tree().get_nodes_in_group("selectable_units"):
-		if not node is Unit:
+	for item in UnitSpatialIndex.query_nearby(get_tree(), origin, max_range):
+		if not item is Unit:
 			continue
-		var player_unit := node as Unit
+		var player_unit := item as Unit
+		if player_unit.team_id != Team.PLAYER:
+			continue
 		if player_unit._is_dying or player_unit.hp <= 0:
 			continue
 		if player_unit.garrisoned_building != null:
 			continue
-		var distance := global_position.distance_to(player_unit.global_position)
-		if distance < best_distance:
-			best_distance = distance
+		var distance_sq := origin.distance_squared_to(player_unit.global_position)
+		if distance_sq < best_distance_sq:
+			best_distance_sq = distance_sq
 			best_unit = player_unit
 
 	return best_unit
@@ -173,6 +178,7 @@ func _find_best_player_building() -> Building:
 	var best_building: Building = null
 	var best_score := INF
 	var priorities := RAID_PRIORITY_BUILDING_TYPES if steals_resources else PRIORITY_BUILDING_TYPES
+	var origin := global_position
 
 	for node in get_tree().get_nodes_in_group("buildings"):
 		if not node is Building:
@@ -183,7 +189,7 @@ func _find_best_player_building() -> Building:
 		if building.building_state != Building.BuildingState.ACTIVE:
 			continue
 
-		var distance := global_position.distance_to(building.global_position)
+		var distance := origin.distance_to(building.global_position)
 		var priority_bonus := 0.0
 		var type_index := priorities.find(building.building_type_id)
 		if type_index >= 0:

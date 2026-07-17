@@ -22,6 +22,7 @@ var _end_overlay: Control
 var _end_title: Label
 var _end_body: Label
 var _foresight_label: Label
+var _last_cycle_ui_seconds := -1
 
 
 func _ready() -> void:
@@ -325,17 +326,20 @@ func _on_build_mode_changed(active: bool, type_id: String) -> void:
 
 
 func _on_cycle_changed(phase: DayNightManager.CyclePhase) -> void:
-	_update_cycle_ui(phase)
+	_update_cycle_ui(phase, true)
 	if _build_manager != null and _build_manager.build_mode_active:
 		return
 	_update_help_for_cycle()
 
 
-func _update_cycle_ui(phase: DayNightManager.CyclePhase) -> void:
+func _update_cycle_ui(phase: DayNightManager.CyclePhase, force: bool = false) -> void:
 	if cycle_button == null or _day_night_manager == null:
 		return
-	var icon := "☾" if phase == DayNightManager.CyclePhase.NIGHT else "☀"
 	var seconds := ceili(_day_night_manager.seconds_remaining)
+	if not force and seconds == _last_cycle_ui_seconds:
+		return
+	_last_cycle_ui_seconds = seconds
+	var icon := "☾" if phase == DayNightManager.CyclePhase.NIGHT else "☀"
 	var nights_left := maxi(0, BalanceConfig.WIN_NIGHTS - _day_night_manager.nights_survived)
 	cycle_button.text = "%s Día %d · %s %02d:%02d · %d/%d noches" % [
 		icon,
@@ -351,7 +355,7 @@ func _update_cycle_ui(phase: DayNightManager.CyclePhase) -> void:
 
 func _on_phase_time_changed(_seconds_remaining: float) -> void:
 	if _day_night_manager != null:
-		_update_cycle_ui(_day_night_manager.current_phase)
+		_update_cycle_ui(_day_night_manager.current_phase, false)
 
 
 func _on_wave_warning(direction_name: String, modifier_id: int = 0, modifier_name: String = "") -> void:

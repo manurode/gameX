@@ -13,6 +13,9 @@ var _ground_layer: TinyTilesMap
 var _building_workers: Dictionary = {}
 var _unit_jobs: Dictionary = {}
 var _return_buildings: Dictionary = {}
+var _cached_food_income := 0.0
+var _food_income_dirty := true
+var _cached_shortage_active := false
 
 
 func setup(
@@ -191,6 +194,11 @@ func get_gather_duration(unit: Unit) -> float:
 
 
 func get_food_income_per_second() -> float:
+	var shortage_active := (
+		_population_manager != null and _population_manager.food_shortage_active
+	)
+	if not _food_income_dirty and shortage_active == _cached_shortage_active:
+		return _cached_food_income
 	var income := 0.0
 	for job in _unit_jobs.values():
 		var building: Building = job.get("building")
@@ -213,6 +221,9 @@ func get_food_income_per_second() -> float:
 			income += float(GATHER_CARRY_AMOUNT) / cycle_time
 		else:
 			income += float(GATHER_CARRY_AMOUNT) / (cycle_time * 2.0)
+	_cached_food_income = income
+	_cached_shortage_active = shortage_active
+	_food_income_dirty = false
 	return income
 
 
@@ -243,6 +254,7 @@ func release_unit_job(unit: Unit) -> void:
 		var workers: Array = _building_workers[building]
 		workers.erase(unit)
 	_unit_jobs.erase(unit)
+	_food_income_dirty = true
 	if is_instance_valid(unit):
 		unit.clear_gather_job()
 
@@ -373,6 +385,7 @@ func _assign_villager_to_resource(villager: Unit, building: Building, resource_n
 		"node": resource_node,
 		"phase": "travel_to_node",
 	}
+	_food_income_dirty = true
 	villager.assign_gather_at_node(resource_node)
 
 

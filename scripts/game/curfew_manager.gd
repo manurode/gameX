@@ -35,7 +35,9 @@ func set_active(active: bool) -> void:
 
 
 func find_nearest_shelter(villager: Unit) -> Building:
-	var candidates: Array[Building] = []
+	var best: Building = null
+	var best_distance_sq := INF
+	var villager_pos := villager.global_position
 	for node in get_tree().get_nodes_in_group("buildings"):
 		if not node is Building:
 			continue
@@ -44,16 +46,11 @@ func find_nearest_shelter(villager: Unit) -> Building:
 			continue
 		if not building.can_enter_garrison(villager):
 			continue
-		candidates.append(building)
-
-	if candidates.is_empty():
-		return null
-
-	var villager_pos := villager.global_position
-	candidates.sort_custom(func(a: Building, b: Building) -> bool:
-		return villager_pos.distance_squared_to(a.global_position) < villager_pos.distance_squared_to(b.global_position)
-	)
-	return candidates[0]
+		var distance_sq := villager_pos.distance_squared_to(building.global_position)
+		if distance_sq < best_distance_sq:
+			best_distance_sq = distance_sq
+			best = building
+	return best
 
 
 func send_villager_to_shelter(villager: Unit) -> void:

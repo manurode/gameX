@@ -8,12 +8,15 @@ extends Node
 ## Triggers when an occluder's sprite draws in front of the unit (Y-sort), or when the
 ## unit is deep inside a forest stand. Leaf-fringe / edge touches do not count.
 
-const OCCLUDER_REFRESH_INTERVAL := 0.05
+const OCCLUDER_REFRESH_INTERVAL := 0.12
 const SILHOUETTE_COLOR := Color(0.12, 0.28, 0.48, 0.82)
-const SAMPLE_STEP := 2
+const SAMPLE_STEP := 4
 ## Ignore tiny fringe overlaps (single leaves at the forest edge).
 const MIN_COVER_RATIO := 0.16
 const SHADER_PATH := "res://shaders/unit_occlusion_silhouette.gdshader"
+const VIEWPORT_MARGIN := 96.0
+
+static var _shared_material: ShaderMaterial
 
 var _unit: Unit
 var _layer: Node2D
@@ -30,17 +33,23 @@ var _last_frame := -1
 var _last_flip_h := false
 var _last_flip_v := false
 var _last_check_pos := Vector2.INF
+var _sample_budget_timer := 0.0
 
 
 func setup(unit: Unit, silhouette_layer: Node2D) -> void:
 	_unit = unit
 	_layer = silhouette_layer
+	# Stagger expensive checks across units.
+	_occluder_timer = randf() * OCCLUDER_REFRESH_INTERVAL
+	_sample_budget_timer = randf() * OCCLUDER_REFRESH_INTERVAL
 
-	var shader := load(SHADER_PATH) as Shader
-	_material = ShaderMaterial.new()
-	_material.shader = shader
-	_material.set_shader_parameter("silhouette_color", SILHOUETTE_COLOR)
-	_material.set_shader_parameter("alpha_threshold", OcclusionUtils.ALPHA_THRESHOLD)
+	if _shared_material == null:
+		var shader := load(SHADER_PATH) as Shader
+		_shared_material = ShaderMaterial.new()
+		_shared_material.shader = shader
+		_shared_material.set_shader_parameter("silhouette_color", SILHOUETTE_COLOR)
+		_shared_material.set_shader_parameter("alpha_threshold", OcclusionUtils.ALPHA_THRESHOLD)
+	_material = _shared_material
 
 	_silhouette = AnimatedSprite2D.new()
 	_silhouette.name = "UnitSilhouette"
@@ -79,10 +88,10 @@ func _exit_tree() -> void:
 
 
 func _on_unit_frame_changed() -> void:
+	# Keep the silhouette animation in sync cheaply; defer pixel sampling to the timer.
 	_occlusion_dirty = true
-	if _occluded or not _cached_occluders.is_empty():
+	if _occluded:
 		_sync_sprite_from_unit()
-		_update_occlusion_if_needed()
 
 
 func _process(delta: float) -> void:
@@ -93,6 +102,12 @@ func _process(delta: float) -> void:
 		_set_occluded(false)
 		return
 
+	if not _is_unit_roughly_on_screen():
+		if _occluded:
+			_set_occluded(false)
+		_cached_occluders.clear()
+		return
+
 	_occluder_timer -= delta
 	if _occluder_timer <= 0.0:
 		_occluder_timer = OCCLUDER_REFRESH_INTERVAL
@@ -100,7 +115,7 @@ func _process(delta: float) -> void:
 		_occlusion_dirty = true
 
 	var pos := _unit.global_position
-	if pos.distance_squared_to(_last_check_pos) > 1.0:
+	if pos.distance_squared_to(_last_check_pos) > 4.0:
 		_last_check_pos = pos
 		_occlusion_dirty = true
 
@@ -109,7 +124,21 @@ func _process(delta: float) -> void:
 		return
 
 	_sync_sprite_from_unit()
-	_update_occlusion_if_needed()
+
+	_sample_budget_timer -= delta
+	if _occlusion_dirty and _sample_budget_timer <= 0.0:
+		_sample_budget_timer = OCCLUDER_REFRESH_INTERVAL
+		_update_occlusion_if_needed()
+
+
+func _is_unit_roughly_on_screen() -> bool:
+	var viewport := _unit.get_viewport()
+	if viewport == null:
+		return true
+	var canvas_xform := viewport.get_canvas_transform()
+	var screen_pos := canvas_xform * _unit.global_position
+	var rect := viewport.get_visible_rect().grow(VIEWPORT_MARGIN)
+	return rect.has_point(screen_pos)
 
 
 func _set_occluded(value: bool) -> void:
@@ -213,7 +242,8 @@ func _update_occlusion_if_needed() -> void:
 	var ratio := OcclusionUtils.animated_sprite_occlusion_ratio(
 		sprite,
 		_cached_occluders,
-		SAMPLE_STEP
+		SAMPLE_STEP,
+		MIN_COVER_RATIO
 	)
 	_set_occluded(ratio >= MIN_COVER_RATIO)
 
@@ -221,15 +251,19 @@ func _update_occlusion_if_needed() -> void:
 func _collect_overlapping_front_occluders(unit_rect: Rect2) -> Array:
 	var result: Array = []
 	var unit_y := _unit.global_position.y
+	var unit_pos := _unit.global_position
 	for node in _unit.get_tree().get_nodes_in_group("occlusion_props"):
 		if not is_instance_valid(node) or not (node is Node2D):
 			continue
 		var occluder := node as Node2D
+		# Cheap distance reject before expensive sprite work.
+		if occluder.global_position.distance_squared_to(unit_pos) > 220.0 * 220.0:
+			continue
 		# Sort key is node position (resources may bias theirs for canopy edges).
 		var draws_in_front := occluder.global_position.y > unit_y
 		var forest_interior := false
 		if not draws_in_front and occluder.has_method("is_forest_interior"):
-			forest_interior = bool(occluder.call("is_forest_interior", _unit.global_position))
+			forest_interior = bool(occluder.call("is_forest_interior", unit_pos))
 		if not draws_in_front and not forest_interior:
 			continue
 		if not occluder.has_method("get_occlusion_sprites"):

@@ -20,7 +20,7 @@ const TOWN_CENTER_COLOR := Color(0.85, 0.92, 1.0)
 const VIEWPORT_BORDER := Color(1.0, 1.0, 1.0, 0.9)
 const VIEWPORT_FILL := Color(1.0, 1.0, 1.0, 0.05)
 
-const ENTITY_REFRESH_INTERVAL := 0.08
+const ENTITY_REFRESH_INTERVAL := 0.15
 
 var _camera: Camera2D
 var _ground: TinyTilesMap
@@ -30,6 +30,9 @@ var _resource_markers: Array[Dictionary] = []
 var _entity_markers: Array[Dictionary] = []
 var _entity_refresh_timer := 0.0
 var _dragging := false
+var _last_camera_pos := Vector2.INF
+var _last_camera_zoom := Vector2.INF
+var _markers_dirty := true
 
 
 func _ready() -> void:
@@ -57,7 +60,20 @@ func _process(delta: float) -> void:
 	if _entity_refresh_timer <= 0.0:
 		_entity_refresh_timer = ENTITY_REFRESH_INTERVAL
 		_refresh_entity_markers()
-	queue_redraw()
+		_markers_dirty = true
+
+	var camera_moved := (
+		_camera.global_position.distance_squared_to(_last_camera_pos) > 1.0
+		or _camera.zoom != _last_camera_zoom
+	)
+	if camera_moved:
+		_last_camera_pos = _camera.global_position
+		_last_camera_zoom = _camera.zoom
+		_markers_dirty = true
+
+	if _markers_dirty:
+		_markers_dirty = false
+		queue_redraw()
 
 
 func _draw() -> void:
