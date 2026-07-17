@@ -88,12 +88,14 @@ var _selection_manager: Node
 var _population_manager: PopulationManager
 var _production_manager: ProductionManager
 var _curfew_manager: CurfewManager
+var _run_boon_manager: RunBoonManager
 var _curfew_button: Button
 var _resource_labels: Dictionary = {}
 var _build_slots: Dictionary = {}
 var _formation_slots: Dictionary = {}
 var _population_label: Label
 var _food_upkeep_label: Label
+var _gather_bonus_label: Label
 var _active_build_type: String = ""
 var _formation_mode: bool = false
 var _selected_unit_count: int = 0
@@ -112,7 +114,8 @@ func setup(
 	selection_manager: Node = null,
 	population_manager: PopulationManager = null,
 	production_manager: ProductionManager = null,
-	curfew_manager: CurfewManager = null
+	curfew_manager: CurfewManager = null,
+	run_boon_manager: RunBoonManager = null
 ) -> void:
 	_resource_manager = resource_manager
 	_build_manager = build_manager
@@ -120,6 +123,7 @@ func setup(
 	_population_manager = population_manager
 	_production_manager = production_manager
 	_curfew_manager = curfew_manager
+	_run_boon_manager = run_boon_manager
 	_build_resource_rows()
 	_build_command_grid()
 	_build_formation_grid()
@@ -149,6 +153,9 @@ func setup(
 	if _curfew_manager != null:
 		_curfew_manager.curfew_changed.connect(_on_curfew_changed)
 		_refresh_curfew_button()
+	if _run_boon_manager != null:
+		_run_boon_manager.gather_multiplier_changed.connect(_on_gather_multiplier_changed)
+		_on_gather_multiplier_changed(_run_boon_manager.get_gather_multiplier())
 
 
 func _build_resource_rows() -> void:
@@ -202,6 +209,13 @@ func _build_resource_rows() -> void:
 	_food_upkeep_label.add_theme_font_size_override("font_size", 10)
 	_food_upkeep_label.add_theme_color_override("font_color", Color(0.72, 0.82, 0.55))
 	stats_row.add_child(_food_upkeep_label)
+
+	_gather_bonus_label = Label.new()
+	_gather_bonus_label.text = "Cosecha +20%"
+	_gather_bonus_label.visible = false
+	_gather_bonus_label.add_theme_font_size_override("font_size", 10)
+	_gather_bonus_label.add_theme_color_override("font_color", Color(0.55, 0.92, 0.55))
+	stats_row.add_child(_gather_bonus_label)
 
 
 func _ensure_production_box() -> void:
@@ -558,6 +572,17 @@ func _on_food_upkeep_changed(upkeep: float) -> void:
 		_food_upkeep_label.add_theme_color_override("font_color", Color(1.0, 0.45, 0.45))
 	else:
 		_food_upkeep_label.add_theme_color_override("font_color", Color(0.85, 0.78, 0.45))
+
+
+func _on_gather_multiplier_changed(multiplier: float) -> void:
+	if _gather_bonus_label == null:
+		return
+	if multiplier > 1.0:
+		var percent := int(round((multiplier - 1.0) * 100.0))
+		_gather_bonus_label.text = "Cosecha +%d%%" % percent
+		_gather_bonus_label.visible = true
+	else:
+		_gather_bonus_label.visible = false
 
 
 func _on_food_shortage(active: bool) -> void:

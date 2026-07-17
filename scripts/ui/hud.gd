@@ -80,7 +80,8 @@ func setup(
 			selection_manager,
 			population_manager,
 			production_manager,
-			curfew_manager
+			curfew_manager,
+			run_boon_manager
 		)
 	if minimap != null and minimap.has_method("setup") and camera != null and ground != null:
 		minimap.setup(camera, ground)
@@ -268,6 +269,7 @@ func _on_run_ended(won: bool, nights_survived: int, fragments_earned: int) -> vo
 		_boon_overlay.visible = false
 	if _end_overlay == null:
 		return
+	_ensure_paused_input_chain()
 	_end_overlay.visible = true
 	if won:
 		_end_title.text = "VICTORIA"
@@ -285,6 +287,21 @@ func _on_run_ended(won: bool, nights_survived: int, fragments_earned: int) -> vo
 		) % [nights_survived, fragments_earned, MetaProgression.fragments]
 	if help_label != null:
 		help_label.text = "Partida terminada"
+
+
+func _ensure_paused_input_chain() -> void:
+	# SubViewportContainer stops forwarding mouse input while the tree is paused
+	# unless the viewport chain itself uses PROCESS_MODE_ALWAYS.
+	var node: Node = self
+	while node != null:
+		node.process_mode = Node.PROCESS_MODE_ALWAYS
+		node = node.get_parent()
+	# Keep the simulation frozen: do not inherit ALWAYS from the SubViewport.
+	var viewport := get_parent()
+	if viewport != null:
+		var game_world := viewport.get_node_or_null("GameWorld")
+		if game_world != null:
+			game_world.process_mode = Node.PROCESS_MODE_PAUSABLE
 
 
 func _on_return_to_menu() -> void:

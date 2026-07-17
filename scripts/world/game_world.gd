@@ -221,8 +221,6 @@ func spawn_temp_archers(count: int) -> void:
 		return
 	var center := ground_layer.get_town_center_cell()
 	for i in count:
-		if not population_manager.can_add_population():
-			break
 		var archer: Unit = ARCHER_SCENE.instantiate()
 		units.add_child(archer)
 		archer.global_position = ground_layer.map_to_local(center + Vector2i(i - 1, -2))
@@ -230,10 +228,38 @@ func spawn_temp_archers(count: int) -> void:
 		archer.reset_navigation()
 		archer.unit_type_id = "archer"
 		archer.set_meta("temp_boon_unit", true)
-		population_manager.register_unit(archer)
 		register_player_unit(archer)
 		if day_night_manager.is_night():
 			archer.apply_cycle_visuals(true)
+
+
+func clear_temp_archers() -> void:
+	var to_remove: Array[Unit] = []
+	for child in units.get_children():
+		if child is Unit and child.has_meta("temp_boon_unit"):
+			to_remove.append(child as Unit)
+	for archer in to_remove:
+		if is_instance_valid(archer):
+			archer.queue_free()
+
+
+func repair_all_player_buildings() -> void:
+	for node in get_tree().get_nodes_in_group("buildings"):
+		if not (node is Building):
+			continue
+		var building := node as Building
+		if not is_instance_valid(building):
+			continue
+		if building.team_id != Team.PLAYER:
+			continue
+		if building.building_state != Building.BuildingState.ACTIVE:
+			continue
+		if building.hp >= building.max_hp:
+			continue
+		building.hp = building.max_hp
+		building.repair_in_progress = false
+		building.repair_paid = false
+		building.health_changed.emit(building.hp, building.max_hp)
 
 
 func register_player_unit(unit: Unit) -> void:
@@ -291,7 +317,8 @@ func _spawn_villager(ground: TinyTilesMap, cell: Vector2i, index: int) -> void:
 
 
 func _on_player_unit_died(unit: Unit) -> void:
-	population_manager.unregister_unit(unit)
+	if not unit.has_meta("temp_boon_unit"):
+		population_manager.unregister_unit(unit)
 	job_manager.on_villager_died(unit)
 
 

@@ -24,11 +24,11 @@ const BOON_DEFS := {
 	},
 	"temp_archers": {
 		"name": "Arqueros de paso",
-		"description": "3 arqueros temporales aparecen cerca del centro.",
+		"description": "3 arqueros aparecen cerca del centro hasta el anochecer.",
 	},
-	"auto_curfew": {
-		"name": "Toque de queda",
-		"description": "Activa el toque de queda ahora.",
+	"dawn_repair": {
+		"name": "Reparación del alba",
+		"description": "Restaura toda la vida de tus edificios.",
 	},
 	"resource_cache": {
 		"name": "Botín recuperado",
@@ -111,6 +111,8 @@ func _on_cycle_changed(phase: DayNightManager.CyclePhase) -> void:
 			if gather_multiplier != 1.0:
 				gather_multiplier = 1.0
 				gather_multiplier_changed.emit(gather_multiplier)
+			if _game_world != null and _game_world.has_method("clear_temp_archers"):
+				_game_world.call("clear_temp_archers")
 
 
 func _roll_choices(count: int) -> Array[String]:
@@ -141,9 +143,9 @@ func _apply_boon(boon_id: String) -> void:
 		"temp_archers":
 			if _game_world != null and _game_world.has_method("spawn_temp_archers"):
 				_game_world.call("spawn_temp_archers", 3)
-		"auto_curfew":
-			if _curfew_manager != null:
-				_curfew_manager.set_active(true)
+		"dawn_repair":
+			if _game_world != null and _game_world.has_method("repair_all_player_buildings"):
+				_game_world.call("repair_all_player_buildings")
 		"resource_cache":
 			if _resource_manager != null:
 				_resource_manager.add_resources({"wood": 80, "gold": 40})
