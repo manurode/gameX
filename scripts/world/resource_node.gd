@@ -15,9 +15,12 @@ var _initial_amount: int = 100
 const PICK_RADIUS := 72.0
 const AMOUNT_BAR_SCRIPT := preload("res://scripts/world/resource_amount_bar.gd")
 
+const WORK_APPROACH_MARGIN := 18.0
+
 var pick_radius: float = PICK_RADIUS
 var _sprites: Array[Sprite2D] = []
 var _work_anchors: Array[Vector2] = []
+var _terrain_obstacle: TerrainObstacle = null
 var _amount_bar: Node2D = null
 var _selection_indicator: Line2D = null
 
@@ -175,6 +178,11 @@ func get_initial_amount() -> int:
 	return _initial_amount
 
 
+func set_terrain_obstacle(obstacle: TerrainObstacle) -> void:
+	_terrain_obstacle = obstacle
+
+
+## Work at the nearest reachable edge of the resource (any side of mountain/forest).
 func get_work_position(from_position: Vector2) -> Vector2:
 	if not _work_anchors.is_empty():
 		var best_anchor := to_global(_work_anchors[0])
@@ -186,18 +194,71 @@ func get_work_position(from_position: Vector2) -> Vector2:
 				best_anchor_dist = anchor_dist
 				best_anchor = anchor_pos
 		return best_anchor
+	return get_approach_point(from_position)
+
+
+func get_interaction_center() -> Vector2:
 	if _sprites.is_empty():
 		return global_position
-	var best_pos := to_global(_sprites[0].position + _sprites[0].offset)
-	var best_dist := from_position.distance_squared_to(best_pos)
-	for i in range(1, _sprites.size()):
-		var sprite := _sprites[i]
-		var pos := to_global(sprite.position + sprite.offset)
-		var dist := from_position.distance_squared_to(pos)
-		if dist < best_dist:
-			best_dist = dist
-			best_pos = pos
-	return best_pos
+	var sum := Vector2.ZERO
+	for sprite in _sprites:
+		sum += to_global(sprite.position + sprite.offset)
+	return sum / float(_sprites.size())
+
+
+func get_closest_surface_point(from_position: Vector2) -> Vector2:
+	if (
+		_terrain_obstacle != null
+		and is_instance_valid(_terrain_obstacle)
+		and _terrain_obstacle.blocks_movement
+	):
+		return _terrain_obstacle.get_closest_surface_point(from_position)
+
+	var radius_x := maxf(pick_radius, 40.0)
+	var radius_y := radius_x * 0.55
+	var center := get_interaction_center()
+	var local := from_position - center
+	if local.length_squared() < 0.01:
+		return center + Vector2(0.0, radius_y)
+	var nx := local.x / radius_x
+	var ny := local.y / radius_y
+	var len := sqrt(nx * nx + ny * ny)
+	if len < 0.001:
+		return center + Vector2(0.0, radius_y)
+	return center + Vector2(nx / len * radius_x, ny / len * radius_y)
+
+
+func get_approach_point(from_position: Vector2, margin: float = WORK_APPROACH_MARGIN) -> Vector2:
+	var center := get_interaction_center()
+	var surface := get_closest_surface_point(from_position)
+	var outward := surface - center
+	if outward.length_squared() < 0.01:
+		outward = from_position - center
+	if outward == Vector2.ZERO:
+		outward = Vector2.DOWN
+	return surface + outward.normalized() * margin
+
+
+## True when standing at any side of the resource within gather range (or inside it).
+func is_within_gather_range(world_pos: Vector2, gather_range: float) -> bool:
+	if not _work_anchors.is_empty():
+		return world_pos.distance_to(get_work_position(world_pos)) <= gather_range
+	if contains_point(world_pos):
+		return true
+	var surface := get_closest_surface_point(world_pos)
+	if world_pos.distance_to(surface) <= gather_range:
+		return true
+	# Forests: walkable interior of the pick ellipse also counts.
+	if resource_kind == ResourceKind.WOOD:
+		var center := get_interaction_center()
+		var local := world_pos - center
+		var rx := maxf(pick_radius, 1.0)
+		var ry := rx * 0.55
+		var nx := local.x / rx
+		var ny := local.y / ry
+		if nx * nx + ny * ny <= 1.0:
+			return true
+	return false
 
 
 func get_amount_bar_offset() -> Vector2:

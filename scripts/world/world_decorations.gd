@@ -119,7 +119,9 @@ func _spawn_resources(placements: Array[Dictionary]) -> void:
 			node.pick_radius = MOUNTAIN_PICK_RADIUS
 		_entity_parent.add_child(node)
 		_resource_nodes.append(node)
-		_spawn_resource_terrain(kind, texture, world_pos, offset, visual_scale)
+		var obstacle := _spawn_resource_terrain(kind, texture, world_pos, offset, visual_scale)
+		if obstacle != null:
+			node.set_terrain_obstacle(obstacle)
 
 
 func _paths_for_kind(kind: String) -> Array[String]:
@@ -153,9 +155,9 @@ func _spawn_resource_terrain(
 	world_pos: Vector2,
 	offset: Vector2,
 	visual_scale: float = 1.0
-) -> void:
+) -> TerrainObstacle:
 	if _entity_parent == null:
-		return
+		return null
 	var obstacle := TerrainObstacle.new()
 	if kind == "wood":
 		obstacle.setup(
@@ -187,6 +189,7 @@ func _spawn_resource_terrain(
 	obstacle.add_to_group("terrain_obstacles")
 	_entity_parent.add_child(obstacle)
 	_obstacles.append(obstacle)
+	return obstacle
 
 
 func _spawn_decorations(placements: Array[Dictionary]) -> void:

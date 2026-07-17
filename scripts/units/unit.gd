@@ -1486,8 +1486,7 @@ func _process_gathering(delta: float) -> void:
 		return
 
 	var work_pos := node.get_work_position(global_position)
-	var distance := global_position.distance_to(work_pos)
-	if distance > build_range:
+	if not node.is_within_gather_range(global_position, build_range):
 		_follow_navigation_toward(work_pos, 4.0, delta)
 		return
 

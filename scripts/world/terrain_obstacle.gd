@@ -118,6 +118,29 @@ func get_nav_block_outline() -> PackedVector2Array:
 	return best
 
 
+## Closest point on the solid footprint perimeter (any side of the obstacle).
+func get_closest_surface_point(from_position: Vector2) -> Vector2:
+	var outlines := get_nav_block_outlines()
+	if outlines.is_empty():
+		return global_position
+	var best := outlines[0][0]
+	var best_dist := from_position.distance_squared_to(best)
+	for outline in outlines:
+		for i in outline.size():
+			var segment_start := outline[i]
+			var segment_end := outline[(i + 1) % outline.size()]
+			var closest := Geometry2D.get_closest_point_to_segment(
+				from_position,
+				segment_start,
+				segment_end
+			)
+			var dist := from_position.distance_squared_to(closest)
+			if dist < best_dist:
+				best_dist = dist
+				best = closest
+	return best
+
+
 func _build_collision_from_outlines() -> void:
 	_collision_body = StaticBody2D.new()
 	_collision_body.collision_layer = 1
