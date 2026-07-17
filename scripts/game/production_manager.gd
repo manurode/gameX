@@ -231,7 +231,7 @@ func _spawn_villager(building: Building) -> void:
 
 	var villager: Unit = VILLAGER_SCENE.instantiate()
 	_units_container.add_child(villager)
-	villager.global_position = building.global_position + Vector2(randf_range(-20.0, 20.0), randf_range(-10.0, 10.0))
+	villager.global_position = building.get_exit_position()
 	if _ground_layer != null:
 		villager.set_ground_layer(_ground_layer)
 	villager.reset_navigation()

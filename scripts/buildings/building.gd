@@ -794,6 +794,11 @@ func exit_all_garrison() -> void:
 	exit_garrison_units(garrisoned_units.duplicate())
 
 
+## Public spawn/exit point at the building footprint edge (same as garrison exit).
+func get_exit_position() -> Vector2:
+	return _find_exit_position()
+
+
 func _get_exit_positions(count: int) -> Array[Vector2]:
 	if count <= 0:
 		return []
