@@ -678,9 +678,8 @@ func contains_world_point(world_point: Vector2) -> bool:
 
 
 func contains_command_point(world_point: Vector2) -> bool:
-	var half := _footprint * 0.42
-	var base_center := global_position + Vector2(0.0, -_footprint.y * 0.2)
-	return Rect2(base_center - half, half * 2.0).has_point(world_point)
+	# Same area as selection so right-click commands (attack/repair) hit the sprite.
+	return contains_world_point(world_point)
 
 
 func should_show_health_bar() -> bool:
@@ -725,6 +724,7 @@ func get_entry_range() -> float:
 
 
 func can_accept_garrison_approach(unit: Unit) -> bool:
+	# Only civilians (curfew shelter). No manual military garrison.
 	return (
 		building_state == BuildingState.ACTIVE
 		and can_garrison
@@ -732,7 +732,7 @@ func can_accept_garrison_approach(unit: Unit) -> bool:
 		and is_instance_valid(unit)
 		and not unit._is_dying
 		and unit.hp > 0
-		and (unit.can_attack or unit.is_civilian)
+		and unit.is_civilian
 	)
 
 
