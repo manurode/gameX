@@ -131,30 +131,45 @@ static func is_animated_sprite_occluded(
 	occluder_sprites: Array,
 	sample_step: int = 2
 ) -> bool:
+	return animated_sprite_occlusion_ratio(unit_sprite, occluder_sprites, sample_step) > 0.0
+
+
+## Fraction of opaque unit pixels covered by occluders (0..1).
+static func animated_sprite_occlusion_ratio(
+	unit_sprite: AnimatedSprite2D,
+	occluder_sprites: Array,
+	sample_step: int = 2
+) -> float:
 	if unit_sprite == null or occluder_sprites.is_empty():
-		return false
+		return 0.0
 	var frame_tex := animated_frame_texture(unit_sprite)
 	if frame_tex == null:
-		return false
+		return 0.0
 	var unit_img := get_texture_image(frame_tex)
 	if unit_img == null:
-		return false
+		return 0.0
 
 	var width := unit_img.get_width()
 	var height := unit_img.get_height()
 	var step := maxi(1, sample_step)
+	var opaque_samples := 0
+	var covered_samples := 0
 
 	for ty in range(0, height, step):
 		for tx in range(0, width, step):
 			var src_color := unit_img.get_pixel(tx, ty)
 			if src_color.a < ALPHA_THRESHOLD:
 				continue
+			opaque_samples += 1
 			var dx := (width - 1 - tx) if unit_sprite.flip_h else tx
 			var dy := (height - 1 - ty) if unit_sprite.flip_v else ty
 			var world_pos := animated_display_pixel_to_world(unit_sprite, dx, dy)
 			if any_sprite_opaque_at(occluder_sprites, world_pos):
-				return true
-	return false
+				covered_samples += 1
+
+	if opaque_samples <= 0:
+		return 0.0
+	return float(covered_samples) / float(opaque_samples)
 
 
 ## Alpha mask in unit *texture* UV space (matches AnimatedSprite2D + flip).

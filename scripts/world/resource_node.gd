@@ -16,6 +16,10 @@ const PICK_RADIUS := 72.0
 const AMOUNT_BAR_SCRIPT := preload("res://scripts/world/resource_amount_bar.gd")
 
 const WORK_APPROACH_MARGIN := 18.0
+## Pull forest sort point north so wide canopy edges don't cover buildings in front.
+const FOREST_Y_SORT_BIAS := 120.0
+## Interior ellipse as a fraction of pick_radius (edge fringe stays non-occluding).
+const FOREST_INTERIOR_RADIUS_FACTOR := 0.55
 
 var pick_radius: float = PICK_RADIUS
 var _sprites: Array[Sprite2D] = []
@@ -23,6 +27,8 @@ var _work_anchors: Array[Vector2] = []
 var _terrain_obstacle: TerrainObstacle = null
 var _amount_bar: Node2D = null
 var _selection_indicator: Line2D = null
+## Cell-center placement; may differ from global_position when Y-sort is biased.
+var _anchor_position := Vector2.ZERO
 
 
 func _ready() -> void:
@@ -44,13 +50,36 @@ func setup(
 	amount_remaining = amount
 	_initial_amount = amount
 	is_infinite = false
-	global_position = world_pos
-	_add_sprite(texture, Vector2.ZERO, sprite_offset, scale_factor)
+	_anchor_position = world_pos
+	# Godot has no Node2D y_sort_origin — shift forest position for sort and
+	# compensate the sprite offset so the art stays anchored on the cell.
+	var sort_dy := 0.0
+	if kind == ResourceKind.WOOD:
+		# Bias north so wide canopy edges don't cover buildings in front.
+		sort_dy = 64.0 * scale_factor - FOREST_Y_SORT_BIAS
+	global_position = world_pos + Vector2(0.0, sort_dy)
+	var draw_offset := sprite_offset
+	if not is_zero_approx(scale_factor) and not is_zero_approx(sort_dy):
+		draw_offset = sprite_offset - Vector2(0.0, sort_dy / scale_factor)
+	_add_sprite(texture, Vector2.ZERO, draw_offset, scale_factor)
 	# Tall resource visuals (trees, gold rocks) occlude units; crop fields do not.
 	if kind != ResourceKind.FOOD:
 		add_to_group("occlusion_props")
 	_ensure_amount_bar()
 	_setup_selection_indicator()
+
+
+## True when standing deep inside a wood stand (not the outer foliage fringe).
+func is_forest_interior(world_pos: Vector2) -> bool:
+	if resource_kind != ResourceKind.WOOD:
+		return false
+	var center := _anchor_position
+	var local := world_pos - center
+	var rx := maxf(pick_radius * FOREST_INTERIOR_RADIUS_FACTOR, 1.0)
+	var ry := rx * 0.55
+	var nx := local.x / rx
+	var ny := local.y / ry
+	return nx * nx + ny * ny <= 1.0
 
 
 func get_occlusion_sprites() -> Array[Sprite2D]:

@@ -4,11 +4,15 @@ extends Node
 ## When a unit is covered by environment props, mirrors its AnimatedSprite2D onto a
 ## high-z overlay as a flat blue silhouette. Animation stays live; occlusion is only
 ## a yes/no check (full-body tint avoids edge bleed from partial masks).
+##
+## Triggers when an occluder's sprite draws in front of the unit (Y-sort), or when the
+## unit is deep inside a forest stand. Leaf-fringe / edge touches do not count.
 
 const OCCLUDER_REFRESH_INTERVAL := 0.05
 const SILHOUETTE_COLOR := Color(0.12, 0.28, 0.48, 0.82)
-const Y_SLOP := 8.0
 const SAMPLE_STEP := 2
+## Ignore tiny fringe overlaps (single leaves at the forest edge).
+const MIN_COVER_RATIO := 0.16
 const SHADER_PATH := "res://shaders/unit_occlusion_silhouette.gdshader"
 
 var _unit: Unit
@@ -206,12 +210,12 @@ func _update_occlusion_if_needed() -> void:
 		return
 
 	_occlusion_dirty = false
-	var hit := OcclusionUtils.is_animated_sprite_occluded(
+	var ratio := OcclusionUtils.animated_sprite_occlusion_ratio(
 		sprite,
 		_cached_occluders,
 		SAMPLE_STEP
 	)
-	_set_occluded(hit)
+	_set_occluded(ratio >= MIN_COVER_RATIO)
 
 
 func _collect_overlapping_front_occluders(unit_rect: Rect2) -> Array:
@@ -221,7 +225,12 @@ func _collect_overlapping_front_occluders(unit_rect: Rect2) -> Array:
 		if not is_instance_valid(node) or not (node is Node2D):
 			continue
 		var occluder := node as Node2D
-		if occluder.global_position.y + Y_SLOP <= unit_y:
+		# Sort key is node position (resources may bias theirs for canopy edges).
+		var draws_in_front := occluder.global_position.y > unit_y
+		var forest_interior := false
+		if not draws_in_front and occluder.has_method("is_forest_interior"):
+			forest_interior = bool(occluder.call("is_forest_interior", _unit.global_position))
+		if not draws_in_front and not forest_interior:
 			continue
 		if not occluder.has_method("get_occlusion_sprites"):
 			continue
