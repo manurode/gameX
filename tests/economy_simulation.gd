@@ -75,6 +75,14 @@ func _test_balance_data() -> void:
 	assert(BuildingDatabase.get_definition("tower").automatic_defense)
 	assert(EquipmentDatabase.get_definition("knight_squad").squad_size == 5)
 	assert(EquipmentDatabase.get_definition("archer_squad").squad_size == 5)
+	# Opening must afford both gather buildings + a house without waiting on income.
+	var open_wood := (
+		int(BuildingDatabase.get_definition("lumber_camp").wood)
+		+ int(BuildingDatabase.get_definition("mill").wood)
+		+ int(BuildingDatabase.get_definition("house_small").wood)
+	)
+	assert(open_wood <= BalanceConfig.INITIAL_WOOD)
+	assert(BalanceConfig.INITIAL_WOOD - open_wood >= 15)
 	var population_manager := PopulationManager.new()
 	population_manager.population = 5
 	population_manager.population_cap = 10

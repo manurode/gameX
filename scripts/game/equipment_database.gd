@@ -4,8 +4,8 @@ extends RefCounted
 const DEFINITIONS: Dictionary = {
 	"villager": {
 		"name": "Aldeano",
-		"train_time": 12.0,
-		"cost": {"wood": 0, "gold": 0, "food": 50},
+		"train_time": 10.0,
+		"cost": {"wood": 0, "gold": 0, "food": 45},
 		"building_types": ["town_center"],
 		"transforms_to": "",
 	},
