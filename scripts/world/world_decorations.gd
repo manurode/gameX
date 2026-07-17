@@ -19,6 +19,9 @@ const FOREST_SLOW_RADIUS := 260.0
 const FOREST_BLOCK_HALF := Vector2(210.0, 130.0)
 const FOREST_PICK_RADIUS := 240.0
 const FOREST_VISUAL_SCALE := 1.22
+## Pull tall props north in Y-sort so edge canopy/cliffs don't cover buildings in front.
+const FOREST_Y_SORT_BIAS := 120.0
+const MOUNTAIN_Y_SORT_BIAS := 160.0
 const MOUNTAIN_PICK_RADIUS := 220.0
 const MOUNTAIN_VISUAL_SCALE := 1.32
 const GOLD_VEIN_VISUAL_SCALE := 1.15
@@ -112,7 +115,16 @@ func _spawn_resources(placements: Array[Dictionary]) -> void:
 			if kind == "wood"
 			else ResourceNode.ResourceKind.GOLD
 		)
-		node.setup(texture, world_pos, resource_kind, placement.get("amount", 100), offset, visual_scale)
+		var sort_bias := _sort_bias_for_kind(kind)
+		node.setup(
+			texture,
+			world_pos,
+			resource_kind,
+			placement.get("amount", 100),
+			offset,
+			visual_scale,
+			sort_bias
+		)
 		if kind == "wood":
 			node.pick_radius = FOREST_PICK_RADIUS
 		elif kind == "gold_mountain":
@@ -147,6 +159,16 @@ func _visual_scale_for_kind(kind: String) -> float:
 			return GOLD_VEIN_VISUAL_SCALE
 		_:
 			return 1.0
+
+
+func _sort_bias_for_kind(kind: String) -> float:
+	match kind:
+		"wood":
+			return FOREST_Y_SORT_BIAS
+		"gold_mountain":
+			return MOUNTAIN_Y_SORT_BIAS
+		_:
+			return 0.0
 
 
 func _spawn_resource_terrain(
@@ -202,11 +224,14 @@ func _spawn_decorations(placements: Array[Dictionary]) -> void:
 			continue
 		var world_pos := _ground_layer.map_to_local(placement.get("cell", Vector2i.ZERO))
 		var offset := Vector2(0.0, -texture.get_height() * 0.5 + 64.0)
+		# Same sort bias as gold_mountain resources (no Node2D y_sort_origin).
+		var sort_dy := 64.0 * MOUNTAIN_VISUAL_SCALE - MOUNTAIN_Y_SORT_BIAS
+		var draw_offset := offset - Vector2(0.0, sort_dy / MOUNTAIN_VISUAL_SCALE)
 		var obstacle := TerrainObstacle.new()
 		obstacle.setup(
 			texture,
-			world_pos,
-			offset,
+			world_pos + Vector2(0.0, sort_dy),
+			draw_offset,
 			placement.get("blocks", true),
 			1.0,
 			0.0,

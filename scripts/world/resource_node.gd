@@ -16,8 +16,6 @@ const PICK_RADIUS := 72.0
 const AMOUNT_BAR_SCRIPT := preload("res://scripts/world/resource_amount_bar.gd")
 
 const WORK_APPROACH_MARGIN := 18.0
-## Pull forest sort point north so wide canopy edges don't cover buildings in front.
-const FOREST_Y_SORT_BIAS := 120.0
 ## Interior ellipse as a fraction of pick_radius (edge fringe stays non-occluding).
 const FOREST_INTERIOR_RADIUS_FACTOR := 0.55
 
@@ -44,19 +42,19 @@ func setup(
 	kind: ResourceKind,
 	amount: int,
 	sprite_offset: Vector2,
-	scale_factor: float = 1.0
+	scale_factor: float = 1.0,
+	sort_bias: float = 0.0
 ) -> void:
 	resource_kind = kind
 	amount_remaining = amount
 	_initial_amount = amount
 	is_infinite = false
 	_anchor_position = world_pos
-	# Godot has no Node2D y_sort_origin — shift forest position for sort and
+	# Godot has no Node2D y_sort_origin — shift tall props for sort and
 	# compensate the sprite offset so the art stays anchored on the cell.
 	var sort_dy := 0.0
-	if kind == ResourceKind.WOOD:
-		# Bias north so wide canopy edges don't cover buildings in front.
-		sort_dy = 64.0 * scale_factor - FOREST_Y_SORT_BIAS
+	if sort_bias > 0.0:
+		sort_dy = 64.0 * scale_factor - sort_bias
 	global_position = world_pos + Vector2(0.0, sort_dy)
 	var draw_offset := sprite_offset
 	if not is_zero_approx(scale_factor) and not is_zero_approx(sort_dy):
