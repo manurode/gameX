@@ -141,17 +141,22 @@ func spawn_squad_members(
 	leader: Unit,
 	unit_type_id: String,
 	extra_count: int,
-	squad_id: String
+	squad_id: String,
+	spawn_positions: Array = []
 ) -> void:
 	var scene := UnitDatabase.get_scene(unit_type_id)
 	if scene == null:
 		population_manager.release_reserved_population(extra_count)
 		return
+	var spacing := Unit.PERSONAL_SPACE_RADIUS * 2.0
 	for i in extra_count:
 		var member: Unit = scene.instantiate()
 		units.add_child(member)
-		var angle := TAU * float(i) / float(maxi(1, extra_count))
-		member.global_position = leader.global_position + Vector2(cos(angle), sin(angle)) * 24.0
+		if i < spawn_positions.size() and spawn_positions[i] is Vector2:
+			member.global_position = spawn_positions[i]
+		else:
+			var angle := TAU * float(i) / float(maxi(1, extra_count))
+			member.global_position = leader.global_position + Vector2(cos(angle), sin(angle)) * spacing
 		member.set_ground_layer(ground_layer)
 		member.reset_navigation()
 		if not squad_id.is_empty():

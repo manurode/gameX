@@ -1560,12 +1560,23 @@ func _process_recruitment(delta: float) -> void:
 	var target_type := recruitment_type_id
 	var squad_size := recruitment_squad_size
 	var squad_id := recruitment_squad_id
+	var spawn_building := building
 	transform_to_unit_type(target_type)
 	if not squad_id.is_empty():
 		set_meta("squad_id", squad_id)
+	var spawn_positions := spawn_building.get_exit_positions(maxi(1, squad_size))
+	global_position = spawn_positions[0]
+	reset_navigation()
 	var world := get_tree().get_first_node_in_group("game_world")
 	if world != null and world.has_method("spawn_squad_members"):
-		world.call("spawn_squad_members", self, target_type, maxi(0, squad_size - 1), squad_id)
+		world.call(
+			"spawn_squad_members",
+			self,
+			target_type,
+			maxi(0, squad_size - 1),
+			squad_id,
+			spawn_positions.slice(1)
+		)
 	recruitment_building = null
 	recruitment_type_id = ""
 	recruitment_squad_size = 1

@@ -229,9 +229,10 @@ func _spawn_villager(building: Building) -> void:
 	if _units_container == null or VILLAGER_SCENE == null:
 		return
 
+	var spawn_pos := building.get_exit_position()
 	var villager: Unit = VILLAGER_SCENE.instantiate()
 	_units_container.add_child(villager)
-	villager.global_position = building.get_exit_position()
+	villager.global_position = spawn_pos
 	if _ground_layer != null:
 		villager.set_ground_layer(_ground_layer)
 	villager.reset_navigation()

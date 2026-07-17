@@ -795,51 +795,40 @@ func exit_all_garrison() -> void:
 
 
 ## Public spawn/exit point at the building footprint edge (same as garrison exit).
+## Picks a free slot around the building so successive spawns do not stack.
 func get_exit_position() -> Vector2:
 	return _find_exit_position()
 
 
+## Several free spawn/exit points around the building (no overlap between them).
+func get_exit_positions(count: int) -> Array[Vector2]:
+	return _get_exit_positions(count)
+
+
 func _get_exit_positions(count: int) -> Array[Vector2]:
-	if count <= 0:
-		return []
-	if count == 1:
-		return [_find_exit_position()]
-
-	var center := get_base_center()
-	var base_radius := maxf(_footprint.x, _footprint.y) * 0.85
-	var spacing := Unit.PERSONAL_SPACE_RADIUS * 2.0
 	var positions: Array[Vector2] = []
-	var assigned := 0
-	var ring := 0
-
-	while assigned < count:
-		var ring_radius := base_radius + float(ring) * spacing * 0.9
-		var ring_capacity := maxi(1, int(TAU * ring_radius / spacing))
-		var slots := mini(count - assigned, ring_capacity)
-		var angle_offset := float(ring) * (PI / maxf(1.0, float(ring_capacity)) * 0.5)
-		for i in slots:
-			var angle := angle_offset + TAU * float(i) / float(slots)
-			var candidate: Vector2 = center + Vector2(cos(angle), sin(angle)) * ring_radius
-			positions.append(_resolve_walkable_exit(candidate))
-			assigned += 1
-		ring += 1
-
+	for _i in count:
+		positions.append(_find_exit_position(positions))
 	return positions
 
 
-func _resolve_walkable_exit(preferred: Vector2) -> Vector2:
-	if _is_position_walkable(preferred):
-		return preferred
-	for radius_offset: float in [8.0, 16.0, 24.0]:
-		for angle_step in 8:
-			var angle := TAU * float(angle_step) / 8.0
-			var candidate: Vector2 = preferred + Vector2(cos(angle), sin(angle)) * radius_offset
-			if _is_position_walkable(candidate):
+func _find_exit_position(reserved: Array[Vector2] = []) -> Vector2:
+	var center := get_base_center()
+	var base_radius := maxf(_footprint.x, _footprint.y) * 0.85
+	var spacing := Unit.PERSONAL_SPACE_RADIUS * 2.0
+	var nearby := _get_nearby_unit_positions(center, base_radius + spacing * 5.0)
+
+	for ring in 8:
+		var ring_radius := base_radius + float(ring) * spacing * 0.9
+		var ring_capacity := maxi(6, int(TAU * ring_radius / spacing))
+		var angle_offset := float(ring) * (PI / float(ring_capacity) * 0.5)
+		for i in ring_capacity:
+			var angle := angle_offset + TAU * float(i) / float(ring_capacity)
+			var candidate: Vector2 = center + Vector2(cos(angle), sin(angle)) * ring_radius
+			if _is_spawn_slot_free(candidate, nearby, reserved):
 				return candidate
-	return _find_exit_position()
 
-
-func _find_exit_position() -> Vector2:
+	# Walkable fallback if every ring slot is blocked by units/obstacles.
 	var offsets: Array[Vector2] = [
 		Vector2(_footprint.x * 0.8, 0.0),
 		Vector2(-_footprint.x * 0.8, 0.0),
@@ -851,6 +840,41 @@ func _find_exit_position() -> Vector2:
 		if _is_position_walkable(candidate):
 			return candidate
 	return global_position + Vector2(_footprint.x * 0.8, 0.0)
+
+
+func _get_nearby_unit_positions(center: Vector2, radius: float) -> Array[Vector2]:
+	var result: Array[Vector2] = []
+	if not is_inside_tree():
+		return result
+	var radius_sq := radius * radius
+	for node in get_tree().get_nodes_in_group("units"):
+		if not node is Unit:
+			continue
+		var unit := node as Unit
+		if not is_instance_valid(unit) or unit._is_dying or unit.hp <= 0:
+			continue
+		if unit.garrisoned_building != null:
+			continue
+		if center.distance_squared_to(unit.global_position) <= radius_sq:
+			result.append(unit.global_position)
+	return result
+
+
+func _is_spawn_slot_free(
+	world_pos: Vector2,
+	nearby_units: Array[Vector2],
+	reserved: Array[Vector2]
+) -> bool:
+	if not _is_position_walkable(world_pos):
+		return false
+	var min_dist_sq := Unit.PERSONAL_SPACE_RADIUS * Unit.PERSONAL_SPACE_RADIUS
+	for pos in nearby_units:
+		if world_pos.distance_squared_to(pos) < min_dist_sq:
+			return false
+	for pos in reserved:
+		if world_pos.distance_squared_to(pos) < min_dist_sq:
+			return false
+	return true
 
 
 func _is_position_walkable(world_pos: Vector2) -> bool:
