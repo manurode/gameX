@@ -6,18 +6,21 @@ const BASE_MAP_AREA := 64 * 64
 const BASE_TOWN_CLEAR_RADIUS := 7.5
 const BASE_CONTENT_CLEAR_RADIUS := 9.0
 const BASE_TERRAIN_FREQUENCY := 0.055
-const BASE_TREE_COUNT := 14
+## One forest = one large sprite covering many cells (same pattern as mountains).
+const BASE_TREE_COUNT := 5
 const BASE_GOLD_COUNT := 18
 const BASE_HILL_COUNT := 8
 const WATER_THRESHOLD := 0.38
 
-## Relative cells occupied by one forest (~15 tiles, irregular diamond).
+## Relative cells occupied by one forest mass (~23 tiles, like mountains).
 const FOREST_FOOTPRINT: Array[Vector2i] = [
 	Vector2i(0, 0),
 	Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
 	Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1),
 	Vector2i(2, 0), Vector2i(-2, 0), Vector2i(0, 2), Vector2i(0, -2),
-	Vector2i(2, 1), Vector2i(-1, 2),
+	Vector2i(2, 1), Vector2i(2, -1), Vector2i(-2, 1), Vector2i(-2, -1),
+	Vector2i(1, 2), Vector2i(-1, 2), Vector2i(1, -2), Vector2i(-1, -2),
+	Vector2i(3, 0), Vector2i(-3, 0),
 ]
 
 ## Relative cells occupied by one mountain chain (~23 tiles, elongated ridge).
@@ -247,7 +250,10 @@ func _can_place_footprint(
 			return false
 		if cell in water_set or cell not in reachable_set or cell in occupied:
 			return false
+	return _has_clear_buffer(footprint_set, occupied)
 
+
+func _has_clear_buffer(footprint_set: Dictionary, occupied: Dictionary) -> bool:
 	# Keep a 1-cell buffer against other placements (outside this footprint).
 	for cell_variant in footprint_set.keys():
 		var cell: Vector2i = cell_variant

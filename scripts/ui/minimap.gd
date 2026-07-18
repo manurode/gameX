@@ -202,7 +202,7 @@ func _build_resource_markers() -> void:
 		var cell: Vector2i = placement.get("cell", Vector2i.ZERO)
 		var world_pos := _ground.map_to_local(cell)
 		var color := TREE_COLOR if kind == "wood" else GOLD_COLOR
-		var radius := 2.0 if kind == "gold_mountain" else 1.5
+		var radius := 2.0 if kind in ["gold_mountain", "wood"] else 1.5
 		_resource_markers.append({
 			"pos": _world_to_minimap(world_pos),
 			"color": color,

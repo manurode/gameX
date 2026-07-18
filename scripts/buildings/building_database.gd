@@ -213,9 +213,9 @@ const DEFINITIONS: Dictionary = {
 		"garrison_weapon": "crossbow",
 		"can_garrison": true,
 		"blocks_nav": true,
-		"visual_scale": 1.05,
-		"footprint": Vector2(62.0, 52.0),
-		"pick_half_size": Vector2(48.0, 72.0),
+		"visual_scale": 1.00,
+		"footprint": Vector2(72.0, 48.0),
+		"pick_half_size": Vector2(56.0, 70.0),
 		"automatic_defense": true,
 	},
 	"wall": {

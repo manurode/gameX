@@ -16,11 +16,12 @@ const HILL_PATHS: Array[String] = [
 ]
 const FOREST_SLOW_MULTIPLIER := 0.62
 const FOREST_SLOW_RADIUS := 260.0
-const FOREST_BLOCK_HALF := Vector2(210.0, 130.0)
+const FOREST_BLOCK_HALF := Vector2(260.0, 120.0)
 const FOREST_PICK_RADIUS := 240.0
-const FOREST_VISUAL_SCALE := 1.22
+## One large forest sprite covering many cells (same idea as mountains).
+const FOREST_VISUAL_SCALE := 1.28
 ## Pull tall props north in Y-sort so edge canopy/cliffs don't cover buildings in front.
-const FOREST_Y_SORT_BIAS := 120.0
+const FOREST_Y_SORT_BIAS := 140.0
 const MOUNTAIN_Y_SORT_BIAS := 160.0
 const MOUNTAIN_PICK_RADIUS := 220.0
 const MOUNTAIN_VISUAL_SCALE := 1.32
