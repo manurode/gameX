@@ -45,12 +45,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			_cancel_spawn_mode()
 			get_viewport().set_input_as_handled()
 			return
-		if key_event.keycode == KEY_F4:
-			_spawn_debug_enemy_at_cursor()
-			get_viewport().set_input_as_handled()
-			return
 		if OS.is_debug_build() and key_event.keycode in UnitDatabase.SPAWN_HOTKEYS:
-			_start_spawn_mode(UnitDatabase.SPAWN_HOTKEYS[key_event.keycode])
+			var type_id: String = UnitDatabase.SPAWN_HOTKEYS[key_event.keycode]
+			if type_id == "enemy":
+				_spawn_debug_enemy_at_cursor()
+			else:
+				_start_spawn_mode(type_id)
 			get_viewport().set_input_as_handled()
 			return
 
@@ -101,9 +101,14 @@ func _update_ghost_texture() -> void:
 	if preview_path.is_empty():
 		return
 	var texture: Texture2D = load(preview_path)
-	_ghost_sprite.texture = texture
-	if texture != null:
-		_ghost_sprite.offset = Vector2(0.0, -texture.get_height() * 0.5 + 64.0)
+	if texture == null:
+		return
+	# Preview sheets are horizontal strips — show only the first 80×80 frame.
+	var atlas := AtlasTexture.new()
+	atlas.atlas = texture
+	atlas.region = Rect2(0, 0, mini(80, texture.get_width()), mini(80, texture.get_height()))
+	_ghost_sprite.texture = atlas
+	_ghost_sprite.offset = Vector2(0.0, -36.0)
 
 
 func _spawn_debug_enemy_at_cursor() -> void:
@@ -122,9 +127,15 @@ func _try_spawn_unit(world_pos: Vector2, type_id: String = "") -> void:
 	var unit: Unit = scene.instantiate()
 	_units_container.add_child(unit)
 	unit.global_position = world_pos
+	UnitDatabase.apply_definition_to_unit(unit, spawn_type)
+	if spawn_type == "enemy" and unit is EnemyUnit:
+		(unit as EnemyUnit).configure_kind("normal")
 	if _ground_layer != null:
 		unit.set_ground_layer(_ground_layer)
 	unit.reset_navigation()
+	var world := get_tree().get_first_node_in_group("game_world")
+	if world != null and world.has_method("register_player_unit") and spawn_type != "enemy":
+		world.call("register_player_unit", unit)
 
 
 func _is_valid_spawn(world_pos: Vector2) -> bool:

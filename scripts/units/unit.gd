@@ -38,11 +38,17 @@ static var _shared_dust_texture: Texture2D
 @export var max_hp: int = 100
 @export var selection_half_size := Vector2(40.0, 40.0)
 @export var idle_sheet: Texture2D
+@export var idle_up_sheet: Texture2D
+@export var idle_side_sheet: Texture2D
 @export var walk_up_sheet: Texture2D
 @export var walk_down_sheet: Texture2D
+@export var walk_side_sheet: Texture2D
 @export var attack_up_sheet: Texture2D
 @export var attack_down_sheet: Texture2D
+@export var attack_side_sheet: Texture2D
 @export var gather_sheet: Texture2D
+@export var gather_up_sheet: Texture2D
+@export var gather_side_sheet: Texture2D
 @export var death_up_sheet: Texture2D
 @export var death_down_sheet: Texture2D
 @export var sprite_offset := Vector2(0.0, -36.0)
@@ -191,12 +197,79 @@ func _setup_sprite_frames() -> void:
 		7.0,
 		DEATH_FRAME_COUNT if death_up_sheet != null or death_down_sheet != null else -1,
 		gather_sheet,
-		12.0
+		12.0,
+		walk_side_sheet,
+		attack_side_sheet,
+		idle_up_sheet,
+		idle_side_sheet,
+		gather_up_sheet,
+		gather_side_sheet
 	)
 	if frames.get_animation_names().is_empty():
 		return
 	animated_sprite.sprite_frames = frames
+	animated_sprite.flip_h = false
 	animated_sprite.play(&"idle")
+
+
+## Maps a world direction to an animation axis + horizontal flip.
+## Up/back for NW–NE (away from camera), side for pure E/W, front/down for SE–SW.
+## Back sheets are drawn facing slightly left; flip when moving/acting up-right.
+func _facing_from_direction(direction: Vector2) -> Dictionary:
+	var dir := direction
+	if dir.length_squared() < 0.0001:
+		dir = _last_facing_direction
+	if dir.length_squared() < 0.0001:
+		dir = Vector2.DOWN
+	else:
+		dir = dir.normalized()
+
+	var axis := &"down"
+	var flip_h := false
+	if dir.y < -0.20:
+		axis = &"up"
+		# Back art faces up-left by default → flip for up-right.
+		flip_h = dir.x > 0.05
+	elif dir.y > 0.20:
+		axis = &"down"
+		# Front art faces down-right-ish → flip for down-left.
+		flip_h = dir.x < -0.05
+	else:
+		axis = &"side"
+		# Side sheets face right; flip when moving/acting left.
+		flip_h = dir.x < 0.0
+
+	return {"axis": axis, "flip_h": flip_h}
+
+
+func _animation_for_action(action: StringName, axis: StringName) -> StringName:
+	var preferred := StringName("%s_%s" % [String(action), String(axis)])
+	if animated_sprite.sprite_frames.has_animation(preferred):
+		return preferred
+	# Fallbacks: side → down, up → down, then bare action name (idle/gather).
+	if axis == &"side":
+		var down_name := StringName("%s_down" % String(action))
+		if animated_sprite.sprite_frames.has_animation(down_name):
+			return down_name
+	if axis == &"up":
+		var down_name := StringName("%s_down" % String(action))
+		if animated_sprite.sprite_frames.has_animation(down_name):
+			return down_name
+	if animated_sprite.sprite_frames.has_animation(action):
+		return action
+	if action == &"walk" and animated_sprite.sprite_frames.has_animation(&"idle"):
+		return &"idle"
+	return action
+
+
+func _play_directional_animation(action: StringName, direction: Vector2) -> void:
+	if direction != Vector2.ZERO:
+		_last_facing_direction = direction
+	var facing := _facing_from_direction(direction)
+	var animation_name := _animation_for_action(action, facing["axis"])
+	animated_sprite.flip_h = facing["flip_h"]
+	if animated_sprite.animation != animation_name:
+		animated_sprite.play(animation_name)
 
 
 func rebuild_visuals() -> void:
@@ -956,7 +1029,9 @@ func _play_death_animation() -> void:
 
 
 func _get_death_animation_name() -> StringName:
-	if _last_facing_direction.y < -0.15 and animated_sprite.sprite_frames.has_animation(&"death_up"):
+	var facing := _facing_from_direction(_last_facing_direction)
+	animated_sprite.flip_h = facing["flip_h"]
+	if facing["axis"] == &"up" and animated_sprite.sprite_frames.has_animation(&"death_up"):
 		return &"death_up"
 	if animated_sprite.sprite_frames.has_animation(&"death_down"):
 		return &"death_down"
@@ -1643,19 +1718,31 @@ func _finish_gather_job() -> void:
 		(job_manager as JobManager).try_assign_idle_villager(self)
 
 
+func _work_facing_direction() -> Vector2:
+	if construction_target != null and is_instance_valid(construction_target):
+		return global_position.direction_to(construction_target.get_closest_surface_point(global_position))
+	if repair_target != null and is_instance_valid(repair_target):
+		return global_position.direction_to(repair_target.get_closest_surface_point(global_position))
+	if gather_target != null and is_instance_valid(gather_target):
+		return global_position.direction_to(gather_target.get_closest_surface_point(global_position))
+	if gather_building != null and is_instance_valid(gather_building):
+		return global_position.direction_to(gather_building.get_closest_surface_point(global_position))
+	return _last_facing_direction
+
+
 func _play_build_animation() -> void:
 	if _is_attack_animating:
 		return
-	# Prefer dedicated work/gather strip while constructing or repairing.
-	if animated_sprite.sprite_frames.has_animation(&"gather"):
-		if animated_sprite.animation != &"gather":
-			animated_sprite.play(&"gather")
-		_reset_sprite_motion()
-		return
 	_reset_sprite_motion()
-	if animated_sprite.sprite_frames.has_animation(&"idle"):
-		if animated_sprite.animation != &"idle":
-			animated_sprite.play(&"idle")
+	var direction := _work_facing_direction()
+	if (
+		animated_sprite.sprite_frames.has_animation(&"gather")
+		or animated_sprite.sprite_frames.has_animation(&"gather_up")
+		or animated_sprite.sprite_frames.has_animation(&"gather_side")
+	):
+		_play_directional_animation(&"gather", direction)
+		return
+	_play_directional_animation(&"idle", direction)
 	var bounce := sin(Time.get_ticks_msec() * 0.012) * 2.0
 	animated_sprite.position = Vector2(0.0, bounce)
 
@@ -1663,14 +1750,16 @@ func _play_build_animation() -> void:
 func _play_gather_animation() -> void:
 	if _is_attack_animating:
 		return
-	if animated_sprite.sprite_frames.has_animation(&"gather"):
-		if animated_sprite.animation != &"gather":
-			animated_sprite.play(&"gather")
+	var direction := _work_facing_direction()
+	if (
+		animated_sprite.sprite_frames.has_animation(&"gather")
+		or animated_sprite.sprite_frames.has_animation(&"gather_up")
+		or animated_sprite.sprite_frames.has_animation(&"gather_side")
+	):
+		_play_directional_animation(&"gather", direction)
 		_reset_sprite_motion()
 		return
-	if animated_sprite.sprite_frames.has_animation(&"idle"):
-		if animated_sprite.animation != &"idle":
-			animated_sprite.play(&"idle")
+	_play_directional_animation(&"idle", direction)
 	var swing := sin(Time.get_ticks_msec() * 0.018)
 	animated_sprite.rotation_degrees = swing * 10.0
 	animated_sprite.position = Vector2(swing * 1.5, absf(swing) * 2.5)
@@ -1853,21 +1942,7 @@ func _direction_to_target() -> Vector2:
 
 
 func _play_attack_animation(direction: Vector2) -> void:
-	_last_facing_direction = direction
-	var animation_name := &"attack_down"
-	if direction.y < -0.15:
-		animation_name = &"attack_up"
-	elif direction.y > 0.15:
-		animation_name = &"attack_down"
-	elif direction.x < 0.0:
-		animation_name = &"attack_up" if animated_sprite.sprite_frames.has_animation(&"attack_up") else &"attack_down"
-	else:
-		animation_name = &"attack_down"
-
-	if not animated_sprite.sprite_frames.has_animation(animation_name):
-		animation_name = &"attack_down" if animated_sprite.sprite_frames.has_animation(&"attack_down") else &"idle"
-
-	animated_sprite.play(animation_name)
+	_play_directional_animation(&"attack", direction)
 
 
 func _on_animation_frame_changed() -> void:
@@ -2074,19 +2149,15 @@ func _play_idle() -> void:
 	if _is_attack_animating:
 		return
 	_reset_sprite_motion()
-	if animated_sprite.animation != &"idle" and animated_sprite.sprite_frames.has_animation(&"idle"):
-		animated_sprite.play(&"idle")
+	_play_directional_animation(&"idle", _last_facing_direction)
 
 
 func _play_idle_facing_target() -> void:
 	if _is_attack_animating:
 		return
 	var direction := _direction_to_target()
-	if direction != Vector2.ZERO:
-		_last_facing_direction = direction
 	_reset_sprite_motion()
-	if animated_sprite.animation != &"idle" and animated_sprite.sprite_frames.has_animation(&"idle"):
-		animated_sprite.play(&"idle")
+	_play_directional_animation(&"idle", direction)
 
 
 func _update_visual_separation() -> void:
@@ -2126,22 +2197,7 @@ func _update_visual_separation() -> void:
 
 
 func _play_walk_animation(direction: Vector2) -> void:
-	_last_facing_direction = direction
-	var animation_name := &"walk_down"
-	if direction.y < -0.15:
-		animation_name = &"walk_up"
-	elif direction.y > 0.15:
-		animation_name = &"walk_down"
-	elif direction.x < 0.0:
-		animation_name = &"walk_up" if animated_sprite.sprite_frames.has_animation(&"walk_up") else &"walk_down"
-	else:
-		animation_name = &"walk_down"
-
-	if not animated_sprite.sprite_frames.has_animation(animation_name):
-		animation_name = &"idle"
-
-	if animated_sprite.animation != animation_name:
-		animated_sprite.play(animation_name)
+	_play_directional_animation(&"walk", direction)
 	_reset_sprite_motion()
 
 

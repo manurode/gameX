@@ -18,7 +18,7 @@ Legacy: **Tiny Tiles** by odiurd ([itch.io](https://odiurd.itch.io/tiny-tiles)) 
 - **Isométrica 2:1** (estilo Age of Empires / strategy cozy)
 - Tiles de terreno: rombo **256×128 px**
 - Personajes: sprite sheets horizontales, frames **80×80 px**
-- Direcciones de animación: `walk_up` (run_upward) y `walk_down` (run_backward / run_downward)
+- Direcciones de animación: `walk_up` / `idle_back` (espalda, NE–NW), `walk_down` / `idle` (frente, SE–SW), `walk_side` / `idle_side` (perfil Este; Oeste con `flip_h`)
 
 ## Estilo visual
 
@@ -52,12 +52,16 @@ Ejemplos:
 
 ## Animaciones requeridas por unidad
 
-| Animación   | Obligatoria | Notas                          |
-|-------------|-------------|--------------------------------|
-| `idle`      | Sí          | 4 frames, loop                 |
-| `walk_up`   | Sí          | 8 frames, loop                 |
-| `walk_down` | Sí          | 8 frames, loop                 |
-| `attack`    | Fase 3+     | Por implementar                |
+| Animación      | Obligatoria | Notas                                      |
+|----------------|-------------|--------------------------------------------|
+| `idle`         | Sí          | Frente, 4 frames, loop                     |
+| `idle_back`    | Sí          | Espalda (NW/NE)                            |
+| `idle_side`    | Sí          | Perfil derecha; izquierda con flip         |
+| `walk_up`      | Sí          | 8 frames, espalda                          |
+| `walk_down`    | Sí          | 8 frames, frente                           |
+| `walk_side`    | Sí          | 8 frames, perfil                           |
+| `attack_*`     | Combate     | `attack`, `attack_back`, `attack_side`     |
+| `afk_*`        | Civiles     | Trabajo frente / espalda / lado            |
 
 ## Import settings en Godot
 

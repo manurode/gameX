@@ -4,8 +4,17 @@ extends RefCounted
 static var _frames_cache: Dictionary = {}
 
 
-static func _sheet_id(sheet: Texture2D) -> int:
-	return sheet.get_rid().get_id() if sheet != null else 0
+static func _sheet_key(sheet: Texture2D) -> String:
+	if sheet == null:
+		return "0"
+	var path := sheet.resource_path
+	if path.is_empty():
+		return str(sheet.get_rid().get_id())
+	return path
+
+
+static func clear_cache() -> void:
+	_frames_cache.clear()
 
 
 static func build_character_frames(
@@ -23,17 +32,29 @@ static func build_character_frames(
 	death_fps: float = 7.0,
 	death_frame_count: int = -1,
 	gather_sheet: Texture2D = null,
-	gather_fps: float = 9.0
+	gather_fps: float = 9.0,
+	walk_side_sheet: Texture2D = null,
+	attack_side_sheet: Texture2D = null,
+	idle_up_sheet: Texture2D = null,
+	idle_side_sheet: Texture2D = null,
+	gather_up_sheet: Texture2D = null,
+	gather_side_sheet: Texture2D = null
 ) -> SpriteFrames:
-	var cache_key := "%d_%d_%d_%d_%d_%d_%d_%d_%d_%.1f_%.1f_%.1f_%.1f_%d_%.1f" % [
-		_sheet_id(idle_sheet),
-		_sheet_id(walk_up_sheet),
-		_sheet_id(walk_down_sheet),
-		_sheet_id(attack_up_sheet),
-		_sheet_id(attack_down_sheet),
-		_sheet_id(death_up_sheet),
-		_sheet_id(death_down_sheet),
-		_sheet_id(gather_sheet),
+	var cache_key := "%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%d|%.1f|%.1f|%.1f|%.1f|%d|%.1f" % [
+		_sheet_key(idle_sheet),
+		_sheet_key(walk_up_sheet),
+		_sheet_key(walk_down_sheet),
+		_sheet_key(walk_side_sheet),
+		_sheet_key(attack_up_sheet),
+		_sheet_key(attack_down_sheet),
+		_sheet_key(attack_side_sheet),
+		_sheet_key(death_up_sheet),
+		_sheet_key(death_down_sheet),
+		_sheet_key(gather_sheet),
+		_sheet_key(gather_up_sheet),
+		_sheet_key(gather_side_sheet),
+		_sheet_key(idle_up_sheet),
+		_sheet_key(idle_side_sheet),
 		frame_size,
 		idle_fps,
 		walk_fps,
@@ -49,14 +70,22 @@ static func build_character_frames(
 
 	if idle_sheet != null:
 		_add_horizontal_frames(frames, &"idle", idle_sheet, frame_size, idle_fps, true)
+	if idle_up_sheet != null:
+		_add_horizontal_frames(frames, &"idle_up", idle_up_sheet, frame_size, idle_fps, true)
+	if idle_side_sheet != null:
+		_add_horizontal_frames(frames, &"idle_side", idle_side_sheet, frame_size, idle_fps, true)
 	if walk_up_sheet != null:
 		_add_horizontal_frames(frames, &"walk_up", walk_up_sheet, frame_size, walk_fps, true)
 	if walk_down_sheet != null:
 		_add_horizontal_frames(frames, &"walk_down", walk_down_sheet, frame_size, walk_fps, true)
+	if walk_side_sheet != null:
+		_add_horizontal_frames(frames, &"walk_side", walk_side_sheet, frame_size, walk_fps, true)
 	if attack_up_sheet != null:
 		_add_horizontal_frames(frames, &"attack_up", attack_up_sheet, frame_size, attack_fps, false)
 	if attack_down_sheet != null:
 		_add_horizontal_frames(frames, &"attack_down", attack_down_sheet, frame_size, attack_fps, false)
+	if attack_side_sheet != null:
+		_add_horizontal_frames(frames, &"attack_side", attack_side_sheet, frame_size, attack_fps, false)
 	if death_up_sheet != null:
 		_add_horizontal_frames(
 			frames,
@@ -79,6 +108,10 @@ static func build_character_frames(
 		)
 	if gather_sheet != null:
 		_add_horizontal_frames(frames, &"gather", gather_sheet, frame_size, gather_fps, true)
+	if gather_up_sheet != null:
+		_add_horizontal_frames(frames, &"gather_up", gather_up_sheet, frame_size, gather_fps, true)
+	if gather_side_sheet != null:
+		_add_horizontal_frames(frames, &"gather_side", gather_side_sheet, frame_size, gather_fps, true)
 
 	if not frames.has_animation(&"idle"):
 		if frames.has_animation(&"walk_down"):

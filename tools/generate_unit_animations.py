@@ -735,6 +735,14 @@ def make_work(
     return stitch(frames)
 
 
+def make_idle_sheet_local(base: Image.Image, frames: int = 4) -> Image.Image:
+    sprite = to_sprite(base)
+    sheet = Image.new("RGBA", (FRAME * frames, FRAME), (0, 0, 0, 0))
+    for i in range(frames):
+        sheet.alpha_composite(place_sprite(sprite), (i * FRAME, 0))
+    return sheet
+
+
 def save(sheet: Image.Image, path: Path) -> None:
     arr = np.array(sheet.convert("RGBA"))
     # Only clear empty leftovers: pure black with no meaningful color (bg mistakes)
@@ -757,9 +765,15 @@ def process_unit(unit: str, *, has_attack: bool, has_work: bool, ranged: bool = 
     back = load_base(f"{unit}_back") if back_path.exists() else front
     unit_dir = ROOT / unit
 
+    side_path = REFS / f"{unit}_side_base.png"
+    side = load_base(f"{unit}_side") if side_path.exists() else front
+
     save(make_walk(front, False), unit_dir / f"chr_{unit}_run_downward.png")
     save(make_walk(back, True), unit_dir / f"chr_{unit}_run_upward.png")
     save(make_walk(back, True), unit_dir / f"chr_{unit}_run_backward.png")
+    save(make_walk(side, False), unit_dir / f"chr_{unit}_run_side.png")
+    save(make_idle_sheet_local(back), unit_dir / f"chr_{unit}_idle_back.png")
+    save(make_idle_sheet_local(side), unit_dir / f"chr_{unit}_idle_side.png")
 
     # Knight/archer/enemy attacks and builder/villager work are built from
     # dedicated pose sheets (tools/build_attack_sheets_from_poses.py).

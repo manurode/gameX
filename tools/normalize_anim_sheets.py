@@ -130,8 +130,8 @@ def build_unit_attack(unit: str, pose_names: list[str], sequence: list[int]) -> 
     poses = [load_pose(n, ref_h, foot_y) for n in pose_names]
     bank = [idle, *poses]
     frames = [bank[i] for i in sequence]
+    # Front attack only — back/side sheets come from directional bases.
     stitch(frames, CHARS / unit / f"chr_{unit}_attack.png")
-    stitch(frames, CHARS / unit / f"chr_{unit}_attack_back.png")
 
 
 def build_knight() -> None:

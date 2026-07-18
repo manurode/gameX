@@ -14,9 +14,14 @@ const DEFINITIONS: Dictionary = {
 		"is_civilian": true,
 		"combat_style": Unit.CombatStyle.MELEE,
 		"idle_sheet": "res://assets/tilesets/mediterranean/Characters/villager/chr_villager_idle.png",
+		"idle_up_sheet": "res://assets/tilesets/mediterranean/Characters/villager/chr_villager_idle_back.png",
+		"idle_side_sheet": "res://assets/tilesets/mediterranean/Characters/villager/chr_villager_idle_side.png",
 		"walk_up_sheet": "res://assets/tilesets/mediterranean/Characters/villager/chr_villager_run_upward.png",
 		"walk_down_sheet": "res://assets/tilesets/mediterranean/Characters/villager/chr_villager_run_downward.png",
+		"walk_side_sheet": "res://assets/tilesets/mediterranean/Characters/villager/chr_villager_run_side.png",
 		"gather_sheet": "res://assets/tilesets/mediterranean/Characters/villager/chr_villager_afk.png",
+		"gather_up_sheet": "res://assets/tilesets/mediterranean/Characters/villager/chr_villager_afk_back.png",
+		"gather_side_sheet": "res://assets/tilesets/mediterranean/Characters/villager/chr_villager_afk_side.png",
 	},
 	"knight": {
 		"name": "Caballero",
@@ -33,10 +38,14 @@ const DEFINITIONS: Dictionary = {
 		"attack_cooldown": 1.0,
 		"melee_range": 54.0,
 		"idle_sheet": "res://assets/tilesets/mediterranean/Characters/knight/chr_knight_idle.png",
+		"idle_up_sheet": "res://assets/tilesets/mediterranean/Characters/knight/chr_knight_idle_back.png",
+		"idle_side_sheet": "res://assets/tilesets/mediterranean/Characters/knight/chr_knight_idle_side.png",
 		"walk_up_sheet": "res://assets/tilesets/mediterranean/Characters/knight/chr_knight_run_upward.png",
 		"walk_down_sheet": "res://assets/tilesets/mediterranean/Characters/knight/chr_knight_run_downward.png",
+		"walk_side_sheet": "res://assets/tilesets/mediterranean/Characters/knight/chr_knight_run_side.png",
 		"attack_up_sheet": "res://assets/tilesets/mediterranean/Characters/knight/chr_knight_attack_back.png",
 		"attack_down_sheet": "res://assets/tilesets/mediterranean/Characters/knight/chr_knight_attack.png",
+		"attack_side_sheet": "res://assets/tilesets/mediterranean/Characters/knight/chr_knight_attack_side.png",
 		"death_up_sheet": "res://assets/tilesets/mediterranean/Characters/knight/chr_knight_deploy_back.png",
 		"death_down_sheet": "res://assets/tilesets/mediterranean/Characters/knight/chr_knight_deploy.png",
 	},
@@ -56,10 +65,14 @@ const DEFINITIONS: Dictionary = {
 		"attack_range_min": 95.0,
 		"attack_range_max": 220.0,
 		"idle_sheet": "res://assets/tilesets/mediterranean/Characters/archer/chr_archer_idle.png",
+		"idle_up_sheet": "res://assets/tilesets/mediterranean/Characters/archer/chr_archer_idle_back.png",
+		"idle_side_sheet": "res://assets/tilesets/mediterranean/Characters/archer/chr_archer_idle_side.png",
 		"walk_up_sheet": "res://assets/tilesets/mediterranean/Characters/archer/chr_archer_run_upward.png",
 		"walk_down_sheet": "res://assets/tilesets/mediterranean/Characters/archer/chr_archer_run_downward.png",
+		"walk_side_sheet": "res://assets/tilesets/mediterranean/Characters/archer/chr_archer_run_side.png",
 		"attack_up_sheet": "res://assets/tilesets/mediterranean/Characters/archer/chr_archer_attack_back.png",
 		"attack_down_sheet": "res://assets/tilesets/mediterranean/Characters/archer/chr_archer_attack.png",
+		"attack_side_sheet": "res://assets/tilesets/mediterranean/Characters/archer/chr_archer_attack_side.png",
 		"death_up_sheet": "res://assets/tilesets/mediterranean/Characters/archer/chr_archer_deploy_back.png",
 		"death_down_sheet": "res://assets/tilesets/mediterranean/Characters/archer/chr_archer_deploy.png",
 	},
@@ -67,12 +80,32 @@ const DEFINITIONS: Dictionary = {
 		"name": "Constructor",
 		"scene": "res://scenes/units/unit_builder.tscn",
 		"preview": "res://assets/tilesets/mediterranean/Characters/builder/chr_builder_idle.png",
+		"idle_sheet": "res://assets/tilesets/mediterranean/Characters/builder/chr_builder_idle.png",
+		"idle_up_sheet": "res://assets/tilesets/mediterranean/Characters/builder/chr_builder_idle_back.png",
+		"idle_side_sheet": "res://assets/tilesets/mediterranean/Characters/builder/chr_builder_idle_side.png",
+		"walk_up_sheet": "res://assets/tilesets/mediterranean/Characters/builder/chr_builder_run_upward.png",
+		"walk_down_sheet": "res://assets/tilesets/mediterranean/Characters/builder/chr_builder_run_downward.png",
+		"walk_side_sheet": "res://assets/tilesets/mediterranean/Characters/builder/chr_builder_run_side.png",
+		"gather_sheet": "res://assets/tilesets/mediterranean/Characters/builder/chr_builder_afk.png",
+		"gather_up_sheet": "res://assets/tilesets/mediterranean/Characters/builder/chr_builder_afk_back.png",
+		"gather_side_sheet": "res://assets/tilesets/mediterranean/Characters/builder/chr_builder_afk_side.png",
 	},
 	"enemy": {
 		"name": "Monstruo",
 		"scene": "res://scenes/units/unit_enemy.tscn",
 		"preview": "res://assets/tilesets/mediterranean/Characters/enemy/chr_enemy_idle.png",
 		"kinds": ["normal", "swarm", "siege", "elite", "raider"],
+		"idle_sheet": "res://assets/tilesets/mediterranean/Characters/enemy/chr_enemy_idle.png",
+		"idle_up_sheet": "res://assets/tilesets/mediterranean/Characters/enemy/chr_enemy_idle_back.png",
+		"idle_side_sheet": "res://assets/tilesets/mediterranean/Characters/enemy/chr_enemy_idle_side.png",
+		"walk_up_sheet": "res://assets/tilesets/mediterranean/Characters/enemy/chr_enemy_run_upward.png",
+		"walk_down_sheet": "res://assets/tilesets/mediterranean/Characters/enemy/chr_enemy_run_downward.png",
+		"walk_side_sheet": "res://assets/tilesets/mediterranean/Characters/enemy/chr_enemy_run_side.png",
+		"attack_up_sheet": "res://assets/tilesets/mediterranean/Characters/enemy/chr_enemy_attack_back.png",
+		"attack_down_sheet": "res://assets/tilesets/mediterranean/Characters/enemy/chr_enemy_attack.png",
+		"attack_side_sheet": "res://assets/tilesets/mediterranean/Characters/enemy/chr_enemy_attack_side.png",
+		"death_up_sheet": "res://assets/tilesets/mediterranean/Characters/enemy/chr_enemy_deploy_back.png",
+		"death_down_sheet": "res://assets/tilesets/mediterranean/Characters/enemy/chr_enemy_deploy.png",
 	},
 }
 
@@ -80,6 +113,7 @@ const SPAWN_HOTKEYS: Dictionary = {
 	KEY_F1: "knight",
 	KEY_F2: "archer",
 	KEY_F3: "builder",
+	KEY_F4: "enemy",
 }
 
 
@@ -131,29 +165,32 @@ static func apply_definition_to_unit(unit: Unit, type_id: String) -> void:
 	unit.attack_range_min = def.get("attack_range_min", unit.attack_range_min)
 	unit.attack_range_max = def.get("attack_range_max", unit.attack_range_max)
 
-	var idle_path: String = def.get("idle_sheet", "")
-	if not idle_path.is_empty():
-		unit.idle_sheet = load(idle_path)
-	var walk_up_path: String = def.get("walk_up_sheet", "")
-	if not walk_up_path.is_empty():
-		unit.walk_up_sheet = load(walk_up_path)
-	var walk_down_path: String = def.get("walk_down_sheet", "")
-	if not walk_down_path.is_empty():
-		unit.walk_down_sheet = load(walk_down_path)
-	var attack_up_path: String = def.get("attack_up_sheet", "")
-	if not attack_up_path.is_empty():
-		unit.attack_up_sheet = load(attack_up_path)
-	var attack_down_path: String = def.get("attack_down_sheet", "")
-	if not attack_down_path.is_empty():
-		unit.attack_down_sheet = load(attack_down_path)
-	var death_up_path: String = def.get("death_up_sheet", "")
-	if not death_up_path.is_empty():
-		unit.death_up_sheet = load(death_up_path)
-	var death_down_path: String = def.get("death_down_sheet", "")
-	if not death_down_path.is_empty():
-		unit.death_down_sheet = load(death_down_path)
-	var gather_path: String = def.get("gather_sheet", "")
-	if not gather_path.is_empty():
-		unit.gather_sheet = load(gather_path)
+	# Always assign (or clear) every sheet slot so transforms don't keep old art.
+	_apply_sheet(unit, def, "idle_sheet", "idle_sheet")
+	_apply_sheet(unit, def, "idle_up_sheet", "idle_up_sheet")
+	_apply_sheet(unit, def, "idle_side_sheet", "idle_side_sheet")
+	_apply_sheet(unit, def, "walk_up_sheet", "walk_up_sheet")
+	_apply_sheet(unit, def, "walk_down_sheet", "walk_down_sheet")
+	_apply_sheet(unit, def, "walk_side_sheet", "walk_side_sheet")
+	_apply_sheet(unit, def, "attack_up_sheet", "attack_up_sheet")
+	_apply_sheet(unit, def, "attack_down_sheet", "attack_down_sheet")
+	_apply_sheet(unit, def, "attack_side_sheet", "attack_side_sheet")
+	_apply_sheet(unit, def, "death_up_sheet", "death_up_sheet")
+	_apply_sheet(unit, def, "death_down_sheet", "death_down_sheet")
+	_apply_sheet(unit, def, "gather_sheet", "gather_sheet")
+	_apply_sheet(unit, def, "gather_up_sheet", "gather_up_sheet")
+	_apply_sheet(unit, def, "gather_side_sheet", "gather_side_sheet")
 
+	SpriteSheetUtils.clear_cache()
 	unit.rebuild_visuals()
+
+
+static func _apply_sheet(unit: Unit, def: Dictionary, def_key: String, property: String) -> void:
+	var path: String = def.get(def_key, "")
+	if path.is_empty():
+		unit.set(property, null)
+		return
+	var texture = load(path)
+	if texture == null:
+		push_warning("UnitDatabase: failed to load sheet %s for %s" % [path, def_key])
+	unit.set(property, texture)

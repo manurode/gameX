@@ -224,9 +224,9 @@ func spawn_temp_archers(count: int) -> void:
 		var archer: Unit = ARCHER_SCENE.instantiate()
 		units.add_child(archer)
 		archer.global_position = ground_layer.map_to_local(center + Vector2i(i - 1, -2))
+		UnitDatabase.apply_definition_to_unit(archer, "archer")
 		archer.set_ground_layer(ground_layer)
 		archer.reset_navigation()
-		archer.unit_type_id = "archer"
 		archer.set_meta("temp_boon_unit", true)
 		register_player_unit(archer)
 		if day_night_manager.is_night():
@@ -289,15 +289,11 @@ func spawn_squad_members(
 		else:
 			var angle := TAU * float(i) / float(maxi(1, extra_count))
 			member.global_position = leader.global_position + Vector2(cos(angle), sin(angle)) * spacing
+		UnitDatabase.apply_definition_to_unit(member, unit_type_id)
 		member.set_ground_layer(ground_layer)
 		member.reset_navigation()
 		if not squad_id.is_empty():
 			member.set_meta("squad_id", squad_id)
-		if unit_type_id == "knight":
-			var bonus := MetaProgression.get_knight_hp_bonus()
-			if bonus > 0:
-				member.max_hp += bonus
-				member.hp = member.max_hp
 		population_manager.register_unit(member)
 		register_player_unit(member)
 		if day_night_manager.is_night():

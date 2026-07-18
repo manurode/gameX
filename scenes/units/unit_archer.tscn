@@ -2,24 +2,35 @@
 
 [ext_resource type="PackedScene" uid="uid://cunit001" path="res://scenes/units/unit.tscn" id="1_base"]
 [ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/archer/chr_archer_idle.png" id="2_idle"]
-[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/archer/chr_archer_run_upward.png" id="3_walk_up"]
-[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/archer/chr_archer_run_downward.png" id="4_walk_down"]
-[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/archer/chr_archer_attack.png" id="5_attack_down"]
-[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/archer/chr_archer_attack_back.png" id="6_attack_up"]
-[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/archer/chr_archer_deploy.png" id="7_death_down"]
-[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/archer/chr_archer_deploy_back.png" id="8_death_up"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/archer/chr_archer_idle_back.png" id="3_idle_up"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/archer/chr_archer_idle_side.png" id="4_idle_side"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/archer/chr_archer_run_upward.png" id="5_walk_up"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/archer/chr_archer_run_downward.png" id="6_walk_down"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/archer/chr_archer_run_side.png" id="7_walk_side"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/archer/chr_archer_attack.png" id="8_attack_down"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/archer/chr_archer_attack_back.png" id="9_attack_up"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/archer/chr_archer_attack_side.png" id="10_attack_side"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/archer/chr_archer_deploy.png" id="11_death_down"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/archer/chr_archer_deploy_back.png" id="12_death_up"]
 
 [node name="UnitArcher" instance=ExtResource("1_base")]
 move_speed = 105.0
 combat_style = 1
+can_attack = true
+is_civilian = false
+unit_type_id = "archer"
 attack_damage = 14
 attack_cooldown = 1.3
 attack_range_min = 95.0
 attack_range_max = 220.0
 idle_sheet = ExtResource("2_idle")
-walk_up_sheet = ExtResource("3_walk_up")
-walk_down_sheet = ExtResource("4_walk_down")
-attack_up_sheet = ExtResource("6_attack_up")
-attack_down_sheet = ExtResource("5_attack_down")
-death_up_sheet = ExtResource("8_death_up")
-death_down_sheet = ExtResource("7_death_down")
+idle_up_sheet = ExtResource("3_idle_up")
+idle_side_sheet = ExtResource("4_idle_side")
+walk_up_sheet = ExtResource("5_walk_up")
+walk_down_sheet = ExtResource("6_walk_down")
+walk_side_sheet = ExtResource("7_walk_side")
+attack_up_sheet = ExtResource("9_attack_up")
+attack_down_sheet = ExtResource("8_attack_down")
+attack_side_sheet = ExtResource("10_attack_side")
+death_up_sheet = ExtResource("12_death_up")
+death_down_sheet = ExtResource("11_death_down")
