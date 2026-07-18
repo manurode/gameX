@@ -345,10 +345,8 @@ func repair_all_player_buildings() -> void:
 			continue
 		if building.hp >= building.max_hp:
 			continue
-		building.hp = building.max_hp
-		building.repair_in_progress = false
-		building.repair_paid = false
-		building.health_changed.emit(building.hp, building.max_hp)
+		# Same path as villager repair: restore HP and refresh damaged → complete sprite.
+		building._complete_repair()
 
 
 func register_player_unit(unit: Unit) -> void:
