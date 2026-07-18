@@ -50,17 +50,14 @@ def remove_light_background(im: Image.Image, white_cut: int = 232) -> Image.Imag
 
 
 def fit_generated(src: Path, unit: str) -> Image.Image:
-    """Fit AI art to idle foot line at full idle silhouette height (no style shrink)."""
+    """Fit AI art to match front idle silhouette height (keeps STYLE_SHRINK so backs stay small)."""
     idle = load_idle(unit)
     bb = content_bbox(idle)
     foot_y = bb[3]
-    ref_h = max(1, bb[3] - bb[1] + 1)
+    # Use body-mass height like attack normalize — closer to how idle reads in-game.
+    ref_h = body_height(idle)
     cleaned = remove_light_background(Image.open(src))
-    # fit_to_idle applies STYLE_SHRINK — undo by passing a boosted target height.
-    from normalize_anim_sheets import STYLE_SHRINK
-
-    boosted = int(round(ref_h / STYLE_SHRINK))
-    fitted = fit_to_idle(cleaned, boosted, foot_y)
+    fitted = fit_to_idle(cleaned, ref_h, foot_y)
     return harden_alpha(to_sprite(fitted, threshold=14), cut=40)
 
 
@@ -167,7 +164,7 @@ def rebuild_sheets(bases: dict[str, dict[str, Image.Image]]) -> None:
         back = unit_bases.get("back", front)
         side = unit_bases.get("side", front)
 
-        save(make_walk(front, False), unit_dir / f"chr_{unit}_run_downward.png")
+        # Never rewrite front idle / run_downward — keep original front scale.
         save(make_walk(back, True), unit_dir / f"chr_{unit}_run_upward.png")
         save(make_walk(back, True), unit_dir / f"chr_{unit}_run_backward.png")
         save(make_walk(side, False), unit_dir / f"chr_{unit}_run_side.png")

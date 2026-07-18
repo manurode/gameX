@@ -1,9 +1,15 @@
-"""Upscale directional sheets so character silhouette height matches front idle."""
+"""Shrink back/side sheets to match ORIGINAL front idle (never enlarge idle).
+
+Scale is limited by both silhouette height and opaque-pixel mass so denser
+back art (cape/quiver) does not read larger than the front idle.
+Does NOT modify chr_*_idle.png or front walk/attack sheets.
+"""
 
 from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 from PIL import Image
 
 from normalize_anim_sheets import content_bbox, harden_alpha
@@ -11,8 +17,7 @@ from normalize_anim_sheets import content_bbox, harden_alpha
 FRAME = 80
 CHARS = Path(r"C:\Repos\gameX\assets\tilesets\mediterranean\Characters")
 UNITS = ("villager", "builder", "knight", "archer", "enemy")
-# Match idle hat→feet height exactly (1.0). Slight boost if still reading small in-game.
-TARGET_RATIO = 1.0
+FINAL_UNDER = 0.98  # never land larger than idle
 
 SHEET_GLOBS = (
     "chr_{u}_idle_back.png",
@@ -28,29 +33,39 @@ SHEET_GLOBS = (
 )
 
 
-def silhouette_h(im: Image.Image) -> int:
-    bb = im.getbbox()
-    if bb is None:
-        return 0
-    return max(1, bb[3] - bb[1] + 1)
+def frame_stats(im: Image.Image) -> tuple[int, int, int]:
+    arr = np.array(harden_alpha(im.convert("RGBA"), cut=30))
+    mask = arr[:, :, 3] > 40
+    if not mask.any():
+        return 0, 0, 0
+    ys, xs = np.where(mask)
+    return int(ys.max() - ys.min() + 1), int(xs.max() - xs.min() + 1), int(mask.sum())
 
 
-def idle_metrics(unit: str) -> tuple[int, int]:
+def idle_ref(unit: str) -> tuple[int, int, int]:
     idle = Image.open(CHARS / unit / f"chr_{unit}_idle.png").convert("RGBA")
-    frame = harden_alpha(idle.crop((0, 0, FRAME, FRAME)), cut=30)
-    bb = content_bbox(frame)
-    return max(1, bb[3] - bb[1] + 1), bb[3]
+    frame = idle.crop((0, 0, FRAME, FRAME))
+    h, _w, px = frame_stats(frame)
+    foot_y = content_bbox(harden_alpha(frame, cut=30))[3]
+    return max(1, h), max(1, px), foot_y
 
 
-def rescale_frame(frame: Image.Image, ref_h: int, foot_y: int) -> Image.Image:
+def rescale_frame(
+    frame: Image.Image, idle_h: int, idle_px: int, foot_y: int
+) -> Image.Image:
     frame = harden_alpha(frame.convert("RGBA"), cut=30)
     bb = frame.getbbox()
     canvas = Image.new("RGBA", (FRAME, FRAME), (0, 0, 0, 0))
     if bb is None:
         return canvas
     cropped = frame.crop(bb)
-    pose_h = max(1, cropped.height)
-    scale = (ref_h * TARGET_RATIO) / pose_h
+    pose_h, _pw, pose_px = frame_stats(cropped)
+    if pose_h <= 0:
+        return canvas
+    scale_h = idle_h / pose_h
+    scale_px = (idle_px / max(pose_px, 1)) ** 0.5
+    scale = min(scale_h, scale_px) * FINAL_UNDER
+    scale = max(0.5, min(scale, 1.0))
     max_scale = min((FRAME - 2) / max(cropped.width, 1), (FRAME - 2) / max(cropped.height, 1))
     scale = min(scale, max_scale)
     nw = max(1, int(round(cropped.width * scale)))
@@ -64,27 +79,30 @@ def rescale_frame(frame: Image.Image, ref_h: int, foot_y: int) -> Image.Image:
     return harden_alpha(canvas, cut=40)
 
 
-def rescale_sheet(path: Path, ref_h: int, foot_y: int) -> None:
+def rescale_sheet(path: Path, idle_h: int, idle_px: int, foot_y: int) -> None:
     im = Image.open(path).convert("RGBA")
     count = max(1, im.width // FRAME)
     out = Image.new("RGBA", (FRAME * count, FRAME), (0, 0, 0, 0))
     for i in range(count):
         fr = im.crop((i * FRAME, 0, (i + 1) * FRAME, FRAME))
-        out.alpha_composite(rescale_frame(fr, ref_h, foot_y), (i * FRAME, 0))
+        out.alpha_composite(rescale_frame(fr, idle_h, idle_px, foot_y), (i * FRAME, 0))
     out.save(path)
-    h0 = silhouette_h(out.crop((0, 0, FRAME, FRAME)))
-    print(f"  {path.name:32s} h={h0} (target {ref_h})")
+    h, _w, px = frame_stats(out.crop((0, 0, FRAME, FRAME)))
+    print(
+        f"  {path.name:32s} h={h} px={px} | idle h={idle_h} px={idle_px} "
+        f"| h%={100 * h / idle_h:.0f} px%={100 * px / idle_px:.0f}"
+    )
 
 
 def main() -> None:
     for unit in UNITS:
-        ref_h, foot_y = idle_metrics(unit)
-        print(f"{unit}: idle h={ref_h} foot_y={foot_y}")
+        idle_h, idle_px, foot_y = idle_ref(unit)
+        print(f"{unit}: front idle h={idle_h} px={idle_px} (NOT modified)")
         for pattern in SHEET_GLOBS:
             path = CHARS / unit / pattern.format(u=unit)
             if path.exists():
-                rescale_sheet(path, ref_h, foot_y)
-    print("Done rescaling directional sheets.")
+                rescale_sheet(path, idle_h, idle_px, foot_y)
+    print("Done.")
 
 
 if __name__ == "__main__":
