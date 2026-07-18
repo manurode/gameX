@@ -57,15 +57,15 @@ const FORMATION_INFO: Dictionary = {
 	},
 }
 
-const TEX_WOOD := "res://assets/tilesets/tiny_tiles/UI/Icons/UI_icon_resources_wood.png"
-const TEX_GOLD := "res://assets/tilesets/tiny_tiles/UI/Icons/UI_icon_resources_stone.png"
-const TEX_FOOD := "res://assets/tilesets/tiny_tiles/UI/Icons/UI_icon_resources_wheat.png"
+const TEX_WOOD := "res://assets/tilesets/tiny_tiles/UI/Icons/UI_icon_resources_wood_clear.png"
+const TEX_GOLD := "res://assets/tilesets/tiny_tiles/UI/Icons/UI_icon_resources_gold.png"
+const TEX_FOOD := "res://assets/tilesets/tiny_tiles/UI/Icons/UI_icon_resources_food.png"
 const TEX_HAMMER := "res://assets/tilesets/tiny_tiles/UI/Icons/UI_icon_hammer.png"
 
 const ICON_VARIANT_SIZE := 128
 const SLOT_SIZE := Vector2(66, 80)
 const ICON_SIZE := Vector2(36, 30)
-const RESOURCE_ICON_SIZE := Vector2(22, 22)
+const RESOURCE_ICON_SIZE := Vector2(28, 28)
 const MIN_FORMATION_UNITS := 2
 
 @onready var _resources_box: VBoxContainer = $MarginContainer/HBoxContainer/ResourcesBox
