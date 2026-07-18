@@ -184,6 +184,27 @@ func _set_night_light_energy(target_energy: float, enable: bool) -> void:
 		)
 
 
+func is_night_light_active() -> bool:
+	return (
+		building_state != BuildingState.DESTROYED
+		and _night_light != null
+		and _night_light.enabled
+		and _night_light.energy > 0.05
+	)
+
+
+func get_night_light_origin() -> Vector2:
+	if _night_light == null:
+		return global_position
+	return to_global(_night_light.position)
+
+
+func get_night_light_radius() -> float:
+	if _night_light == null:
+		return 0.0
+	return DayNightManager.LIGHT_TEXTURE_SIZE * 0.5 * _night_light.texture_scale * 0.78
+
+
 func set_wall_vertical(vertical: bool) -> void:
 	if building_type_id != "wall":
 		return

@@ -2,6 +2,7 @@ class_name EnemyUnit
 extends Unit
 
 const UNIT_AGGRO_RANGE := 180.0
+const VISIBILITY_LINGER := 0.4
 const PRIORITY_BUILDING_TYPES: Array[String] = [
 	"town_center",
 	"mill",
@@ -23,6 +24,10 @@ var enemy_kind: String = "normal"
 var wall_damage_bonus: float = 1.0
 var steals_resources: bool = false
 
+var _player_visible: bool = true
+var _visibility_linger: float = 0.0
+var _visibility_check_timer: float = 0.0
+
 
 func _ready() -> void:
 	team_id = Team.ENEMY
@@ -31,10 +36,15 @@ func _ready() -> void:
 	add_to_group("enemies")
 	# Offset enemy scans so wave units do not all evaluate on the same tick.
 	_scan_timer = randf() * TARGET_SCAN_INTERVAL
+	_visibility_check_timer = randf() * TARGET_SCAN_INTERVAL
 
 	var day_night := get_tree().get_first_node_in_group("day_night_manager")
 	if day_night != null and day_night.has_method("is_night") and day_night.call("is_night"):
 		apply_cycle_visuals(true)
+		# Hide immediately to avoid a one-frame flash before the first light check.
+		if not _has_enemy_night_vision():
+			_set_player_visible(false)
+	call_deferred("_force_visibility_refresh")
 
 
 func configure_kind(kind: String) -> void:
@@ -99,6 +109,26 @@ func get_attack_damage() -> int:
 	return base
 
 
+func apply_cycle_visuals(is_night: bool) -> void:
+	super.apply_cycle_visuals(is_night)
+	_force_visibility_refresh()
+
+
+func should_show_health_bar() -> bool:
+	if not _player_visible:
+		return false
+	return super.should_show_health_bar()
+
+
+func is_player_visible() -> bool:
+	return _player_visible
+
+
+func _die() -> void:
+	_set_player_visible(true)
+	super._die()
+
+
 func _physics_process(delta: float) -> void:
 	if not _is_dying and hp > 0 and garrisoned_building == null:
 		_scan_timer -= delta
@@ -106,7 +136,88 @@ func _physics_process(delta: float) -> void:
 			_scan_timer = TARGET_SCAN_INTERVAL
 			_evaluate_combat_target()
 
+	_update_player_visibility(delta)
 	super._physics_process(delta)
+
+
+func _force_visibility_refresh() -> void:
+	_visibility_check_timer = 0.0
+	_update_player_visibility(0.0)
+
+
+func _update_player_visibility(delta: float) -> void:
+	if _is_dying or hp <= 0:
+		_set_player_visible(true)
+		return
+
+	var day_night := get_tree().get_first_node_in_group("day_night_manager") as DayNightManager
+	if day_night == null or not day_night.is_night():
+		_set_player_visible(true)
+		return
+
+	if _has_enemy_night_vision():
+		_set_player_visible(true)
+		return
+
+	_visibility_check_timer -= delta
+	if _visibility_check_timer <= 0.0:
+		_visibility_check_timer = TARGET_SCAN_INTERVAL
+		if _is_lit_by_allies():
+			_visibility_linger = VISIBILITY_LINGER
+
+	if _visibility_linger > 0.0:
+		_visibility_linger = maxf(0.0, _visibility_linger - delta)
+		_set_player_visible(true)
+	else:
+		_set_player_visible(false)
+
+
+func _has_enemy_night_vision() -> bool:
+	var boons := get_tree().get_first_node_in_group("run_boon_manager")
+	return boons is RunBoonManager and (boons as RunBoonManager).has_enemy_night_vision()
+
+
+func _is_lit_by_allies() -> bool:
+	var origin := global_position
+	for node in get_tree().get_nodes_in_group("selectable_units"):
+		if not node is Unit:
+			continue
+		var ally := node as Unit
+		if ally.team_id != Team.PLAYER or not ally.is_night_light_active():
+			continue
+		var radius := ally.get_night_light_radius()
+		if radius <= 0.0:
+			continue
+		if origin.distance_squared_to(ally.get_night_light_origin()) <= radius * radius:
+			return true
+
+	for node in get_tree().get_nodes_in_group("buildings"):
+		if not node is Building:
+			continue
+		var building := node as Building
+		if building.team_id != Team.PLAYER or not building.is_night_light_active():
+			continue
+		var radius := building.get_night_light_radius()
+		if radius <= 0.0:
+			continue
+		if origin.distance_squared_to(building.get_night_light_origin()) <= radius * radius:
+			return true
+
+	return false
+
+
+func _set_player_visible(visible: bool) -> void:
+	if _player_visible == visible:
+		return
+	_player_visible = visible
+	if animated_sprite != null:
+		animated_sprite.visible = visible
+	if shadow_sprite != null:
+		shadow_sprite.visible = visible
+	if _occlusion_silhouette != null:
+		_occlusion_silhouette.set_active(visible)
+	if health_bar != null and health_bar.has_method("notify_selection_changed"):
+		health_bar.notify_selection_changed()
 
 
 func _evaluate_combat_target() -> void:

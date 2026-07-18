@@ -34,6 +34,10 @@ const BOON_DEFS := {
 		"name": "Botín recuperado",
 		"description": "+80 madera y +40 oro.",
 	},
+	"night_sight": {
+		"name": "Ojo nocturno",
+		"description": "Durante la próxima noche ves a los enemigos en la oscuridad y en el minimapa.",
+	},
 }
 
 var gather_multiplier: float = 1.0
@@ -44,6 +48,8 @@ var _game_world: Node
 var _curfew_manager: CurfewManager
 var _resource_manager: ResourceManager
 var _used_this_dawn: bool = false
+var _enemy_night_vision_pending: bool = false
+var _enemy_night_vision_active: bool = false
 
 
 func _ready() -> void:
@@ -70,6 +76,10 @@ func is_awaiting_choice() -> bool:
 
 func get_gather_multiplier() -> float:
 	return gather_multiplier
+
+
+func has_enemy_night_vision() -> bool:
+	return _enemy_night_vision_active
 
 
 func offer_dawn_boons() -> void:
@@ -105,14 +115,24 @@ func get_boon_def(boon_id: String) -> Dictionary:
 func _on_cycle_changed(phase: DayNightManager.CyclePhase) -> void:
 	match phase:
 		DayNightManager.CyclePhase.DAWN:
+			_enemy_night_vision_active = false
 			_used_this_dawn = false
 			offer_dawn_boons()
-		DayNightManager.CyclePhase.DUSK, DayNightManager.CyclePhase.NIGHT:
-			if gather_multiplier != 1.0:
-				gather_multiplier = 1.0
-				gather_multiplier_changed.emit(gather_multiplier)
-			if _game_world != null and _game_world.has_method("clear_temp_archers"):
-				_game_world.call("clear_temp_archers")
+		DayNightManager.CyclePhase.DUSK:
+			_clear_daytime_boons()
+		DayNightManager.CyclePhase.NIGHT:
+			_clear_daytime_boons()
+			if _enemy_night_vision_pending:
+				_enemy_night_vision_active = true
+				_enemy_night_vision_pending = false
+
+
+func _clear_daytime_boons() -> void:
+	if gather_multiplier != 1.0:
+		gather_multiplier = 1.0
+		gather_multiplier_changed.emit(gather_multiplier)
+	if _game_world != null and _game_world.has_method("clear_temp_archers"):
+		_game_world.call("clear_temp_archers")
 
 
 func _roll_choices(count: int) -> Array[String]:
@@ -149,3 +169,5 @@ func _apply_boon(boon_id: String) -> void:
 		"resource_cache":
 			if _resource_manager != null:
 				_resource_manager.add_resources({"wood": 80, "gold": 40})
+		"night_sight":
+			_enemy_night_vision_pending = true

@@ -243,17 +243,18 @@ func _refresh_entity_markers() -> void:
 			"radius": 2.0,
 		})
 
-	for node in get_tree().get_nodes_in_group("enemies"):
-		if not node is Unit:
-			continue
-		var enemy := node as Unit
-		if enemy.hp <= 0:
-			continue
-		_entity_markers.append({
-			"pos": _world_to_minimap(enemy.global_position),
-			"color": ENEMY_COLOR,
-			"radius": 2.0,
-		})
+	if _should_show_enemies():
+		for node in get_tree().get_nodes_in_group("enemies"):
+			if not node is Unit:
+				continue
+			var enemy := node as Unit
+			if enemy.hp <= 0:
+				continue
+			_entity_markers.append({
+				"pos": _world_to_minimap(enemy.global_position),
+				"color": ENEMY_COLOR,
+				"radius": 2.0,
+			})
 
 	for node in get_tree().get_nodes_in_group("resource_nodes"):
 		if not node is ResourceNode:
@@ -266,6 +267,11 @@ func _refresh_entity_markers() -> void:
 			"color": FOOD_COLOR,
 			"radius": 1.5,
 		})
+
+
+func _should_show_enemies() -> bool:
+	var boons := get_tree().get_first_node_in_group("run_boon_manager")
+	return boons is RunBoonManager and (boons as RunBoonManager).has_enemy_night_vision()
 
 
 func _sample_terrain_color(world_pos: Vector2) -> Color:

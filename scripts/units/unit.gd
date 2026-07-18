@@ -228,6 +228,27 @@ func _update_night_light(is_night: bool) -> void:
 		)
 
 
+func is_night_light_active() -> bool:
+	return (
+		_night_light != null
+		and _night_light.enabled
+		and _night_light.energy > 0.05
+	)
+
+
+func get_night_light_origin() -> Vector2:
+	if _night_light == null:
+		return global_position
+	return to_global(_night_light.position)
+
+
+func get_night_light_radius() -> float:
+	if _night_light == null:
+		return 0.0
+	## Soft falloff: use the brighter core of the radial texture as gameplay light.
+	return DayNightManager.LIGHT_TEXTURE_SIZE * 0.5 * _night_light.texture_scale * 0.78
+
+
 func should_show_health_bar() -> bool:
 	if hp <= 0:
 		return false
