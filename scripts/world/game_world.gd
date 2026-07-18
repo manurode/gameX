@@ -319,7 +319,7 @@ func spawn_temp_archers(count: int) -> void:
 		archer.set_meta("temp_boon_unit", true)
 		register_player_unit(archer)
 		if day_night_manager.is_night():
-			archer.apply_cycle_visuals(true)
+			archer.apply_cycle_visuals(true, true)
 
 
 func clear_temp_archers() -> void:
@@ -384,7 +384,7 @@ func spawn_squad_members(
 		population_manager.register_unit(member)
 		register_player_unit(member)
 		if day_night_manager.is_night():
-			member.apply_cycle_visuals(true)
+			member.apply_cycle_visuals(true, true)
 	population_manager.release_reserved_population(extra_count)
 
 

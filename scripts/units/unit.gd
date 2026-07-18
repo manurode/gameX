@@ -146,7 +146,7 @@ func _ready() -> void:
 	animated_sprite.animation_finished.connect(_on_animation_finished)
 	var day_night := get_tree().get_first_node_in_group("day_night_manager")
 	if day_night != null and day_night.has_method("is_night") and day_night.is_night():
-		apply_cycle_visuals(true)
+		apply_cycle_visuals(true, true)
 	await get_tree().physics_frame
 	_setup_navigation_agent()
 
@@ -178,10 +178,10 @@ func is_hostile_to(other: Unit) -> bool:
 	return Team.are_hostile(team_id, other.team_id)
 
 
-func apply_cycle_visuals(is_night: bool) -> void:
+func apply_cycle_visuals(is_night: bool, instant: bool = false) -> void:
 	if shadow_sprite != null:
 		shadow_sprite.modulate = Color(1, 1, 1, 0.65) if is_night else Color(1, 1, 1, 1)
-	_update_night_light(is_night)
+	_update_night_light(is_night, instant)
 
 
 func _setup_night_light() -> void:
@@ -192,6 +192,7 @@ func _setup_night_light() -> void:
 	_night_light = PointLight2D.new()
 	_night_light.name = "NightLight"
 	_night_light.texture = DayNightManager.get_shared_light_texture()
+	# MIX keeps overlapping lights from stacking brighter than a single source.
 	_night_light.blend_mode = PointLight2D.BLEND_MODE_MIX
 	_night_light.shadow_enabled = false
 	_night_light.energy = 0.0
@@ -204,7 +205,7 @@ func _setup_night_light() -> void:
 	add_child(_night_light)
 
 
-func _update_night_light(is_night: bool) -> void:
+func _update_night_light(is_night: bool, instant: bool = false) -> void:
 	if is_enemy() or _night_light == null:
 		return
 	var should_light := (
@@ -216,8 +217,14 @@ func _update_night_light(is_night: bool) -> void:
 	var target_energy := NIGHT_LIGHT_ENERGY if should_light else 0.0
 	if _night_light_tween != null and _night_light_tween.is_valid():
 		_night_light_tween.kill()
+		_night_light_tween = null
 	if should_light:
 		_night_light.enabled = true
+	if instant:
+		_night_light.energy = target_energy
+		if not should_light:
+			_night_light.enabled = false
+		return
 	_night_light_tween = create_tween()
 	_night_light_tween.tween_property(_night_light, "energy", target_energy, DayNightManager.TRANSITION_SECONDS)\
 		.set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_SINE)
@@ -858,7 +865,7 @@ func on_entered_garrison(building: Building) -> void:
 	_remove_from_selection()
 	attack_target = building.garrison_attack_target
 	_set_attack_target_building(building.garrison_attack_target_building)
-	_update_night_light(false)
+	_update_night_light(false, true)
 
 
 func on_exited_garrison(exit_position: Vector2) -> void:
@@ -876,7 +883,7 @@ func on_exited_garrison(exit_position: Vector2) -> void:
 	_play_idle()
 	var day_night := get_tree().get_first_node_in_group("day_night_manager")
 	if day_night != null and day_night.has_method("is_night") and day_night.is_night():
-		_update_night_light(true)
+		_update_night_light(true, true)
 
 
 func die_from_garrison_destruction() -> void:
@@ -1082,7 +1089,7 @@ func _die() -> void:
 	navigation_agent.target_position = global_position
 	if _occlusion_silhouette != null:
 		_occlusion_silhouette.set_active(false)
-	_update_night_light(false)
+	_update_night_light(false, true)
 
 	_play_death_sequence()
 

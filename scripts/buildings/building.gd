@@ -80,7 +80,7 @@ func _ready() -> void:
 	set_process(true)
 	var day_night := get_tree().get_first_node_in_group("day_night_manager")
 	if day_night != null and day_night.has_method("is_night") and day_night.is_night():
-		apply_cycle_visuals(true)
+		apply_cycle_visuals(true, true)
 
 
 func get_occlusion_sprites() -> Array[Sprite2D]:
@@ -112,11 +112,11 @@ func configure(type_id: String, state: BuildingState = BuildingState.ACTIVE, pro
 	_refresh_night_light_params()
 
 
-func apply_cycle_visuals(is_night: bool) -> void:
+func apply_cycle_visuals(is_night: bool, instant: bool = false) -> void:
 	if _night_light == null:
 		return
 	if building_state == BuildingState.DESTROYED:
-		_set_night_light_energy(0.0, false)
+		_set_night_light_energy(0.0, false, instant)
 		return
 	_refresh_night_light_params()
 	var target_energy := 0.0
@@ -124,7 +124,7 @@ func apply_cycle_visuals(is_night: bool) -> void:
 		target_energy = _base_light_energy
 		if building_state == BuildingState.CONSTRUCTING:
 			target_energy *= CONSTRUCTION_LIGHT_FACTOR
-	_set_night_light_energy(target_energy, is_night and target_energy > 0.01)
+	_set_night_light_energy(target_energy, is_night and target_energy > 0.01, instant)
 
 
 func _setup_night_light() -> void:
@@ -136,6 +136,7 @@ func _setup_night_light() -> void:
 	_night_light.color = NIGHT_LIGHT_COLOR
 	_night_light.energy = 0.0
 	_night_light.enabled = false
+	# MIX keeps overlapping lights from stacking brighter than a single source.
 	_night_light.blend_mode = PointLight2D.BLEND_MODE_MIX
 	_night_light.shadow_enabled = false
 	_night_light.z_index = -2
@@ -167,13 +168,19 @@ func _resolve_night_light_params() -> Dictionary:
 			return {"energy": 1.15, "scale": 2.05, "offset_y": -24.0}
 
 
-func _set_night_light_energy(target_energy: float, enable: bool) -> void:
+func _set_night_light_energy(target_energy: float, enable: bool, instant: bool = false) -> void:
 	if _night_light == null:
 		return
 	if _night_light_tween != null and _night_light_tween.is_valid():
 		_night_light_tween.kill()
+		_night_light_tween = null
 	if enable:
 		_night_light.enabled = true
+	if instant:
+		_night_light.energy = target_energy
+		if not enable:
+			_night_light.enabled = false
+		return
 	_night_light_tween = create_tween()
 	_night_light_tween.tween_property(_night_light, "energy", target_energy, DayNightManager.TRANSITION_SECONDS)\
 		.set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_SINE)
@@ -1141,7 +1148,7 @@ func _complete_construction() -> void:
 	_request_nav_rebuild()
 	var day_night := get_tree().get_first_node_in_group("day_night_manager")
 	if day_night != null and day_night.has_method("is_night") and day_night.is_night():
-		apply_cycle_visuals(true)
+		apply_cycle_visuals(true, true)
 
 
 func _notify_building_ready() -> void:
@@ -1238,7 +1245,7 @@ func get_nav_block_outline() -> PackedVector2Array:
 func _destroy() -> void:
 	building_state = BuildingState.DESTROYED
 	_active_attackers = 0
-	apply_cycle_visuals(false)
+	apply_cycle_visuals(false, true)
 	var job_manager := get_tree().get_first_node_in_group("job_manager")
 	if job_manager is JobManager:
 		(job_manager as JobManager).on_building_destroyed(self)
