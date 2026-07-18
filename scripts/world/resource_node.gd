@@ -16,8 +16,11 @@ const PICK_RADIUS := 72.0
 const AMOUNT_BAR_SCRIPT := preload("res://scripts/world/resource_amount_bar.gd")
 
 const WORK_APPROACH_MARGIN := 18.0
-## Interior ellipse as a fraction of pick_radius (edge fringe stays non-occluding).
-const FOREST_INTERIOR_RADIUS_FACTOR := 0.55
+## Interior ellipse as a fraction of pick_radius (outer foliage fringe stays non-occluding).
+## Large forest masses need most of the pick/slow footprint; 0.55 left units under canopy unshaded.
+const FOREST_INTERIOR_RADIUS_FACTOR := 0.92
+const FOREST_INTERIOR_ASPECT := 0.5
+const DEFAULT_OCCLUSION_CULL_RADIUS := 220.0
 
 var pick_radius: float = PICK_RADIUS
 var _sprites: Array[Sprite2D] = []
@@ -74,10 +77,28 @@ func is_forest_interior(world_pos: Vector2) -> bool:
 	var center := _anchor_position
 	var local := world_pos - center
 	var rx := maxf(pick_radius * FOREST_INTERIOR_RADIUS_FACTOR, 1.0)
-	var ry := rx * 0.55
+	var ry := maxf(rx * FOREST_INTERIOR_ASPECT, 1.0)
 	var nx := local.x / rx
 	var ny := local.y / ry
 	return nx * nx + ny * ny <= 1.0
+
+
+## Sparse foliage needs a lower cover threshold than solid buildings/rocks.
+func uses_sparse_occlusion() -> bool:
+	return resource_kind == ResourceKind.WOOD
+
+
+## Distance cull for silhouette collection — large forest sprites exceed the default.
+func get_occlusion_cull_radius() -> float:
+	var radius := maxf(pick_radius + 120.0, DEFAULT_OCCLUSION_CULL_RADIUS)
+	for sprite in _sprites:
+		if sprite == null or not sprite.visible or sprite.texture == null:
+			continue
+		var size := sprite.texture.get_size() * sprite.scale.abs()
+		var half := maxf(size.x, size.y) * 0.5
+		var offset_reach := sprite.offset.length() * maxf(absf(sprite.scale.x), absf(sprite.scale.y))
+		radius = maxf(radius, half + offset_reach + 64.0)
+	return radius
 
 
 func get_occlusion_sprites() -> Array[Sprite2D]:

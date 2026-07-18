@@ -6,13 +6,16 @@ extends Node
 ## a yes/no check (full-body tint avoids edge bleed from partial masks).
 ##
 ## Triggers when an occluder's sprite draws in front of the unit (Y-sort), or when the
-## unit is deep inside a forest stand. Leaf-fringe / edge touches do not count.
+## unit is inside a forest stand. Leaf-fringe / edge touches do not count.
 
 const OCCLUDER_REFRESH_INTERVAL := 0.12
 const SILHOUETTE_COLOR := Color(0.12, 0.28, 0.48, 0.82)
 const SAMPLE_STEP := 4
 ## Ignore tiny fringe overlaps (single leaves at the forest edge).
 const MIN_COVER_RATIO := 0.16
+## Leafy forest stands rarely hit 16% opaque cover even when the unit is under canopy.
+const MIN_COVER_RATIO_SPARSE := 0.05
+const DEFAULT_OCCLUSION_CULL_RADIUS := 220.0
 const SHADER_PATH := "res://shaders/unit_occlusion_silhouette.gdshader"
 const VIEWPORT_MARGIN := 96.0
 
@@ -24,6 +27,7 @@ var _silhouette: AnimatedSprite2D
 var _material: ShaderMaterial
 var _occluder_timer := 0.0
 var _cached_occluders: Array = []
+var _cached_sparse_cover := false
 var _occluded := false
 var _frame_connected := false
 var _hid_unit_sprite := false
@@ -73,6 +77,7 @@ func set_active(active: bool) -> void:
 	set_process(active)
 	if not active:
 		_cached_occluders.clear()
+		_cached_sparse_cover = false
 		_set_occluded(false)
 
 
@@ -99,6 +104,7 @@ func _process(delta: float) -> void:
 		return
 	if _unit.garrisoned_building != null or _unit.hp <= 0:
 		_cached_occluders.clear()
+		_cached_sparse_cover = false
 		_set_occluded(false)
 		return
 
@@ -106,6 +112,7 @@ func _process(delta: float) -> void:
 		if _occluded:
 			_set_occluded(false)
 		_cached_occluders.clear()
+		_cached_sparse_cover = false
 		return
 
 	_occluder_timer -= delta
@@ -173,12 +180,16 @@ func _refresh_occluder_cache() -> void:
 	var sprite := _unit.animated_sprite
 	if sprite == null:
 		_cached_occluders.clear()
+		_cached_sparse_cover = false
 		return
 	var unit_rect := OcclusionUtils.animated_sprite_global_rect(sprite, false)
 	if unit_rect.size == Vector2.ZERO:
 		_cached_occluders.clear()
+		_cached_sparse_cover = false
 		return
-	_cached_occluders = _collect_overlapping_front_occluders(unit_rect)
+	var collected := _collect_overlapping_front_occluders(unit_rect)
+	_cached_occluders = collected.get("sprites", [])
+	_cached_sparse_cover = bool(collected.get("sparse", false))
 
 
 func _sync_sprite_from_unit() -> void:
@@ -239,25 +250,34 @@ func _update_occlusion_if_needed() -> void:
 		return
 
 	_occlusion_dirty = false
+	var min_cover := MIN_COVER_RATIO_SPARSE if _cached_sparse_cover else MIN_COVER_RATIO
 	var ratio := OcclusionUtils.animated_sprite_occlusion_ratio(
 		sprite,
 		_cached_occluders,
 		SAMPLE_STEP,
-		MIN_COVER_RATIO
+		min_cover
 	)
-	_set_occluded(ratio >= MIN_COVER_RATIO)
+	_set_occluded(ratio >= min_cover)
 
 
-func _collect_overlapping_front_occluders(unit_rect: Rect2) -> Array:
+func _occlusion_cull_radius(occluder: Node2D) -> float:
+	if occluder.has_method("get_occlusion_cull_radius"):
+		return maxf(float(occluder.call("get_occlusion_cull_radius")), DEFAULT_OCCLUSION_CULL_RADIUS)
+	if "pick_radius" in occluder:
+		return maxf(DEFAULT_OCCLUSION_CULL_RADIUS, float(occluder.get("pick_radius")) + 120.0)
+	return DEFAULT_OCCLUSION_CULL_RADIUS
+
+
+func _collect_overlapping_front_occluders(unit_rect: Rect2) -> Dictionary:
 	var result: Array = []
+	var sparse := false
 	var unit_y := _unit.global_position.y
 	var unit_pos := _unit.global_position
 	for node in _unit.get_tree().get_nodes_in_group("occlusion_props"):
 		if not is_instance_valid(node) or not (node is Node2D):
 			continue
 		var occluder := node as Node2D
-		# Cheap distance reject before expensive sprite work.
-		if occluder.global_position.distance_squared_to(unit_pos) > 220.0 * 220.0:
+		if not occluder.has_method("get_occlusion_sprites"):
 			continue
 		# Sort key is node position (resources may bias theirs for canopy edges).
 		var draws_in_front := occluder.global_position.y > unit_y
@@ -266,9 +286,12 @@ func _collect_overlapping_front_occluders(unit_rect: Rect2) -> Array:
 			forest_interior = bool(occluder.call("is_forest_interior", unit_pos))
 		if not draws_in_front and not forest_interior:
 			continue
-		if not occluder.has_method("get_occlusion_sprites"):
+		# Cheap distance reject before expensive sprite work (scale to large forests).
+		var cull_r := _occlusion_cull_radius(occluder)
+		if occluder.global_position.distance_squared_to(unit_pos) > cull_r * cull_r:
 			continue
 		var sprites: Array = occluder.call("get_occlusion_sprites")
+		var matched := false
 		for item in sprites:
 			if not (item is Sprite2D):
 				continue
@@ -276,4 +299,8 @@ func _collect_overlapping_front_occluders(unit_rect: Rect2) -> Array:
 			var occ_rect := OcclusionUtils.sprite_global_rect(occ_sprite)
 			if OcclusionUtils.rects_overlap(unit_rect, occ_rect):
 				result.append(occ_sprite)
-	return result
+				matched = true
+		if matched and occluder.has_method("uses_sparse_occlusion"):
+			if bool(occluder.call("uses_sparse_occlusion")):
+				sparse = true
+	return {"sprites": result, "sparse": sparse}
