@@ -10,9 +10,13 @@ signal night_survived(nights_survived: int)
 signal victory_reached
 
 const DAY_COLOR := Color(1.0, 1.0, 1.0)
-const NIGHT_COLOR := Color(0.28, 0.32, 0.55)
-const FOG_NIGHT_COLOR := Color(0.16, 0.18, 0.32)
+const DUSK_COLOR := Color(0.70, 0.52, 0.46)
+const DAWN_COLOR := Color(0.82, 0.74, 0.68)
+## Cool oppressive ambient — local PointLight2Ds carve readable pockets.
+const NIGHT_COLOR := Color(0.12, 0.13, 0.22)
+const FOG_NIGHT_COLOR := Color(0.07, 0.08, 0.14)
 const TRANSITION_SECONDS := 1.5
+const LIGHT_TEXTURE_SIZE := 256
 
 var current_phase: CyclePhase = CyclePhase.DAY
 var seconds_remaining: float = BalanceConfig.PHASE_DURATIONS.day
@@ -27,9 +31,33 @@ var _water_animator: Node
 var _transition_tween: Tween
 var _run_finished: bool = false
 
+static var _shared_light_texture: Texture2D
+
 
 func _ready() -> void:
 	add_to_group("day_night_manager")
+
+
+static func get_shared_light_texture() -> Texture2D:
+	if _shared_light_texture != null:
+		return _shared_light_texture
+	var gradient := Gradient.new()
+	gradient.offsets = PackedFloat32Array([0.0, 0.45, 1.0])
+	gradient.colors = PackedColorArray([
+		Color(1.0, 1.0, 1.0, 1.0),
+		Color(1.0, 1.0, 1.0, 0.45),
+		Color(1.0, 1.0, 1.0, 0.0),
+	])
+	var texture := GradientTexture2D.new()
+	texture.gradient = gradient
+	texture.width = LIGHT_TEXTURE_SIZE
+	texture.height = LIGHT_TEXTURE_SIZE
+	texture.fill = GradientTexture2D.FILL_RADIAL
+	texture.fill_from = Vector2(0.5, 0.5)
+	texture.fill_to = Vector2(0.5, 0.0)
+	texture.repeat = GradientTexture2D.REPEAT_NONE
+	_shared_light_texture = texture
+	return _shared_light_texture
 
 
 func setup(modulate: CanvasModulate, water_animator: Node = null) -> void:
@@ -68,8 +96,8 @@ func reset_cycle() -> void:
 	use_fog_visuals = false
 	current_phase = CyclePhase.DAY
 	seconds_remaining = _get_phase_duration(current_phase)
-	_animate_visuals(false)
-	_update_unit_shadows(false)
+	_animate_visuals()
+	_update_cycle_entity_visuals(false)
 	cycle_changed.emit(current_phase)
 	cycle_started.emit(cycle_number)
 	phase_time_changed.emit(seconds_remaining)
@@ -83,8 +111,8 @@ func set_phase(phase: CyclePhase) -> void:
 	current_phase = phase
 	seconds_remaining = _get_phase_duration(phase)
 	var is_night := phase == CyclePhase.NIGHT
-	_animate_visuals(is_night)
-	_update_unit_shadows(is_night)
+	_animate_visuals()
+	_update_cycle_entity_visuals(is_night)
 	if _water_animator != null and _water_animator.has_method("set_night_mode"):
 		_water_animator.call("set_night_mode", is_night)
 	cycle_changed.emit(current_phase)
@@ -158,7 +186,7 @@ func _get_phase_duration(phase: CyclePhase) -> float:
 	return 1.0
 
 
-func _animate_visuals(is_night: bool) -> void:
+func _animate_visuals() -> void:
 	if _modulate == null:
 		return
 
@@ -166,14 +194,24 @@ func _animate_visuals(is_night: bool) -> void:
 		_transition_tween.kill()
 
 	var target_color := DAY_COLOR
-	if is_night:
-		target_color = FOG_NIGHT_COLOR if use_fog_visuals else NIGHT_COLOR
+	match current_phase:
+		CyclePhase.NIGHT:
+			target_color = FOG_NIGHT_COLOR if use_fog_visuals else NIGHT_COLOR
+		CyclePhase.DUSK:
+			target_color = DUSK_COLOR
+		CyclePhase.DAWN:
+			target_color = DAWN_COLOR
+		_:
+			target_color = DAY_COLOR
 	_transition_tween = create_tween()
 	_transition_tween.tween_property(_modulate, "color", target_color, TRANSITION_SECONDS)\
 		.set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_SINE)
 
 
-func _update_unit_shadows(is_night: bool) -> void:
+func _update_cycle_entity_visuals(is_night: bool) -> void:
 	for node in get_tree().get_nodes_in_group("units"):
 		if node is Unit:
 			(node as Unit).apply_cycle_visuals(is_night)
+	for node in get_tree().get_nodes_in_group("buildings"):
+		if node is Building:
+			(node as Building).apply_cycle_visuals(is_night)

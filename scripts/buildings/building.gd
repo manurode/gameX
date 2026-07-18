@@ -18,6 +18,8 @@ const COLLISION_BODY_CENTER_Y := 0.2
 const WALL_COLLISION_CENTER_Y := 0.15
 const ARROW_SCENE := preload("res://scenes/combat/arrow.tscn")
 const AUTO_DEFENSE_PROJECTILE_OFFSET := 36.0
+const NIGHT_LIGHT_COLOR := Color(1.0, 0.82, 0.52)
+const CONSTRUCTION_LIGHT_FACTOR := 0.42
 
 @export var building_type_id: String = "house_small"
 @export var team_id: int = Team.PLAYER
@@ -52,6 +54,10 @@ var _wall_vertical: bool = false
 var _repair_start_hp: int = 0
 var _repair_progress: float = 0.0
 var _last_construction_visual_progress := -1.0
+var _night_light: PointLight2D
+var _night_light_tween: Tween
+var _base_light_energy: float = 0.0
+var _base_light_scale: float = 1.0
 
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var damage_overlay: Sprite2D = $DamageOverlay
@@ -69,8 +75,12 @@ func _ready() -> void:
 	_update_visual_damage()
 	_update_construction_visual()
 	_setup_selection_indicator()
+	_setup_night_light()
 	selection_indicator.visible = false
 	set_process(true)
+	var day_night := get_tree().get_first_node_in_group("day_night_manager")
+	if day_night != null and day_night.has_method("is_night") and day_night.is_night():
+		apply_cycle_visuals(true)
 
 
 func get_occlusion_sprites() -> Array[Sprite2D]:
@@ -99,6 +109,79 @@ func configure(type_id: String, state: BuildingState = BuildingState.ACTIVE, pro
 	_apply_definition()
 	_update_visual_damage()
 	_update_construction_visual()
+	_refresh_night_light_params()
+
+
+func apply_cycle_visuals(is_night: bool) -> void:
+	if _night_light == null:
+		return
+	if building_state == BuildingState.DESTROYED:
+		_set_night_light_energy(0.0, false)
+		return
+	_refresh_night_light_params()
+	var target_energy := 0.0
+	if is_night:
+		target_energy = _base_light_energy
+		if building_state == BuildingState.CONSTRUCTING:
+			target_energy *= CONSTRUCTION_LIGHT_FACTOR
+	_set_night_light_energy(target_energy, is_night and target_energy > 0.01)
+
+
+func _setup_night_light() -> void:
+	if _night_light != null:
+		return
+	_night_light = PointLight2D.new()
+	_night_light.name = "NightLight"
+	_night_light.texture = DayNightManager.get_shared_light_texture()
+	_night_light.color = NIGHT_LIGHT_COLOR
+	_night_light.energy = 0.0
+	_night_light.enabled = false
+	_night_light.blend_mode = PointLight2D.BLEND_MODE_ADD
+	_night_light.shadow_enabled = false
+	_night_light.z_index = -2
+	_night_light.y_sort_enabled = false
+	add_child(_night_light)
+	_refresh_night_light_params()
+
+
+func _refresh_night_light_params() -> void:
+	var params := _resolve_night_light_params()
+	_base_light_energy = float(params.get("energy", 2.0))
+	_base_light_scale = float(params.get("scale", 2.4))
+	if _night_light == null:
+		return
+	_night_light.texture_scale = _base_light_scale
+	_night_light.position = Vector2(0.0, float(params.get("offset_y", -28.0)))
+
+
+func _resolve_night_light_params() -> Dictionary:
+	# Same brightness as units; only a bit more radius for settlement coverage.
+	match building_type_id:
+		"town_center", "castle_big", "castle_small":
+			return {"energy": 1.15, "scale": 2.35, "offset_y": -32.0}
+		"tower":
+			return {"energy": 1.15, "scale": 2.15, "offset_y": -36.0}
+		"wall":
+			return {"energy": 1.05, "scale": 1.75, "offset_y": -16.0}
+		_:
+			return {"energy": 1.15, "scale": 2.05, "offset_y": -24.0}
+
+
+func _set_night_light_energy(target_energy: float, enable: bool) -> void:
+	if _night_light == null:
+		return
+	if _night_light_tween != null and _night_light_tween.is_valid():
+		_night_light_tween.kill()
+	if enable:
+		_night_light.enabled = true
+	_night_light_tween = create_tween()
+	_night_light_tween.tween_property(_night_light, "energy", target_energy, DayNightManager.TRANSITION_SECONDS)\
+		.set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_SINE)
+	if not enable:
+		_night_light_tween.tween_callback(func() -> void:
+			if _night_light != null and _night_light.energy <= 0.01:
+				_night_light.enabled = false
+		)
 
 
 func set_wall_vertical(vertical: bool) -> void:
@@ -972,6 +1055,9 @@ func _complete_construction() -> void:
 	construction_completed.emit()
 	_notify_building_ready()
 	_request_nav_rebuild()
+	var day_night := get_tree().get_first_node_in_group("day_night_manager")
+	if day_night != null and day_night.has_method("is_night") and day_night.is_night():
+		apply_cycle_visuals(true)
 
 
 func _notify_building_ready() -> void:
@@ -1137,6 +1223,7 @@ func get_nav_block_outline() -> PackedVector2Array:
 func _destroy() -> void:
 	building_state = BuildingState.DESTROYED
 	_active_attackers = 0
+	apply_cycle_visuals(false)
 	var job_manager := get_tree().get_first_node_in_group("job_manager")
 	if job_manager is JobManager:
 		(job_manager as JobManager).on_building_destroyed(self)

@@ -30,6 +30,9 @@ const HIT_FLASH_DURATION := 0.14
 const DEATH_FRAME_COUNT := 3
 const STONE_SCENE: PackedScene = preload("res://scenes/combat/stone.tscn")
 const SEPARATION_UPDATE_INTERVAL := 0.08
+const NIGHT_LIGHT_COLOR := Color(1.0, 0.78, 0.48)
+const NIGHT_LIGHT_ENERGY := 1.15
+const NIGHT_LIGHT_SCALE := 1.55
 
 static var _shared_shadow_texture: Texture2D
 static var _shared_dust_texture: Texture2D
@@ -111,6 +114,8 @@ var _cached_navigation_manager: Node = null
 var _cached_move_speed_mult := 1.0
 var _move_speed_mult_timer := 0.0
 var _last_separation_nudge := Vector2.ZERO
+var _night_light: PointLight2D
+var _night_light_tween: Tween
 
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var navigation_agent: NavigationAgent2D = $NavigationAgent2D
@@ -134,10 +139,14 @@ func _ready() -> void:
 	_setup_dust()
 	_setup_selection_indicator()
 	_setup_occlusion_silhouette()
+	_setup_night_light()
 	animated_sprite.offset = sprite_offset
 	animated_sprite.scale = Vector2(VISUAL_SCALE, VISUAL_SCALE)
 	animated_sprite.frame_changed.connect(_on_animation_frame_changed)
 	animated_sprite.animation_finished.connect(_on_animation_finished)
+	var day_night := get_tree().get_first_node_in_group("day_night_manager")
+	if day_night != null and day_night.has_method("is_night") and day_night.is_night():
+		apply_cycle_visuals(true)
 	await get_tree().physics_frame
 	_setup_navigation_agent()
 
@@ -170,9 +179,53 @@ func is_hostile_to(other: Unit) -> bool:
 
 
 func apply_cycle_visuals(is_night: bool) -> void:
-	if shadow_sprite == null:
+	if shadow_sprite != null:
+		shadow_sprite.modulate = Color(1, 1, 1, 0.65) if is_night else Color(1, 1, 1, 1)
+	_update_night_light(is_night)
+
+
+func _setup_night_light() -> void:
+	if is_enemy():
 		return
-	shadow_sprite.modulate = Color(1, 1, 1, 0.65) if is_night else Color(1, 1, 1, 1)
+	if _night_light != null:
+		return
+	_night_light = PointLight2D.new()
+	_night_light.name = "NightLight"
+	_night_light.texture = DayNightManager.get_shared_light_texture()
+	_night_light.blend_mode = PointLight2D.BLEND_MODE_ADD
+	_night_light.shadow_enabled = false
+	_night_light.energy = 0.0
+	_night_light.enabled = false
+	_night_light.texture_scale = NIGHT_LIGHT_SCALE
+	_night_light.color = NIGHT_LIGHT_COLOR
+	_night_light.position = Vector2(0.0, -18.0)
+	_night_light.z_index = -2
+	_night_light.y_sort_enabled = false
+	add_child(_night_light)
+
+
+func _update_night_light(is_night: bool) -> void:
+	if is_enemy() or _night_light == null:
+		return
+	var should_light := (
+		is_night
+		and not _is_dying
+		and hp > 0
+		and garrisoned_building == null
+	)
+	var target_energy := NIGHT_LIGHT_ENERGY if should_light else 0.0
+	if _night_light_tween != null and _night_light_tween.is_valid():
+		_night_light_tween.kill()
+	if should_light:
+		_night_light.enabled = true
+	_night_light_tween = create_tween()
+	_night_light_tween.tween_property(_night_light, "energy", target_energy, DayNightManager.TRANSITION_SECONDS)\
+		.set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_SINE)
+	if not should_light:
+		_night_light_tween.tween_callback(func() -> void:
+			if _night_light != null and _night_light.energy <= 0.01:
+				_night_light.enabled = false
+		)
 
 
 func should_show_health_bar() -> bool:
@@ -784,6 +837,7 @@ func on_entered_garrison(building: Building) -> void:
 	_remove_from_selection()
 	attack_target = building.garrison_attack_target
 	_set_attack_target_building(building.garrison_attack_target_building)
+	_update_night_light(false)
 
 
 func on_exited_garrison(exit_position: Vector2) -> void:
@@ -799,6 +853,9 @@ func on_exited_garrison(exit_position: Vector2) -> void:
 	add_to_group("selectable_units")
 	_unit_state = UnitState.IDLE
 	_play_idle()
+	var day_night := get_tree().get_first_node_in_group("day_night_manager")
+	if day_night != null and day_night.has_method("is_night") and day_night.is_night():
+		_update_night_light(true)
 
 
 func die_from_garrison_destruction() -> void:
@@ -1004,6 +1061,7 @@ func _die() -> void:
 	navigation_agent.target_position = global_position
 	if _occlusion_silhouette != null:
 		_occlusion_silhouette.set_active(false)
+	_update_night_light(false)
 
 	_play_death_sequence()
 
