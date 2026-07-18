@@ -192,7 +192,7 @@ func _setup_night_light() -> void:
 	_night_light = PointLight2D.new()
 	_night_light.name = "NightLight"
 	_night_light.texture = DayNightManager.get_shared_light_texture()
-	_night_light.blend_mode = PointLight2D.BLEND_MODE_ADD
+	_night_light.blend_mode = PointLight2D.BLEND_MODE_MIX
 	_night_light.shadow_enabled = false
 	_night_light.energy = 0.0
 	_night_light.enabled = false

@@ -136,7 +136,7 @@ func _setup_night_light() -> void:
 	_night_light.color = NIGHT_LIGHT_COLOR
 	_night_light.energy = 0.0
 	_night_light.enabled = false
-	_night_light.blend_mode = PointLight2D.BLEND_MODE_ADD
+	_night_light.blend_mode = PointLight2D.BLEND_MODE_MIX
 	_night_light.shadow_enabled = false
 	_night_light.z_index = -2
 	_night_light.y_sort_enabled = false
