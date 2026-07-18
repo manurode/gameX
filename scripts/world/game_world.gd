@@ -161,21 +161,110 @@ func spawn_free_tower() -> void:
 	if ground_layer == null or _town_center == null:
 		return
 	var center := ground_layer.get_town_center_cell()
-	var candidates: Array[Vector2i] = [
-		center + Vector2i(3, 0),
-		center + Vector2i(-3, 0),
-		center + Vector2i(0, 3),
-		center + Vector2i(0, -3),
-		center + Vector2i(2, 2),
-	]
-	for cell in candidates:
-		if not ground_layer.is_cell_in_bounds(cell):
-			continue
-		_spawn_building("tower", cell, ground_layer, Building.BuildingState.ACTIVE, 1.0)
-		rebuild_navigation()
+	var cell = _find_free_spawn_cell(center, "tower", 3, 14)
+	if cell == null:
+		push_warning("spawn_free_tower: no free cell around town center")
 		return
-	_spawn_building("tower", center + Vector2i(3, 1), ground_layer, Building.BuildingState.ACTIVE, 1.0)
+	_spawn_building("tower", cell as Vector2i, ground_layer, Building.BuildingState.ACTIVE, 1.0)
 	rebuild_navigation()
+
+
+func _find_free_spawn_cell(
+	center: Vector2i,
+	type_id: String,
+	min_radius: int,
+	max_radius: int
+) -> Variant:
+	for radius in range(min_radius, max_radius + 1):
+		for cell in _cells_in_ring(center, radius):
+			if _can_spawn_building_at(cell, type_id):
+				return cell
+	return null
+
+
+func _cells_in_ring(center: Vector2i, radius: int) -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	if radius <= 0:
+		cells.append(center)
+		return cells
+	# Prefer cardinal sides first, then fill the square ring clockwise.
+	var ordered: Array[Vector2i] = [
+		Vector2i(radius, 0),
+		Vector2i(-radius, 0),
+		Vector2i(0, radius),
+		Vector2i(0, -radius),
+	]
+	for offset in ordered:
+		cells.append(center + offset)
+	for x in range(-radius, radius + 1):
+		for y in [-radius, radius]:
+			var cell := center + Vector2i(x, y)
+			if cell not in cells:
+				cells.append(cell)
+	for y in range(-radius + 1, radius):
+		for x in [-radius, radius]:
+			var cell := center + Vector2i(x, y)
+			if cell not in cells:
+				cells.append(cell)
+	return cells
+
+
+func _can_spawn_building_at(cell: Vector2i, type_id: String) -> bool:
+	if ground_layer == null or not ground_layer.is_walkable_cell(cell):
+		return false
+	var world_pos := ground_layer.map_to_local(cell)
+	if ground_layer.is_water_at(world_pos):
+		return false
+
+	var def := BuildingDatabase.get_definition(type_id)
+	var footprint: Vector2 = def.get("footprint", Vector2(70.0, 45.0))
+	var pick: Vector2 = def.get("pick_half_size", Vector2(55.0, 50.0))
+	# Approximate the future selection rect so sprites do not stack visually.
+	var sprite_center := world_pos + Vector2(0.0, -pick.y * 0.45)
+	var visual_half := pick + Vector2(10.0, 10.0)
+	var visual_rect := Rect2(sprite_center - visual_half, visual_half * 2.0)
+	var footprint_half := footprint * 0.55
+	var footprint_rect := Rect2(world_pos - footprint_half, footprint_half * 2.0)
+
+	for node in get_tree().get_nodes_in_group("buildings"):
+		if not (node is Building):
+			continue
+		var other := node as Building
+		if other.building_state == Building.BuildingState.DESTROYED:
+			continue
+		if visual_rect.intersects(other.get_selection_rect(), true):
+			return false
+
+	for node in get_tree().get_nodes_in_group("terrain_obstacles"):
+		if node is TerrainObstacle and _spawn_overlaps_obstacle(world_pos, footprint_rect, node as TerrainObstacle):
+			return false
+	return true
+
+
+func _spawn_overlaps_obstacle(world_pos: Vector2, test_rect: Rect2, obstacle: TerrainObstacle) -> bool:
+	if obstacle == null or not obstacle.blocks_movement:
+		return false
+	var outlines := obstacle.get_nav_block_outlines()
+	if outlines.is_empty():
+		return test_rect.has_point(obstacle.global_position)
+	var corners := [
+		test_rect.position,
+		test_rect.position + Vector2(test_rect.size.x, 0.0),
+		test_rect.position + test_rect.size,
+		test_rect.position + Vector2(0.0, test_rect.size.y),
+	]
+	for outline in outlines:
+		if outline.size() < 3:
+			continue
+		if Geometry2D.is_point_in_polygon(world_pos, outline):
+			return true
+		for point in outline:
+			if test_rect.has_point(point):
+				return true
+		for corner in corners:
+			if Geometry2D.is_point_in_polygon(corner, outline):
+				return true
+	return false
 
 
 func spawn_starter_walls(count: int) -> void:
