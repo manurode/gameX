@@ -10,7 +10,7 @@ signal garrison_changed
 signal upgraded(new_level: int, weapon_type: String)
 
 const HEALTH_BAR_VISIBLE_MS := 4000
-const CONSTRUCTION_ALPHA := 0.55
+const DAMAGED_HP_RATIO := 0.5
 const ENTRY_RANGE := 42.0
 const GARRISON_ATTACK_RANGE := 220.0
 const COLLISION_BODY_SHRINK := Vector2(0.84, 0.84)
@@ -53,7 +53,7 @@ var _footprint := Vector2(70.0, 45.0)
 var _wall_vertical: bool = false
 var _repair_start_hp: int = 0
 var _repair_progress: float = 0.0
-var _last_construction_visual_progress := -1.0
+var _last_visual_phase: String = ""
 var _night_light: PointLight2D
 var _night_light_tween: Tween
 var _base_light_energy: float = 0.0
@@ -232,18 +232,17 @@ func _setup_texture() -> void:
 	if sprite == null:
 		return
 
+	_last_visual_phase = ""
 	if building_type_id == "wall":
-		sprite.texture = WallTexture.get_texture(_wall_vertical)
 		_apply_wall_orientation()
 	else:
-		var texture_path: String = _definition.get("texture", "")
-		if not texture_path.is_empty():
-			sprite.texture = load(texture_path)
+		_apply_phase_texture(true)
 
 	if sprite.texture != null:
 		_apply_sprite_transform()
 		sprite.modulate = _definition.get("tint", Color.WHITE)
 		if damage_overlay != null:
+			damage_overlay.visible = false
 			damage_overlay.texture = sprite.texture
 			damage_overlay.offset = sprite.offset
 			damage_overlay.scale = sprite.scale
@@ -274,19 +273,85 @@ func _apply_wall_orientation() -> void:
 	if building_type_id != "wall" or sprite == null:
 		return
 	sprite.rotation_degrees = 0.0
-	sprite.texture = WallTexture.get_texture(_wall_vertical)
+	sprite.position = Vector2.ZERO
 	var wall_scale := float(_definition.get("visual_scale", 1.0))
 	_visual_scale = wall_scale
 	_footprint = WallTexture.footprint(_wall_vertical) * wall_scale
 	pick_half_size = WallTexture.pick_half_size(_wall_vertical) * wall_scale
+	_last_visual_phase = ""
+	_apply_phase_texture(true)
 	if sprite.texture != null:
 		_apply_sprite_transform()
 	if damage_overlay != null:
+		damage_overlay.visible = false
 		damage_overlay.rotation_degrees = 0.0
 		damage_overlay.texture = sprite.texture
 		damage_overlay.offset = sprite.offset
 		damage_overlay.scale = sprite.scale
 	_setup_collision()
+
+
+func _resolve_visual_phase() -> String:
+	if building_state == BuildingState.CONSTRUCTING:
+		if construction_progress <= 0.001:
+			return "plot"
+		return "construction"
+	if building_state == BuildingState.ACTIVE and max_hp > 0:
+		if float(hp) / float(max_hp) <= DAMAGED_HP_RATIO:
+			return "damaged"
+	return "complete"
+
+
+func _texture_path_for_phase(phase: String) -> String:
+	if building_type_id == "wall":
+		return WallTexture.get_texture_path(_wall_vertical, phase)
+	var base_path: String = _definition.get("texture", "")
+	if base_path.is_empty():
+		return ""
+	if phase.is_empty() or phase == "complete":
+		return base_path
+	return base_path.get_basename() + "_" + phase + ".png"
+
+
+func _apply_phase_texture(force: bool = false) -> void:
+	if sprite == null:
+		return
+	var phase := _resolve_visual_phase()
+	if not force and phase == _last_visual_phase:
+		return
+	_last_visual_phase = phase
+
+	var texture: Texture2D = null
+	if building_type_id == "wall":
+		texture = WallTexture.get_texture(_wall_vertical, phase)
+	else:
+		var path := _texture_path_for_phase(phase)
+		if path.is_empty() or not ResourceLoader.exists(path):
+			path = _texture_path_for_phase("complete")
+		if not path.is_empty() and ResourceLoader.exists(path):
+			texture = load(path)
+
+	if texture == null:
+		return
+
+	sprite.texture = texture
+	sprite.scale = Vector2(_visual_scale, _visual_scale)
+	sprite.rotation_degrees = 0.0
+	sprite.position = Vector2.ZERO
+	_apply_sprite_transform()
+
+	if damage_overlay != null:
+		damage_overlay.visible = false
+		damage_overlay.texture = texture
+		damage_overlay.offset = sprite.offset
+		damage_overlay.scale = sprite.scale
+		damage_overlay.rotation_degrees = 0.0
+		damage_overlay.position = Vector2.ZERO
+
+	if building_state == BuildingState.ACTIVE:
+		_apply_upgrade_visual()
+	else:
+		sprite.modulate = Color.WHITE
 
 
 func _wall_base_rotation() -> float:
@@ -1015,15 +1080,13 @@ func _is_position_walkable(world_pos: Vector2) -> bool:
 func add_construction_progress(amount: float) -> void:
 	if building_state != BuildingState.CONSTRUCTING:
 		return
+	var prev_progress := construction_progress
 	construction_progress = clampf(construction_progress + amount, 0.0, 1.0)
-	# Skip visual work until progress crosses a visible threshold (or completes).
-	var progress_bucket := floorf(construction_progress * 50.0)
-	if (
-		construction_progress >= 1.0
-		or progress_bucket != _last_construction_visual_progress
-	):
-		_last_construction_visual_progress = progress_bucket
+	var crossed_work_start := prev_progress <= 0.001 and construction_progress > 0.001
+	if crossed_work_start or construction_progress >= 1.0:
 		_update_construction_visual()
+	elif progress_bar != null and progress_bar.has_method("refresh_from_building"):
+		progress_bar.refresh_from_building()
 	if construction_progress >= 1.0:
 		_complete_construction()
 
@@ -1119,55 +1182,7 @@ func _play_hit_effect(attacker: Unit = null) -> void:
 
 
 func _update_visual_damage() -> void:
-	if sprite == null:
-		return
-
-	var ratio := 1.0 if max_hp <= 0 else float(hp) / float(max_hp)
-	if building_state == BuildingState.CONSTRUCTING:
-		sprite.modulate = Color(1.0, 1.0, 1.0, CONSTRUCTION_ALPHA)
-		if damage_overlay != null:
-			damage_overlay.visible = false
-		return
-
-	sprite.modulate = Color.WHITE
-	if building_type_id == "wall":
-		sprite.rotation_degrees = _wall_base_rotation()
-		sprite.position = Vector2.ZERO
-		if damage_overlay != null:
-			damage_overlay.rotation_degrees = _wall_base_rotation()
-		if ratio > 0.66:
-			if damage_overlay != null:
-				damage_overlay.visible = false
-		elif ratio > 0.33:
-			sprite.modulate = Color(0.82, 0.78, 0.74, 1.0)
-			if damage_overlay != null:
-				damage_overlay.visible = true
-				damage_overlay.modulate = Color(0.3, 0.2, 0.15, 0.35)
-		else:
-			sprite.modulate = Color(0.62, 0.55, 0.5, 1.0)
-			if damage_overlay != null:
-				damage_overlay.visible = true
-				damage_overlay.modulate = Color(0.2, 0.12, 0.1, 0.55)
-		return
-	if ratio > 0.66:
-		sprite.rotation_degrees = 0.0
-		sprite.position = Vector2.ZERO
-		if damage_overlay != null:
-			damage_overlay.visible = false
-	elif ratio > 0.33:
-		sprite.modulate = Color(0.82, 0.78, 0.74, 1.0)
-		sprite.rotation_degrees = -2.5
-		sprite.position = Vector2(2.0, 1.0)
-		if damage_overlay != null:
-			damage_overlay.visible = true
-			damage_overlay.modulate = Color(0.3, 0.2, 0.15, 0.35)
-	else:
-		sprite.modulate = Color(0.62, 0.55, 0.5, 1.0)
-		sprite.rotation_degrees = -5.0
-		sprite.position = Vector2(4.0, 3.0)
-		if damage_overlay != null:
-			damage_overlay.visible = true
-			damage_overlay.modulate = Color(0.2, 0.12, 0.1, 0.55)
+	_apply_phase_texture()
 
 
 func _update_construction_visual() -> void:
@@ -1176,28 +1191,7 @@ func _update_construction_visual() -> void:
 	elif progress_bar != null:
 		progress_bar.visible = building_state == BuildingState.CONSTRUCTING
 		progress_bar.queue_redraw()
-	if sprite == null or building_state != BuildingState.CONSTRUCTING:
-		if sprite != null and building_state == BuildingState.ACTIVE:
-			sprite.scale = Vector2(_visual_scale, _visual_scale)
-			sprite.modulate = Color.WHITE
-			if damage_overlay != null:
-				damage_overlay.scale = sprite.scale
-		return
-
-	var ratio := clampf(construction_progress, 0.0, 1.0)
-	# Evolve from foundation scaffold to finished building
-	var build_scale := lerpf(0.35, 1.0, ratio) * _visual_scale
-	sprite.scale = Vector2(build_scale, build_scale)
-	sprite_offset = sprite.offset * sprite.scale
-	if damage_overlay != null:
-		damage_overlay.scale = sprite.scale
-	var alpha := lerpf(0.45, 1.0, ratio)
-	var warmth := lerpf(0.72, 1.0, ratio)
-	sprite.modulate = Color(warmth, warmth * 0.95, warmth * 0.88, alpha)
-	if building_type_id == "wall":
-		sprite.rotation_degrees = _wall_base_rotation()
-	else:
-		sprite.rotation_degrees = lerpf(-3.0, 0.0, ratio)
+	_apply_phase_texture()
 
 
 func get_nav_block_outline() -> PackedVector2Array:

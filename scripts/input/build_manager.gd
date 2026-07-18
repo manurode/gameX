@@ -157,7 +157,7 @@ func _process(_delta: float) -> void:
 			# Idle ghost always shows the horizontal wall; drag-up selects vertical.
 			var vertical := WallTexture.default_orientation()
 			_ghost_sprite.global_position = world_pos
-			_ghost_sprite.texture = WallTexture.get_texture(vertical)
+			_ghost_sprite.texture = WallTexture.get_texture(vertical, "plot")
 			if _ghost_sprite.texture != null:
 				_ghost_sprite.offset = Vector2(0.0, -_ghost_sprite.texture.get_height() * 0.5 + 48.0)
 			_ghost_sprite.scale = Vector2.ONE * BuildingDatabase.get_visual_scale("wall")
@@ -210,11 +210,15 @@ func _update_ghost_texture() -> void:
 	if def.is_empty():
 		return
 	if selected_building_type == "wall":
-		_ghost_sprite.texture = WallTexture.get_texture(WallTexture.default_orientation())
+		_ghost_sprite.texture = WallTexture.get_texture(WallTexture.default_orientation(), "plot")
 	else:
 		var texture_path: String = def.get("texture", "")
 		if not texture_path.is_empty():
-			_ghost_sprite.texture = load(texture_path)
+			var plot_path := texture_path.get_basename() + "_plot.png"
+			if ResourceLoader.exists(plot_path):
+				_ghost_sprite.texture = load(plot_path)
+			else:
+				_ghost_sprite.texture = load(texture_path)
 	if _ghost_sprite.texture != null:
 		var foot := 48.0 if selected_building_type == "wall" else 64.0
 		_ghost_sprite.offset = Vector2(0.0, -_ghost_sprite.texture.get_height() * 0.5 + foot)
@@ -507,7 +511,7 @@ func _update_wall_preview_polyline(end_pos: Vector2) -> void:
 		var ghost := _wall_ghost_sprites[i]
 		ghost.global_position = segment["pos"]
 		ghost.rotation_degrees = 0.0
-		ghost.texture = WallTexture.get_texture(segment["vertical"])
+		ghost.texture = WallTexture.get_texture(segment["vertical"], "plot")
 		if ghost.texture != null:
 			ghost.offset = Vector2(0.0, -ghost.texture.get_height() * 0.5 + 48.0)
 		ghost.scale = Vector2.ONE * BuildingDatabase.get_visual_scale("wall")

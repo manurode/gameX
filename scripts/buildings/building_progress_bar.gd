@@ -20,13 +20,6 @@ func _draw() -> void:
 		return
 
 	var ratio := clampf(_building.construction_progress, 0.0, 1.0)
-	# Scaffold frame during early construction
-	if ratio < 0.85:
-		var scaffold_color := Color(0.45, 0.38, 0.28, lerpf(0.5, 0.15, ratio / 0.85))
-		var scaffold_rect := Rect2(-BAR_WIDTH * 0.65, -10.0, BAR_WIDTH * 1.3, 14.0)
-		draw_rect(scaffold_rect, scaffold_color)
-		draw_rect(scaffold_rect, Color(0.3, 0.25, 0.18, 0.6), false, 1.0)
-
 	var bg_rect := Rect2(-BAR_WIDTH * 0.5, 0.0, BAR_WIDTH, BAR_HEIGHT)
 	var fg_rect := Rect2(-BAR_WIDTH * 0.5, 0.0, BAR_WIDTH * ratio, BAR_HEIGHT)
 	draw_rect(bg_rect, Color(0.1, 0.1, 0.12, 0.9))

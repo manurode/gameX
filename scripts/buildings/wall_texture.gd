@@ -22,9 +22,18 @@ const BLOCK_LENGTH_FACTOR := 1.12
 static var _cache: Dictionary = {}
 
 
-static func get_texture(vertical: bool = false) -> Texture2D:
+static func get_texture_path(vertical: bool = false, phase: String = "complete") -> String:
 	## vertical=true → SW backslash (\); false → SE slash (/).
-	var path := TEXTURE_SW if vertical else TEXTURE_SE
+	var base := TEXTURE_SW if vertical else TEXTURE_SE
+	if phase.is_empty() or phase == "complete":
+		return base
+	return base.get_basename() + "_" + phase + ".png"
+
+
+static func get_texture(vertical: bool = false, phase: String = "complete") -> Texture2D:
+	var path := get_texture_path(vertical, phase)
+	if not ResourceLoader.exists(path):
+		path = get_texture_path(vertical, "complete")
 	if _cache.has(path):
 		return _cache[path]
 	var texture: Texture2D = load(path)
