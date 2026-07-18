@@ -214,7 +214,7 @@ func _setup_sprite_frames() -> void:
 
 ## Maps a world direction to an animation axis + horizontal flip.
 ## Up/back for NW–NE (away from camera), side for pure E/W, front/down for SE–SW.
-## Back sheets are drawn facing slightly left; flip when moving/acting up-right.
+## Sheet defaults: back → NW, front → SW, side → East.
 func _facing_from_direction(direction: Vector2) -> Dictionary:
 	var dir := direction
 	if dir.length_squared() < 0.0001:
@@ -228,15 +228,15 @@ func _facing_from_direction(direction: Vector2) -> Dictionary:
 	var flip_h := false
 	if dir.y < -0.20:
 		axis = &"up"
-		# Back art faces up-left by default → flip for up-right.
+		# Back art faces NW; flip for NE.
 		flip_h = dir.x > 0.05
 	elif dir.y > 0.20:
 		axis = &"down"
-		# Front art faces down-right-ish → flip for down-left.
-		flip_h = dir.x < -0.05
+		# Front art faces SW; flip for SE.
+		flip_h = dir.x > 0.05
 	else:
 		axis = &"side"
-		# Side sheets face right; flip when moving/acting left.
+		# Side sheets face east; flip for west.
 		flip_h = dir.x < 0.0
 
 	return {"axis": axis, "flip_h": flip_h}
@@ -267,9 +267,10 @@ func _play_directional_animation(action: StringName, direction: Vector2) -> void
 		_last_facing_direction = direction
 	var facing := _facing_from_direction(direction)
 	var animation_name := _animation_for_action(action, facing["axis"])
-	animated_sprite.flip_h = facing["flip_h"]
 	if animated_sprite.animation != animation_name:
 		animated_sprite.play(animation_name)
+	# Apply after play — some SpriteFrames setups reset flip on animation change.
+	animated_sprite.flip_h = bool(facing["flip_h"])
 
 
 func rebuild_visuals() -> void:
@@ -1272,7 +1273,9 @@ func _move_along_path(preferred_direction: Vector2, target: Vector2, delta: floa
 	var progress := dist_before - global_position.distance_to(target)
 	if _did_move_well(moved, progress, speed, delta):
 		_reset_stuck_tracking(target)
-		_play_walk_animation(preferred_direction)
+		# Face along actual displacement so sprite matches on-screen motion.
+		var step := global_position - before
+		_play_walk_animation(step if step.length_squared() > 0.0001 else preferred_direction)
 		return true
 
 	return false
