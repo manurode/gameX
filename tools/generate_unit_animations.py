@@ -646,10 +646,14 @@ def draw_hoe_crisp(frame: Image.Image, pivot: tuple[float, float], angle_deg: fl
     return Image.fromarray(arr, "RGBA")
 
 
-def make_villager_work(base: Image.Image) -> Image.Image:
+def make_villager_work(base: Image.Image, facing_back: bool = False) -> Image.Image:
     """
     9-frame farming chop matching attack cadence.
     Idle-sized body + crisp hoe on the outer hand (no antialias ghosts).
+
+    Front: hoe drawn on top of body (tool between camera and character).
+    Back: hoe drawn UNDER body so it sits in front of the character (away from
+    camera), with only the tip peeking above the hat — same as working ahead.
     """
     sprite = harden_alpha(to_sprite(base), cut=30)
     # Remove green sash-drape streaks that read as a second stick
@@ -665,20 +669,28 @@ def make_villager_work(base: Image.Image) -> Image.Image:
                 arr[y, x] = 0
     body = harden_alpha(Image.fromarray(arr, "RGBA"), cut=40)
 
-    grip_x = float(mid_x + (x1 - x0) * 0.32)
-    grip_y = float(shoulder_y + (y1 - y0) * 0.20)
-
-    # Stay on the right side of the body (0°=right, 90°=down)
-    # Full chop arc: ready → raise → strike → follow (no long idle tail)
-    angles = [88.0, 60.0, 28.0, -20.0, 15.0, 55.0, 78.0, 90.0, 88.0]
-    bobs = [0.0, -0.8, -1.4, -1.8, 0.2, 2.0, 1.0, 0.4, 0.0]
-    leans = [0.0, -0.8, -1.2, -1.5, 1.0, 2.0, 1.0, 0.4, 0.0]
-    grip_dy = [0.0, -2.8, -5.0, -6.8, -2.0, 2.5, 1.0, 0.3, 0.0]
-    grip_dx = [0.0, 0.8, 1.4, 1.8, 1.2, 2.0, 1.0, 0.4, 0.0]
+    if facing_back:
+        # Prefer AI pose sheets (tools/build_back_work_sheets.py) in production.
+        # Procedural fallback: raise tip above hat, then strike ahead (up on screen).
+        grip_x = float(mid_x)
+        grip_y = float(shoulder_y + (y1 - y0) * 0.10)
+        angles = [260.0, 280.0, 300.0, 315.0, 280.0, 250.0, 240.0, 250.0, 260.0]
+        bobs = [0.0, -0.8, -1.4, -1.8, 0.6, 2.0, 1.2, 0.4, 0.0]
+        leans = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        grip_dy = [0.0, -3.0, -5.5, -7.0, -2.0, 2.0, 1.0, 0.2, 0.0]
+        grip_dx = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    else:
+        grip_x = float(mid_x + (x1 - x0) * 0.32)
+        grip_y = float(shoulder_y + (y1 - y0) * 0.20)
+        # Stay on the right side of the body (0°=right, 90°=down)
+        angles = [88.0, 60.0, 28.0, -20.0, 15.0, 55.0, 78.0, 90.0, 88.0]
+        bobs = [0.0, -0.8, -1.4, -1.8, 0.2, 2.0, 1.0, 0.4, 0.0]
+        leans = [0.0, -0.8, -1.2, -1.5, 1.0, 2.0, 1.0, 0.4, 0.0]
+        grip_dy = [0.0, -2.8, -5.0, -6.8, -2.0, 2.5, 1.0, 0.3, 0.0]
+        grip_dx = [0.0, 0.8, 1.4, 1.8, 1.2, 2.0, 1.0, 0.4, 0.0]
 
     frames = []
     for i in range(9):
-        # No swing_arm_band — pixel warps leave black seams on this sprite
         pivot = (grip_x + grip_dx[i], grip_y + grip_dy[i])
         posed = draw_hoe_crisp(body, pivot, angles[i])
         fr = place_sprite(posed, angle=0.0, dx=leans[i], dy=bobs[i])
@@ -697,7 +709,7 @@ def make_work(
     Villagers use a dedicated staff/hoe swing (vest browns must not be warped).
     """
     if unit == "villager" or tool == "hoe":
-        return make_villager_work(base)
+        return make_villager_work(base, facing_back=facing_back)
 
     sprite = harden_alpha(to_sprite(base), cut=30)
     if unit in WEAPON_SIDE_FRONT:
