@@ -51,6 +51,8 @@ static var _shared_dust_texture: Texture2D
 @export var gather_side_sheet: Texture2D
 @export var death_up_sheet: Texture2D
 @export var death_down_sheet: Texture2D
+## When true, back/up sheets face NE by default (vs villager NW). Flips the up-axis mirror.
+@export var invert_up_flip: bool = false
 @export var sprite_offset := Vector2(0.0, -36.0)
 @export var combat_style: CombatStyle = CombatStyle.MELEE
 @export var can_attack: bool = true
@@ -228,8 +230,9 @@ func _facing_from_direction(direction: Vector2) -> Dictionary:
 	var flip_h := false
 	if dir.y < -0.20:
 		axis = &"up"
-		# Back art faces NW; flip for NE.
-		flip_h = dir.x > 0.05
+		# Default back art (villager) faces NW; flip for NE.
+		# Knight/archer back sheets face NE instead → invert_up_flip.
+		flip_h = dir.x < -0.05 if invert_up_flip else dir.x > 0.05
 	elif dir.y > 0.20:
 		axis = &"down"
 		# Front art faces SW; flip for SE.

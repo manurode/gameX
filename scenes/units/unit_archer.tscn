@@ -23,6 +23,7 @@ attack_damage = 14
 attack_cooldown = 1.3
 attack_range_min = 95.0
 attack_range_max = 220.0
+invert_up_flip = true
 idle_sheet = ExtResource("2_idle")
 idle_up_sheet = ExtResource("3_idle_up")
 idle_side_sheet = ExtResource("4_idle_side")

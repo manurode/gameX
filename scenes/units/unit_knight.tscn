@@ -21,6 +21,7 @@ unit_type_id = "knight"
 attack_damage = 18
 attack_cooldown = 1.0
 melee_range = 54.0
+invert_up_flip = true
 idle_sheet = ExtResource("2_idle")
 idle_up_sheet = ExtResource("3_idle_up")
 idle_side_sheet = ExtResource("4_idle_side")
