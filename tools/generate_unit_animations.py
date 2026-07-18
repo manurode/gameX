@@ -646,7 +646,11 @@ def draw_hoe_crisp(frame: Image.Image, pivot: tuple[float, float], angle_deg: fl
     return Image.fromarray(arr, "RGBA")
 
 
-def make_villager_work(base: Image.Image, facing_back: bool = False) -> Image.Image:
+def make_villager_work(
+    base: Image.Image,
+    facing_back: bool = False,
+    facing_side: bool = False,
+) -> Image.Image:
     """
     9-frame farming chop matching attack cadence.
     Idle-sized body + crisp hoe on the outer hand (no antialias ghosts).
@@ -654,6 +658,7 @@ def make_villager_work(base: Image.Image, facing_back: bool = False) -> Image.Im
     Front: hoe drawn on top of body (tool between camera and character).
     Back: hoe drawn UNDER body so it sits in front of the character (away from
     camera), with only the tip peeking above the hat — same as working ahead.
+    Side: raise tip high above/behind the head, then strike forward with lean.
     """
     sprite = harden_alpha(to_sprite(base), cut=30)
     # Remove green sash-drape streaks that read as a second stick
@@ -677,8 +682,21 @@ def make_villager_work(base: Image.Image, facing_back: bool = False) -> Image.Im
         angles = [260.0, 280.0, 300.0, 315.0, 280.0, 250.0, 240.0, 250.0, 260.0]
         bobs = [0.0, -0.8, -1.4, -1.8, 0.6, 2.0, 1.2, 0.4, 0.0]
         leans = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        tilts = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         grip_dy = [0.0, -3.0, -5.5, -7.0, -2.0, 2.0, 1.0, 0.2, 0.0]
         grip_dx = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    elif facing_side:
+        # Profile facing right: smooth wind-up high behind head, then chop forward.
+        # Cadence mirrors front/back: ready → raise → peak → strike → recover.
+        grip_x = float(mid_x + (x1 - x0) * 0.04)
+        grip_y = float(shoulder_y + (y1 - y0) * 0.14)
+        # 0°=right, 90°=down, -90°=up — gradual arc ending clearly above the hat.
+        angles = [82.0, 48.0, 5.0, -50.0, -105.0, 0.0, 58.0, 82.0, 82.0]
+        bobs = [0.0, -0.8, -1.4, -2.0, -2.2, 0.8, 2.6, 1.0, 0.0]
+        leans = [0.0, -0.6, -1.2, -1.8, -2.0, 2.0, 3.2, 1.2, 0.0]
+        tilts = [0.0, -2.0, -4.0, -6.0, -6.0, 7.0, 12.0, 4.0, 0.0]
+        grip_dy = [0.0, -2.5, -5.0, -7.5, -9.5, -1.0, 3.5, 1.2, 0.0]
+        grip_dx = [0.0, -0.8, -1.8, -2.6, -3.2, 1.8, 3.6, 1.2, 0.0]
     else:
         grip_x = float(mid_x + (x1 - x0) * 0.32)
         grip_y = float(shoulder_y + (y1 - y0) * 0.20)
@@ -686,6 +704,7 @@ def make_villager_work(base: Image.Image, facing_back: bool = False) -> Image.Im
         angles = [88.0, 60.0, 28.0, -20.0, 15.0, 55.0, 78.0, 90.0, 88.0]
         bobs = [0.0, -0.8, -1.4, -1.8, 0.2, 2.0, 1.0, 0.4, 0.0]
         leans = [0.0, -0.8, -1.2, -1.5, 1.0, 2.0, 1.0, 0.4, 0.0]
+        tilts = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         grip_dy = [0.0, -2.8, -5.0, -6.8, -2.0, 2.5, 1.0, 0.3, 0.0]
         grip_dx = [0.0, 0.8, 1.4, 1.8, 1.2, 2.0, 1.0, 0.4, 0.0]
 
@@ -693,7 +712,7 @@ def make_villager_work(base: Image.Image, facing_back: bool = False) -> Image.Im
     for i in range(9):
         pivot = (grip_x + grip_dx[i], grip_y + grip_dy[i])
         posed = draw_hoe_crisp(body, pivot, angles[i])
-        fr = place_sprite(posed, angle=0.0, dx=leans[i], dy=bobs[i])
+        fr = place_sprite(posed, angle=tilts[i], dx=leans[i], dy=bobs[i])
         frames.append(harden_alpha(fr, cut=40))
     return stitch(frames)
 
@@ -701,6 +720,7 @@ def make_villager_work(base: Image.Image, facing_back: bool = False) -> Image.Im
 def make_work(
     base: Image.Image,
     facing_back: bool = False,
+    facing_side: bool = False,
     tool: str = "axe",
     unit: str = "",
 ) -> Image.Image:
@@ -709,7 +729,9 @@ def make_work(
     Villagers use a dedicated staff/hoe swing (vest browns must not be warped).
     """
     if unit == "villager" or tool == "hoe":
-        return make_villager_work(base, facing_back=facing_back)
+        return make_villager_work(
+            base, facing_back=facing_back, facing_side=facing_side
+        )
 
     sprite = harden_alpha(to_sprite(base), cut=30)
     if unit in WEAPON_SIDE_FRONT:
@@ -720,20 +742,34 @@ def make_work(
         weapon_right = not weapon_right
     out = _outward(weapon_right)
 
-    poses = [
-        (0.0, 0.0, 0.0, 0.0),
-        (-1.0, -3.0, 0.0, -0.3),
-        (-1.6, -5.5, 0.0, -0.6),
-        (-2.0, -7.0, 0.0, -0.9),
-        (1.2, -1.5, 0.6, 0.2),
-        (3.8, 3.2, 1.6, 1.1),
-        (2.6, 2.0, 0.8, 0.7),
-        (1.2, 0.7, 0.25, 0.3),
-        (0.3, 0.0, 0.0, 0.0),
-    ]
+    if facing_side:
+        # Stronger raise + forward plant so side profile reads like front/back work.
+        poses = [
+            (0.0, 0.0, 0.0, 0.0, 0.0),
+            (-1.4, -4.0, 0.0, -0.5, -0.4),
+            (-2.2, -7.0, 0.0, -1.0, -0.8),
+            (-2.8, -9.0, 0.0, -1.4, -1.2),
+            (1.6, -1.2, 0.8, 0.3, 1.0),
+            (4.2, 3.6, 1.8, 1.4, 2.4),
+            (2.8, 2.2, 1.0, 0.9, 1.4),
+            (1.4, 0.8, 0.3, 0.4, 0.5),
+            (0.3, 0.0, 0.0, 0.0, 0.0),
+        ]
+    else:
+        poses = [
+            (0.0, 0.0, 0.0, 0.0, 0.0),
+            (-1.0, -3.0, 0.0, -0.3, 0.0),
+            (-1.6, -5.5, 0.0, -0.6, 0.0),
+            (-2.0, -7.0, 0.0, -0.9, 0.0),
+            (1.2, -1.5, 0.6, 0.2, 0.0),
+            (3.8, 3.2, 1.6, 1.1, 0.0),
+            (2.6, 2.0, 0.8, 0.7, 0.0),
+            (1.2, 0.7, 0.25, 0.3, 0.0),
+            (0.3, 0.0, 0.0, 0.0, 0.0),
+        ]
 
     frames = []
-    for wdx, wdy, stretch, bob in poses:
+    for wdx, wdy, stretch, bob, lunge in poses:
         posed = move_weapon_arm(
             sprite,
             right_side=weapon_right,
@@ -742,7 +778,7 @@ def make_work(
             stretch_down=stretch,
         )
         posed = harden_alpha(posed, cut=48)
-        fr = place_sprite(posed, angle=0.0, dx=0.0, dy=bob)
+        fr = place_sprite(posed, angle=0.0, dx=out * lunge * 0.6, dy=bob)
         frames.append(harden_alpha(fr, cut=40))
     return stitch(frames)
 
