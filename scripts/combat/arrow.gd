@@ -7,6 +7,8 @@ var speed: float = 300.0
 var damage: int = 12
 var direction: Vector2 = Vector2.RIGHT
 var shooter: Unit
+## Used when the arrow is fired by a building (e.g. unmanned tower) without a Unit shooter.
+var shooter_team_id: int = -1
 var target: Unit
 var building_target: Building
 
@@ -49,12 +51,19 @@ func _draw() -> void:
 	)
 
 
+func _get_shooter_team_id() -> int:
+	if shooter != null and is_instance_valid(shooter):
+		return shooter.team_id
+	return shooter_team_id
+
+
 func _can_hit_unit(unit: Unit) -> bool:
 	if unit == null or not is_instance_valid(unit) or unit == shooter or unit.hp <= 0 or unit._is_dying:
 		return false
 	if unit.garrisoned_building != null:
 		return false
-	if shooter != null and is_instance_valid(shooter) and not shooter.is_hostile_to(unit):
+	var team := _get_shooter_team_id()
+	if team >= 0 and not Team.are_hostile(team, unit.team_id):
 		return false
 	return true
 
@@ -64,11 +73,10 @@ func _can_hit_building(building: Building) -> bool:
 		return false
 	if building.hp <= 0 or building.building_state == Building.BuildingState.DESTROYED:
 		return false
-	if shooter == null or not is_instance_valid(shooter):
+	var team := _get_shooter_team_id()
+	if team < 0 or not Team.are_hostile(team, building.team_id):
 		return false
-	if not Team.are_hostile(shooter.team_id, building.team_id):
-		return false
-	if shooter.garrisoned_building == building:
+	if shooter != null and is_instance_valid(shooter) and shooter.garrisoned_building == building:
 		return false
 	return true
 

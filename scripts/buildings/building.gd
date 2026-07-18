@@ -16,6 +16,8 @@ const GARRISON_ATTACK_RANGE := 220.0
 const COLLISION_BODY_SHRINK := Vector2(0.84, 0.84)
 const COLLISION_BODY_CENTER_Y := 0.2
 const WALL_COLLISION_CENTER_Y := 0.15
+const ARROW_SCENE := preload("res://scenes/combat/arrow.tscn")
+const AUTO_DEFENSE_PROJECTILE_OFFSET := 36.0
 
 @export var building_type_id: String = "house_small"
 @export var team_id: int = Team.PLAYER
@@ -381,7 +383,9 @@ func _process_automatic_defense(delta: float) -> void:
 		if not item is Unit:
 			continue
 		var enemy := item as Unit
-		if enemy.team_id != Team.ENEMY or enemy._is_dying or enemy.hp <= 0:
+		if enemy._is_dying or enemy.hp <= 0:
+			continue
+		if not Team.are_hostile(team_id, enemy.team_id):
 			continue
 		var distance_sq := origin.distance_squared_to(enemy.get_sprite_center())
 		if distance_sq <= attack_range_sq and distance_sq < nearest_distance_sq:
@@ -389,10 +393,32 @@ func _process_automatic_defense(delta: float) -> void:
 			nearest_distance_sq = distance_sq
 	if nearest == null:
 		return
+	_fire_automatic_defense_arrow(nearest)
 	var weapon_stats := get_weapon_stats()
-	nearest.take_damage(weapon_stats.get("damage", 14))
-	CombatEffects.spawn_ranged_impact(get_parent(), nearest.get_sprite_center())
 	_garrison_attack_cooldown = maxf(0.45, weapon_stats.get("cooldown_mult", 1.0))
+
+
+func _fire_automatic_defense_arrow(target_unit: Unit) -> void:
+	if target_unit == null or not is_instance_valid(target_unit):
+		return
+	var weapon_stats := get_weapon_stats()
+	var origin := get_attack_point()
+	var target_point := target_unit.get_sprite_center()
+	var dir := origin.direction_to(target_point)
+	if dir == Vector2.ZERO:
+		dir = Vector2.RIGHT
+
+	var arrow: Arrow = ARROW_SCENE.instantiate()
+	arrow.shooter_team_id = team_id
+	arrow.target = target_unit
+	arrow.damage = int(weapon_stats.get("damage", 14))
+	arrow.speed = float(weapon_stats.get("speed", 380.0))
+	arrow.direction = dir
+	var world := get_parent()
+	if world == null:
+		world = get_tree().current_scene
+	world.add_child(arrow)
+	arrow.global_position = origin + dir * AUTO_DEFENSE_PROJECTILE_OFFSET
 
 
 func _validate_garrison_attack_targets() -> void:
