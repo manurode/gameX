@@ -230,8 +230,8 @@ func _facing_from_direction(direction: Vector2) -> Dictionary:
 	var flip_h := false
 	if dir.y < -0.20:
 		axis = &"up"
-		# Default back art (villager) faces NW; flip for NE.
-		# Knight/archer back sheets face NE instead → invert_up_flip.
+		# Default back art (villager/archer) faces NW; flip for NE.
+		# Knight back sheets face NE instead → invert_up_flip.
 		flip_h = dir.x < -0.05 if invert_up_flip else dir.x > 0.05
 	elif dir.y > 0.20:
 		axis = &"down"

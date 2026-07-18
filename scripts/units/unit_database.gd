@@ -76,7 +76,6 @@ const DEFINITIONS: Dictionary = {
 		"attack_side_sheet": "res://assets/tilesets/mediterranean/Characters/archer/chr_archer_attack_side.png",
 		"death_up_sheet": "res://assets/tilesets/mediterranean/Characters/archer/chr_archer_deploy_back.png",
 		"death_down_sheet": "res://assets/tilesets/mediterranean/Characters/archer/chr_archer_deploy.png",
-		"invert_up_flip": true,
 	},
 	"builder": {
 		"name": "Constructor",
@@ -166,7 +165,7 @@ static func apply_definition_to_unit(unit: Unit, type_id: String) -> void:
 	unit.melee_range = def.get("melee_range", unit.melee_range)
 	unit.attack_range_min = def.get("attack_range_min", unit.attack_range_min)
 	unit.attack_range_max = def.get("attack_range_max", unit.attack_range_max)
-	unit.invert_up_flip = def.get("invert_up_flip", unit.invert_up_flip)
+	unit.invert_up_flip = def.get("invert_up_flip", false)
 
 	# Always assign (or clear) every sheet slot so transforms don't keep old art.
 	_apply_sheet(unit, def, "idle_sheet", "idle_sheet")
