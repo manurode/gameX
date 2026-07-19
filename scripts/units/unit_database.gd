@@ -196,7 +196,8 @@ const SPAWN_HOTKEYS: Dictionary = {
 	KEY_F5: "mage",
 	KEY_F6: "ember",
 	KEY_F7: "mire",
-	KEY_F8: "hexwing",
+	# F8 closes the game in the Godot editor; use F9 for Hexala.
+	KEY_F9: "hexwing",
 }
 
 

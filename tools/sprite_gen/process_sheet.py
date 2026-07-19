@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Normalize generated sprite strips to exact frame sizes with transparent background."""
+"""Normalize generated sprite strips to exact frame sizes with transparent background.
+
+Detects individual character blobs by column gaps instead of blindly slicing,
+so uneven AI spacing / near-touching frames don't get cut mid-sprite.
+"""
 
 from __future__ import annotations
 
@@ -30,84 +34,233 @@ SPECS = {
 }
 
 
+def _is_backdrop_rgb(r: int, g: int, b: int) -> bool:
+    mx = max(r, g, b)
+    mn = min(r, g, b)
+    # Near black / charcoal studio
+    if mx < 48:
+        return True
+    if mx < 70 and (mx - mn) < 14:
+        return True
+    # Near white / light gray studio
+    if mn > 228 and (mx - mn) < 24:
+        return True
+    if mn > 200 and (mx - mn) < 10 and mx > 215:
+        return True
+    return False
+
+
 def remove_backdrop(img: Image.Image) -> Image.Image:
     img = img.convert("RGBA")
     pixels = img.load()
     w, h = img.size
-    samples = [pixels[2, 2], pixels[w - 3, 2], pixels[2, h - 3], pixels[w - 3, h - 3]]
-    avg = tuple(sum(c[i] for c in samples) // 4 for i in range(3))
-    white_bg = avg[0] > 200 and avg[1] > 200 and avg[2] > 200
-    black_bg = avg[0] < 40 and avg[1] < 40 and avg[2] < 40
+
+    # Flood-fill backdrop from all border pixels so interior gaps stay
+    # only if they are truly empty between characters.
+    from collections import deque
+
+    visited = bytearray(w * h)
+    q: deque[tuple[int, int]] = deque()
+
+    def push(x: int, y: int) -> None:
+        idx = y * w + x
+        if visited[idx]:
+            return
+        r, g, b, a = pixels[x, y]
+        if a == 0 or _is_backdrop_rgb(r, g, b):
+            visited[idx] = 1
+            q.append((x, y))
+
+    for x in range(w):
+        push(x, 0)
+        push(x, h - 1)
+    for y in range(h):
+        push(0, y)
+        push(w - 1, y)
+
+    while q:
+        x, y = q.popleft()
+        pixels[x, y] = (0, 0, 0, 0)
+        for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
+            if 0 <= nx < w and 0 <= ny < h:
+                push(nx, ny)
+
+    # Also clear remaining near-backdrop pixels that weren't border-connected
+    # (AI sometimes leaves floating dark bars between frames).
     for y in range(h):
         for x in range(w):
             r, g, b, a = pixels[x, y]
-            if a == 0:
-                continue
-            mx = max(r, g, b)
-            mn = min(r, g, b)
-            if black_bg or not white_bg:
-                if mx < 28 or (mx < 42 and (mx - mn) < 12):
-                    pixels[x, y] = (0, 0, 0, 0)
-                    continue
-            if white_bg or not black_bg:
-                if mn > 232 and (mx - mn) < 22:
-                    pixels[x, y] = (0, 0, 0, 0)
-                    continue
-                if mn > 210 and (mx - mn) < 12 and mx > 225:
-                    pixels[x, y] = (0, 0, 0, 0)
+            if a and _is_backdrop_rgb(r, g, b):
+                pixels[x, y] = (0, 0, 0, 0)
     return img
 
 
 def content_bbox(img: Image.Image) -> tuple[int, int, int, int] | None:
-    alpha = img.split()[-1]
-    return alpha.getbbox()
+    return img.split()[-1].getbbox()
+
+
+def _column_mask(img: Image.Image, min_alpha: int = 16) -> list[bool]:
+    pixels = img.load()
+    w, h = img.size
+    mask = [False] * w
+    for x in range(w):
+        for y in range(h):
+            if pixels[x, y][3] >= min_alpha:
+                mask[x] = True
+                break
+    return mask
+
+
+def _runs_from_mask(mask: list[bool]) -> list[tuple[int, int]]:
+    runs: list[tuple[int, int]] = []
+    i = 0
+    n = len(mask)
+    while i < n:
+        if mask[i]:
+            j = i + 1
+            while j < n and mask[j]:
+                j += 1
+            runs.append((i, j))
+            i = j
+        else:
+            i += 1
+    return runs
+
+
+def _merge_tiny_runs(
+    runs: list[tuple[int, int]], min_width: int, max_gap_merge: int
+) -> list[tuple[int, int]]:
+    if not runs:
+        return []
+    # First pass: glue runs separated by tiny gaps (touching frames / anti-alias seams).
+    glued: list[tuple[int, int]] = [runs[0]]
+    for start, end in runs[1:]:
+        prev_s, prev_e = glued[-1]
+        if start - prev_e <= max_gap_merge:
+            glued[-1] = (prev_s, end)
+        else:
+            glued.append((start, end))
+
+    # Second pass: absorb thin slivers into the nearer neighbor.
+    changed = True
+    while changed and len(glued) > 1:
+        changed = False
+        widths = [e - s for s, e in glued]
+        tiny_idx = next((i for i, w in enumerate(widths) if w < min_width), -1)
+        if tiny_idx < 0:
+            break
+        s, e = glued[tiny_idx]
+        if tiny_idx == 0:
+            ns, ne = glued[1]
+            glued[1] = (s, ne)
+            del glued[0]
+        elif tiny_idx == len(glued) - 1:
+            ps, pe = glued[-2]
+            glued[-2] = (ps, e)
+            del glued[-1]
+        else:
+            left_gap = s - glued[tiny_idx - 1][1]
+            right_gap = glued[tiny_idx + 1][0] - e
+            if left_gap <= right_gap:
+                ps, pe = glued[tiny_idx - 1]
+                glued[tiny_idx - 1] = (ps, e)
+            else:
+                ns, ne = glued[tiny_idx + 1]
+                glued[tiny_idx + 1] = (s, ne)
+            del glued[tiny_idx]
+        changed = True
+    return glued
+
+
+def _split_into_n(start: int, end: int, n: int) -> list[tuple[int, int]]:
+    parts: list[tuple[int, int]] = []
+    for i in range(n):
+        a = start + int(round(i * (end - start) / n))
+        b = start + int(round((i + 1) * (end - start) / n))
+        parts.append((a, max(a + 1, b)))
+    return parts
+
+
+def segment_frames(img: Image.Image, frame_count: int) -> list[tuple[int, int, int, int]]:
+    """Return list of (left, top, right, bottom) crop boxes, one per frame."""
+    bbox = content_bbox(img)
+    if bbox is None:
+        raise RuntimeError("No opaque content")
+    left, top, right, bottom = bbox
+    strip = img.crop(bbox)
+    mask = _column_mask(strip)
+    runs = _runs_from_mask(mask)
+    # Min width ~2% of strip, gaps of a few px are seams not separators.
+    min_w = max(12, strip.width // (frame_count * 8))
+    runs = _merge_tiny_runs(runs, min_width=min_w, max_gap_merge=max(4, strip.width // 200))
+
+    # Map runs back to absolute coords.
+    abs_runs = [(left + s, left + e) for s, e in runs]
+
+    if len(abs_runs) == frame_count:
+        chosen = abs_runs
+    elif len(abs_runs) > frame_count:
+        # Too many pieces: keep the N widest.
+        ranked = sorted(abs_runs, key=lambda r: r[1] - r[0], reverse=True)[:frame_count]
+        chosen = sorted(ranked, key=lambda r: r[0])
+    elif len(abs_runs) == 1:
+        chosen = _split_into_n(abs_runs[0][0], abs_runs[0][1], frame_count)
+    elif len(abs_runs) > 0:
+        # Fewer blobs than frames: split the widest blobs until we reach N.
+        pieces = list(abs_runs)
+        while len(pieces) < frame_count:
+            widths = [e - s for s, e in pieces]
+            idx = max(range(len(pieces)), key=lambda i: widths[i])
+            s, e = pieces[idx]
+            mid = (s + e) // 2
+            pieces[idx : idx + 1] = [(s, mid), (mid, e)]
+        # If we overshot somehow, trim.
+        if len(pieces) > frame_count:
+            ranked = sorted(pieces, key=lambda r: r[1] - r[0], reverse=True)[:frame_count]
+            pieces = sorted(ranked, key=lambda r: r[0])
+        chosen = pieces
+    else:
+        chosen = _split_into_n(left, right, frame_count)
+
+    boxes: list[tuple[int, int, int, int]] = []
+    for s, e in chosen:
+        # Per-frame vertical crop within the global content band.
+        cell = img.crop((s, top, e, bottom))
+        cb = content_bbox(cell)
+        if cb is None:
+            boxes.append((s, top, e, bottom))
+        else:
+            boxes.append((s + cb[0], top + cb[1], s + cb[2], top + cb[3]))
+    return boxes
+
+
+def fit_into_frame(part: Image.Image) -> Image.Image:
+    out = Image.new("RGBA", (FRAME, FRAME), (0, 0, 0, 0))
+    if part.width <= 0 or part.height <= 0:
+        return out
+    # Leave a couple px padding; ground-align like existing knight sheets.
+    ps = min((FRAME - 6) / part.width, (FRAME - 4) / part.height)
+    pw = max(1, int(round(part.width * ps)))
+    ph = max(1, int(round(part.height * ps)))
+    resized = part.resize((pw, ph), Image.Resampling.LANCZOS)
+    px = (FRAME - pw) // 2
+    py = FRAME - ph - 1
+    out.paste(resized, (px, py), resized)
+    return out
 
 
 def pack_strip(src: Path, frame_count: int, out: Path) -> None:
     raw = Image.open(src)
     img = remove_backdrop(raw)
-    bbox = content_bbox(img)
-    if bbox is None:
-        raise RuntimeError(f"No opaque content in {src}")
+    boxes = segment_frames(img, frame_count)
 
-    cropped = img.crop(bbox)
-    target_w = FRAME * frame_count
-    target_h = FRAME
+    cells = [fit_into_frame(img.crop(box)) for box in boxes]
+    # Pad / trim to exact frame_count.
+    while len(cells) < frame_count:
+        cells.append(Image.new("RGBA", (FRAME, FRAME), (0, 0, 0, 0)))
+    cells = cells[:frame_count]
 
-    # Fit entire strip into target while preserving aspect, then center.
-    scale = min(target_w / cropped.width, target_h / cropped.height)
-    new_w = max(1, int(round(cropped.width * scale)))
-    new_h = max(1, int(round(cropped.height * scale)))
-    resized = cropped.resize((new_w, new_h), Image.Resampling.LANCZOS)
-
-    canvas = Image.new("RGBA", (target_w, target_h), (0, 0, 0, 0))
-    ox = (target_w - new_w) // 2
-    oy = (target_h - new_h) // 2
-    canvas.paste(resized, (ox, oy), resized)
-
-    # Re-slice into equal cells and re-center each character per cell for cleaner anim.
-    cells: list[Image.Image] = []
-    cell_w = max(1, new_w // frame_count)
-    for i in range(frame_count):
-        # Prefer equal division of full canvas width for AI strips that already laid out frames.
-        left = int(round(i * target_w / frame_count))
-        right = int(round((i + 1) * target_w / frame_count))
-        cell = canvas.crop((left, 0, right, target_h))
-        cb = content_bbox(cell)
-        out_cell = Image.new("RGBA", (FRAME, FRAME), (0, 0, 0, 0))
-        if cb is not None:
-            part = cell.crop(cb)
-            # Scale part into ~70px tall so feet/head fit
-            ps = min((FRAME - 8) / part.width, (FRAME - 6) / part.height)
-            pw = max(1, int(round(part.width * ps)))
-            ph = max(1, int(round(part.height * ps)))
-            part = part.resize((pw, ph), Image.Resampling.LANCZOS)
-            px = (FRAME - pw) // 2
-            py = FRAME - ph - 2  # ground-align
-            out_cell.paste(part, (px, py), part)
-        cells.append(out_cell)
-
-    final = Image.new("RGBA", (target_w, target_h), (0, 0, 0, 0))
+    final = Image.new("RGBA", (FRAME * frame_count, FRAME), (0, 0, 0, 0))
     for i, cell in enumerate(cells):
         final.paste(cell, (i * FRAME, 0), cell)
 
@@ -135,16 +288,9 @@ def process_building(src: Path, out: Path, size: int = 256) -> None:
 
 
 def infer_frames(name: str) -> int | None:
-    for key, count in SPECS.items():
-        if name.endswith(key) or f"_{key}." in name or name == key:
-            return count
-    # chr_TYPE_ACTION pattern
-    for key, count in SPECS.items():
-        if f"_{key}." in name or name.endswith(f"_{key}.png"):
-            return count
     stem = Path(name).stem
     for key, count in sorted(SPECS.items(), key=lambda kv: -len(kv[0])):
-        if stem.endswith(key):
+        if stem.endswith(key) or stem.endswith(f"{key}_raw"):
             return count
     return None
 
