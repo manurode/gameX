@@ -29,6 +29,8 @@ SPECS = {
     "attack_side": 9,
     "deploy": 4,
     "deploy_back": 3,
+    "death": 6,
+    "death_back": 6,
     "afk": 4,
     "afk_back": 4,
     "afk_side": 4,

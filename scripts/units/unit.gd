@@ -25,9 +25,10 @@ const PATH_TARGET_REFRESH_DISTANCE := 18.0
 const PATH_WAYPOINT_REACHED := 14.0
 const MELEE_DAMAGE_FRAME := 5
 const RANGED_DAMAGE_FRAME := 6
-const DEATH_LINGER_SECONDS := 2.8
+const DEATH_FADE_SECONDS := 0.12
+const DEATH_PROCEDURAL_WAIT := 0.55
 const HIT_FLASH_DURATION := 0.14
-const DEATH_FRAME_COUNT := 3
+const DEATH_FRAME_COUNT := 6
 const STONE_SCENE: PackedScene = preload("res://scenes/combat/stone.tscn")
 const SEPARATION_UPDATE_INTERVAL := 0.08
 const NIGHT_LIGHT_COLOR := Color(1.0, 0.78, 0.48)
@@ -101,6 +102,7 @@ var _is_attack_animating: bool = false
 var _damage_dealt_this_swing: bool = false
 var _last_damage_time: int = 0
 var _is_dying: bool = false
+var _death_anim_finished: bool = false
 var _last_facing_direction := Vector2.DOWN
 var _move_destination: Vector2
 var _hit_flash_tween: Tween
@@ -1123,14 +1125,19 @@ func _die() -> void:
 func _play_death_sequence() -> void:
 	var world := get_parent().get_parent()
 	CombatEffects.spawn_death_burst(world, get_sprite_center())
+	_death_anim_finished = false
 	_play_death_animation()
+	await _wait_for_death_animation()
 
-	await get_tree().create_timer(DEATH_LINGER_SECONDS).timeout
-
+	# Vanish as soon as the death strip ends — no lingering particle frames.
+	if is_instance_valid(animated_sprite):
+		animated_sprite.visible = false
+	if is_instance_valid(shadow_sprite):
+		shadow_sprite.visible = false
 	var fade_tween := create_tween()
 	fade_tween.set_parallel(true)
-	fade_tween.tween_property(animated_sprite, "modulate:a", 0.0, 0.65)
-	fade_tween.tween_property(shadow_sprite, "modulate:a", 0.0, 0.65)
+	fade_tween.tween_property(animated_sprite, "modulate:a", 0.0, DEATH_FADE_SECONDS)
+	fade_tween.tween_property(shadow_sprite, "modulate:a", 0.0, DEATH_FADE_SECONDS)
 	await fade_tween.finished
 	queue_free()
 
@@ -1142,6 +1149,16 @@ func _play_death_animation() -> void:
 		return
 
 	_play_procedural_death_fall()
+
+
+func _wait_for_death_animation() -> void:
+	var animation_name := animated_sprite.animation
+	if animated_sprite.sprite_frames.has_animation(animation_name):
+		var deadline := Time.get_ticks_msec() + 2500
+		while not _death_anim_finished and is_instance_valid(self) and Time.get_ticks_msec() < deadline:
+			await get_tree().process_frame
+		return
+	await get_tree().create_timer(DEATH_PROCEDURAL_WAIT).timeout
 
 
 func _get_death_animation_name() -> StringName:
@@ -2284,7 +2301,11 @@ func _get_projectile_spawn_offset() -> float:
 
 func _on_animation_finished() -> void:
 	if _is_dying:
-		_freeze_death_pose()
+		_death_anim_finished = true
+		animated_sprite.stop()
+		animated_sprite.visible = false
+		if is_instance_valid(shadow_sprite):
+			shadow_sprite.visible = false
 		return
 
 	if not _is_attack_animating:
@@ -2302,16 +2323,6 @@ func _on_animation_finished() -> void:
 		attack_target = null
 		_set_attack_target_building(null)
 		_unit_state = UnitState.IDLE
-
-
-func _freeze_death_pose() -> void:
-	var animation_name := animated_sprite.animation
-	if not animated_sprite.sprite_frames.has_animation(animation_name):
-		return
-
-	var last_frame := animated_sprite.sprite_frames.get_frame_count(animation_name) - 1
-	animated_sprite.stop()
-	animated_sprite.frame = last_frame
 
 
 func _play_idle() -> void:

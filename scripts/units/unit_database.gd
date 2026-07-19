@@ -22,6 +22,8 @@ const DEFINITIONS: Dictionary = {
 		"gather_sheet": "res://assets/tilesets/mediterranean/Characters/villager/chr_villager_afk.png",
 		"gather_up_sheet": "res://assets/tilesets/mediterranean/Characters/villager/chr_villager_afk_back.png",
 		"gather_side_sheet": "res://assets/tilesets/mediterranean/Characters/villager/chr_villager_afk_side.png",
+		"death_up_sheet": "res://assets/tilesets/mediterranean/Characters/villager/chr_villager_death_back.png",
+		"death_down_sheet": "res://assets/tilesets/mediterranean/Characters/villager/chr_villager_death.png",
 	},
 	"knight": {
 		"name": "Caballero",
@@ -46,8 +48,8 @@ const DEFINITIONS: Dictionary = {
 		"attack_up_sheet": "res://assets/tilesets/mediterranean/Characters/knight/chr_knight_attack_back.png",
 		"attack_down_sheet": "res://assets/tilesets/mediterranean/Characters/knight/chr_knight_attack.png",
 		"attack_side_sheet": "res://assets/tilesets/mediterranean/Characters/knight/chr_knight_attack_side.png",
-		"death_up_sheet": "res://assets/tilesets/mediterranean/Characters/knight/chr_knight_deploy_back.png",
-		"death_down_sheet": "res://assets/tilesets/mediterranean/Characters/knight/chr_knight_deploy.png",
+		"death_up_sheet": "res://assets/tilesets/mediterranean/Characters/knight/chr_knight_death_back.png",
+		"death_down_sheet": "res://assets/tilesets/mediterranean/Characters/knight/chr_knight_death.png",
 		"invert_up_flip": true,
 	},
 	"archer": {
@@ -74,8 +76,8 @@ const DEFINITIONS: Dictionary = {
 		"attack_up_sheet": "res://assets/tilesets/mediterranean/Characters/archer/chr_archer_attack_back.png",
 		"attack_down_sheet": "res://assets/tilesets/mediterranean/Characters/archer/chr_archer_attack.png",
 		"attack_side_sheet": "res://assets/tilesets/mediterranean/Characters/archer/chr_archer_attack_side.png",
-		"death_up_sheet": "res://assets/tilesets/mediterranean/Characters/archer/chr_archer_deploy_back.png",
-		"death_down_sheet": "res://assets/tilesets/mediterranean/Characters/archer/chr_archer_deploy.png",
+		"death_up_sheet": "res://assets/tilesets/mediterranean/Characters/archer/chr_archer_death_back.png",
+		"death_down_sheet": "res://assets/tilesets/mediterranean/Characters/archer/chr_archer_death.png",
 	},
 	"builder": {
 		"name": "Constructor",
@@ -90,6 +92,8 @@ const DEFINITIONS: Dictionary = {
 		"gather_sheet": "res://assets/tilesets/mediterranean/Characters/builder/chr_builder_afk.png",
 		"gather_up_sheet": "res://assets/tilesets/mediterranean/Characters/builder/chr_builder_afk_back.png",
 		"gather_side_sheet": "res://assets/tilesets/mediterranean/Characters/builder/chr_builder_afk_side.png",
+		"death_up_sheet": "res://assets/tilesets/mediterranean/Characters/builder/chr_builder_death_back.png",
+		"death_down_sheet": "res://assets/tilesets/mediterranean/Characters/builder/chr_builder_death.png",
 	},
 	"mage": {
 		"name": "Mago",
@@ -118,8 +122,8 @@ const DEFINITIONS: Dictionary = {
 		"attack_up_sheet": "res://assets/tilesets/mediterranean/Characters/mage/chr_mage_attack_back.png",
 		"attack_down_sheet": "res://assets/tilesets/mediterranean/Characters/mage/chr_mage_attack.png",
 		"attack_side_sheet": "res://assets/tilesets/mediterranean/Characters/mage/chr_mage_attack_side.png",
-		"death_up_sheet": "res://assets/tilesets/mediterranean/Characters/mage/chr_mage_deploy_back.png",
-		"death_down_sheet": "res://assets/tilesets/mediterranean/Characters/mage/chr_mage_deploy.png",
+		"death_up_sheet": "res://assets/tilesets/mediterranean/Characters/mage/chr_mage_death_back.png",
+		"death_down_sheet": "res://assets/tilesets/mediterranean/Characters/mage/chr_mage_death.png",
 	},
 	"enemy": {
 		"name": "Monstruo",
@@ -135,8 +139,8 @@ const DEFINITIONS: Dictionary = {
 		"attack_up_sheet": "res://assets/tilesets/mediterranean/Characters/enemy/chr_enemy_attack_back.png",
 		"attack_down_sheet": "res://assets/tilesets/mediterranean/Characters/enemy/chr_enemy_attack.png",
 		"attack_side_sheet": "res://assets/tilesets/mediterranean/Characters/enemy/chr_enemy_attack_side.png",
-		"death_up_sheet": "res://assets/tilesets/mediterranean/Characters/enemy/chr_enemy_deploy_back.png",
-		"death_down_sheet": "res://assets/tilesets/mediterranean/Characters/enemy/chr_enemy_deploy.png",
+		"death_up_sheet": "res://assets/tilesets/mediterranean/Characters/enemy/chr_enemy_death_back.png",
+		"death_down_sheet": "res://assets/tilesets/mediterranean/Characters/enemy/chr_enemy_death.png",
 	},
 	"ember": {
 		"name": "Brasal",
@@ -151,8 +155,8 @@ const DEFINITIONS: Dictionary = {
 		"attack_up_sheet": "res://assets/tilesets/mediterranean/Characters/ember/chr_ember_attack_back.png",
 		"attack_down_sheet": "res://assets/tilesets/mediterranean/Characters/ember/chr_ember_attack.png",
 		"attack_side_sheet": "res://assets/tilesets/mediterranean/Characters/ember/chr_ember_attack_side.png",
-		"death_up_sheet": "res://assets/tilesets/mediterranean/Characters/ember/chr_ember_deploy_back.png",
-		"death_down_sheet": "res://assets/tilesets/mediterranean/Characters/ember/chr_ember_deploy.png",
+		"death_up_sheet": "res://assets/tilesets/mediterranean/Characters/ember/chr_ember_death_back.png",
+		"death_down_sheet": "res://assets/tilesets/mediterranean/Characters/ember/chr_ember_death.png",
 	},
 	"mire": {
 		"name": "Lodoso",
@@ -167,8 +171,8 @@ const DEFINITIONS: Dictionary = {
 		"attack_up_sheet": "res://assets/tilesets/mediterranean/Characters/mire/chr_mire_attack_back.png",
 		"attack_down_sheet": "res://assets/tilesets/mediterranean/Characters/mire/chr_mire_attack.png",
 		"attack_side_sheet": "res://assets/tilesets/mediterranean/Characters/mire/chr_mire_attack_side.png",
-		"death_up_sheet": "res://assets/tilesets/mediterranean/Characters/mire/chr_mire_deploy_back.png",
-		"death_down_sheet": "res://assets/tilesets/mediterranean/Characters/mire/chr_mire_deploy.png",
+		"death_up_sheet": "res://assets/tilesets/mediterranean/Characters/mire/chr_mire_death_back.png",
+		"death_down_sheet": "res://assets/tilesets/mediterranean/Characters/mire/chr_mire_death.png",
 	},
 	"hexwing": {
 		"name": "Hexala",
@@ -183,8 +187,8 @@ const DEFINITIONS: Dictionary = {
 		"attack_up_sheet": "res://assets/tilesets/mediterranean/Characters/hexwing/chr_hexwing_attack_back.png",
 		"attack_down_sheet": "res://assets/tilesets/mediterranean/Characters/hexwing/chr_hexwing_attack.png",
 		"attack_side_sheet": "res://assets/tilesets/mediterranean/Characters/hexwing/chr_hexwing_attack_side.png",
-		"death_up_sheet": "res://assets/tilesets/mediterranean/Characters/hexwing/chr_hexwing_deploy_back.png",
-		"death_down_sheet": "res://assets/tilesets/mediterranean/Characters/hexwing/chr_hexwing_deploy.png",
+		"death_up_sheet": "res://assets/tilesets/mediterranean/Characters/hexwing/chr_hexwing_death_back.png",
+		"death_down_sheet": "res://assets/tilesets/mediterranean/Characters/hexwing/chr_hexwing_death.png",
 	},
 }
 

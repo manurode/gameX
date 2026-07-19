@@ -10,8 +10,8 @@
 [ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/knight/chr_knight_attack.png" id="8_attack_down"]
 [ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/knight/chr_knight_attack_back.png" id="9_attack_up"]
 [ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/knight/chr_knight_attack_side.png" id="10_attack_side"]
-[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/knight/chr_knight_deploy.png" id="11_death_down"]
-[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/knight/chr_knight_deploy_back.png" id="12_death_up"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/knight/chr_knight_death.png" id="11_death_down"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/knight/chr_knight_death_back.png" id="12_death_up"]
 
 [node name="UnitKnight" instance=ExtResource("1_base")]
 combat_style = 0

@@ -10,6 +10,8 @@
 [ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/villager/chr_villager_afk.png" id="8_gather"]
 [ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/villager/chr_villager_afk_back.png" id="9_gather_up"]
 [ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/villager/chr_villager_afk_side.png" id="10_gather_side"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/villager/chr_villager_death.png" id="11_death_down"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/villager/chr_villager_death_back.png" id="12_death_up"]
 
 [node name="UnitVillager" instance=ExtResource("1_base")]
 move_speed = 88.0
@@ -29,3 +31,5 @@ walk_side_sheet = ExtResource("7_walk_side")
 gather_sheet = ExtResource("8_gather")
 gather_up_sheet = ExtResource("9_gather_up")
 gather_side_sheet = ExtResource("10_gather_side")
+death_up_sheet = ExtResource("12_death_up")
+death_down_sheet = ExtResource("11_death_down")
