@@ -12,7 +12,7 @@ signal upgraded(new_level: int, weapon_type: String)
 const HEALTH_BAR_VISIBLE_MS := 4000
 const DAMAGED_HP_RATIO := 0.5
 const ENTRY_RANGE := 42.0
-const GARRISON_ATTACK_RANGE := 220.0
+const GARRISON_ATTACK_RANGE := 260.0
 const COLLISION_BODY_SHRINK := Vector2(0.84, 0.84)
 const COLLISION_BODY_CENTER_Y := 0.2
 const WALL_COLLISION_CENTER_Y := 0.15

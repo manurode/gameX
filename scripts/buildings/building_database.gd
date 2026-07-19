@@ -2,9 +2,9 @@ class_name BuildingDatabase
 extends RefCounted
 
 const WEAPON_STATS: Dictionary = {
-	"stone": {"damage": 4, "cooldown_mult": 1.0, "range_min": 0.0, "range_max": 220.0, "speed": 220.0},
-	"crossbow": {"damage": 14, "cooldown_mult": 0.85, "range_min": 0.0, "range_max": 260.0, "speed": 380.0},
-	"ballista": {"damage": 28, "cooldown_mult": 1.2, "range_min": 0.0, "range_max": 320.0, "speed": 420.0},
+	"stone": {"damage": 4, "cooldown_mult": 1.0, "range_min": 0.0, "range_max": 260.0, "speed": 220.0},
+	"crossbow": {"damage": 14, "cooldown_mult": 0.85, "range_min": 0.0, "range_max": 400.0, "speed": 380.0},
+	"ballista": {"damage": 28, "cooldown_mult": 1.2, "range_min": 0.0, "range_max": 480.0, "speed": 420.0},
 }
 
 const UPGRADE_PATHS: Dictionary = {
