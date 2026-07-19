@@ -91,11 +91,41 @@ const DEFINITIONS: Dictionary = {
 		"gather_up_sheet": "res://assets/tilesets/mediterranean/Characters/builder/chr_builder_afk_back.png",
 		"gather_side_sheet": "res://assets/tilesets/mediterranean/Characters/builder/chr_builder_afk_side.png",
 	},
+	"mage": {
+		"name": "Mago",
+		"scene": "res://scenes/units/unit_mage.tscn",
+		"preview": "res://assets/tilesets/mediterranean/Characters/mage/chr_mage_idle.png",
+		"move_speed": 90.0,
+		"max_hp": 85,
+		"can_attack": true,
+		"can_build": false,
+		"can_gather": false,
+		"is_civilian": false,
+		"combat_style": Unit.CombatStyle.RANGED,
+		"attack_damage": 12,
+		"attack_cooldown": 1.35,
+		"attack_range_min": 80.0,
+		"attack_range_max": 200.0,
+		"chain_radius": 70.0,
+		"chain_damage": 4,
+		"chain_max_targets": 2,
+		"idle_sheet": "res://assets/tilesets/mediterranean/Characters/mage/chr_mage_idle.png",
+		"idle_up_sheet": "res://assets/tilesets/mediterranean/Characters/mage/chr_mage_idle_back.png",
+		"idle_side_sheet": "res://assets/tilesets/mediterranean/Characters/mage/chr_mage_idle_side.png",
+		"walk_up_sheet": "res://assets/tilesets/mediterranean/Characters/mage/chr_mage_run_upward.png",
+		"walk_down_sheet": "res://assets/tilesets/mediterranean/Characters/mage/chr_mage_run_downward.png",
+		"walk_side_sheet": "res://assets/tilesets/mediterranean/Characters/mage/chr_mage_run_side.png",
+		"attack_up_sheet": "res://assets/tilesets/mediterranean/Characters/mage/chr_mage_attack_back.png",
+		"attack_down_sheet": "res://assets/tilesets/mediterranean/Characters/mage/chr_mage_attack.png",
+		"attack_side_sheet": "res://assets/tilesets/mediterranean/Characters/mage/chr_mage_attack_side.png",
+		"death_up_sheet": "res://assets/tilesets/mediterranean/Characters/mage/chr_mage_deploy_back.png",
+		"death_down_sheet": "res://assets/tilesets/mediterranean/Characters/mage/chr_mage_deploy.png",
+	},
 	"enemy": {
 		"name": "Monstruo",
 		"scene": "res://scenes/units/unit_enemy.tscn",
 		"preview": "res://assets/tilesets/mediterranean/Characters/enemy/chr_enemy_idle.png",
-		"kinds": ["normal", "swarm", "siege", "elite", "raider"],
+		"kinds": ["normal", "swarm", "siege", "elite", "raider", "ember", "mire", "hexwing"],
 		"idle_sheet": "res://assets/tilesets/mediterranean/Characters/enemy/chr_enemy_idle.png",
 		"idle_up_sheet": "res://assets/tilesets/mediterranean/Characters/enemy/chr_enemy_idle_back.png",
 		"idle_side_sheet": "res://assets/tilesets/mediterranean/Characters/enemy/chr_enemy_idle_side.png",
@@ -108,6 +138,54 @@ const DEFINITIONS: Dictionary = {
 		"death_up_sheet": "res://assets/tilesets/mediterranean/Characters/enemy/chr_enemy_deploy_back.png",
 		"death_down_sheet": "res://assets/tilesets/mediterranean/Characters/enemy/chr_enemy_deploy.png",
 	},
+	"ember": {
+		"name": "Brasal",
+		"scene": "res://scenes/units/unit_enemy.tscn",
+		"preview": "res://assets/tilesets/mediterranean/Characters/ember/chr_ember_idle.png",
+		"idle_sheet": "res://assets/tilesets/mediterranean/Characters/ember/chr_ember_idle.png",
+		"idle_up_sheet": "res://assets/tilesets/mediterranean/Characters/ember/chr_ember_idle_back.png",
+		"idle_side_sheet": "res://assets/tilesets/mediterranean/Characters/ember/chr_ember_idle_side.png",
+		"walk_up_sheet": "res://assets/tilesets/mediterranean/Characters/ember/chr_ember_run_upward.png",
+		"walk_down_sheet": "res://assets/tilesets/mediterranean/Characters/ember/chr_ember_run_downward.png",
+		"walk_side_sheet": "res://assets/tilesets/mediterranean/Characters/ember/chr_ember_run_side.png",
+		"attack_up_sheet": "res://assets/tilesets/mediterranean/Characters/ember/chr_ember_attack_back.png",
+		"attack_down_sheet": "res://assets/tilesets/mediterranean/Characters/ember/chr_ember_attack.png",
+		"attack_side_sheet": "res://assets/tilesets/mediterranean/Characters/ember/chr_ember_attack_side.png",
+		"death_up_sheet": "res://assets/tilesets/mediterranean/Characters/ember/chr_ember_deploy_back.png",
+		"death_down_sheet": "res://assets/tilesets/mediterranean/Characters/ember/chr_ember_deploy.png",
+	},
+	"mire": {
+		"name": "Lodoso",
+		"scene": "res://scenes/units/unit_enemy.tscn",
+		"preview": "res://assets/tilesets/mediterranean/Characters/mire/chr_mire_idle.png",
+		"idle_sheet": "res://assets/tilesets/mediterranean/Characters/mire/chr_mire_idle.png",
+		"idle_up_sheet": "res://assets/tilesets/mediterranean/Characters/mire/chr_mire_idle_back.png",
+		"idle_side_sheet": "res://assets/tilesets/mediterranean/Characters/mire/chr_mire_idle_side.png",
+		"walk_up_sheet": "res://assets/tilesets/mediterranean/Characters/mire/chr_mire_run_upward.png",
+		"walk_down_sheet": "res://assets/tilesets/mediterranean/Characters/mire/chr_mire_run_downward.png",
+		"walk_side_sheet": "res://assets/tilesets/mediterranean/Characters/mire/chr_mire_run_side.png",
+		"attack_up_sheet": "res://assets/tilesets/mediterranean/Characters/mire/chr_mire_attack_back.png",
+		"attack_down_sheet": "res://assets/tilesets/mediterranean/Characters/mire/chr_mire_attack.png",
+		"attack_side_sheet": "res://assets/tilesets/mediterranean/Characters/mire/chr_mire_attack_side.png",
+		"death_up_sheet": "res://assets/tilesets/mediterranean/Characters/mire/chr_mire_deploy_back.png",
+		"death_down_sheet": "res://assets/tilesets/mediterranean/Characters/mire/chr_mire_deploy.png",
+	},
+	"hexwing": {
+		"name": "Hexala",
+		"scene": "res://scenes/units/unit_enemy.tscn",
+		"preview": "res://assets/tilesets/mediterranean/Characters/hexwing/chr_hexwing_idle.png",
+		"idle_sheet": "res://assets/tilesets/mediterranean/Characters/hexwing/chr_hexwing_idle.png",
+		"idle_up_sheet": "res://assets/tilesets/mediterranean/Characters/hexwing/chr_hexwing_idle_back.png",
+		"idle_side_sheet": "res://assets/tilesets/mediterranean/Characters/hexwing/chr_hexwing_idle_side.png",
+		"walk_up_sheet": "res://assets/tilesets/mediterranean/Characters/hexwing/chr_hexwing_run_upward.png",
+		"walk_down_sheet": "res://assets/tilesets/mediterranean/Characters/hexwing/chr_hexwing_run_downward.png",
+		"walk_side_sheet": "res://assets/tilesets/mediterranean/Characters/hexwing/chr_hexwing_run_side.png",
+		"attack_up_sheet": "res://assets/tilesets/mediterranean/Characters/hexwing/chr_hexwing_attack_back.png",
+		"attack_down_sheet": "res://assets/tilesets/mediterranean/Characters/hexwing/chr_hexwing_attack.png",
+		"attack_side_sheet": "res://assets/tilesets/mediterranean/Characters/hexwing/chr_hexwing_attack_side.png",
+		"death_up_sheet": "res://assets/tilesets/mediterranean/Characters/hexwing/chr_hexwing_deploy_back.png",
+		"death_down_sheet": "res://assets/tilesets/mediterranean/Characters/hexwing/chr_hexwing_deploy.png",
+	},
 }
 
 const SPAWN_HOTKEYS: Dictionary = {
@@ -115,6 +193,10 @@ const SPAWN_HOTKEYS: Dictionary = {
 	KEY_F2: "archer",
 	KEY_F3: "builder",
 	KEY_F4: "enemy",
+	KEY_F5: "mage",
+	KEY_F6: "ember",
+	KEY_F7: "mire",
+	KEY_F8: "hexwing",
 }
 
 
@@ -165,8 +247,18 @@ static func apply_definition_to_unit(unit: Unit, type_id: String) -> void:
 	unit.melee_range = def.get("melee_range", unit.melee_range)
 	unit.attack_range_min = def.get("attack_range_min", unit.attack_range_min)
 	unit.attack_range_max = def.get("attack_range_max", unit.attack_range_max)
+	unit.chain_radius = def.get("chain_radius", 0.0)
+	unit.chain_damage = def.get("chain_damage", 0)
+	unit.chain_max_targets = def.get("chain_max_targets", 0)
 	unit.invert_up_flip = def.get("invert_up_flip", false)
 
+	apply_sheets_to_unit(unit, type_id)
+
+
+static func apply_sheets_to_unit(unit: Unit, type_id: String) -> void:
+	var def := get_definition(type_id)
+	if def.is_empty():
+		return
 	# Always assign (or clear) every sheet slot so transforms don't keep old art.
 	_apply_sheet(unit, def, "idle_sheet", "idle_sheet")
 	_apply_sheet(unit, def, "idle_up_sheet", "idle_up_sheet")

@@ -20,9 +20,17 @@ const RAID_PRIORITY_BUILDING_TYPES: Array[String] = [
 	"house_big",
 ]
 
+const KIND_VISUAL := {
+	"ember": "ember",
+	"mire": "mire",
+	"hexwing": "hexwing",
+}
+
 var enemy_kind: String = "normal"
 var wall_damage_bonus: float = 1.0
 var steals_resources: bool = false
+## Hexala prioritizes military units over buildings when no nearby threat.
+var hunts_military: bool = false
 
 var _player_visible: bool = true
 var _visibility_linger: float = 0.0
@@ -51,8 +59,12 @@ func configure_kind(kind: String) -> void:
 	enemy_kind = kind
 	wall_damage_bonus = 1.0
 	steals_resources = false
+	hunts_military = false
 	scale = Vector2.ONE
 	modulate = Color.WHITE
+
+	var visual_id := str(KIND_VISUAL.get(kind, "enemy"))
+	UnitDatabase.apply_sheets_to_unit(self, visual_id)
 
 	match kind:
 		"swarm":
@@ -88,6 +100,35 @@ func configure_kind(kind: String) -> void:
 			attack_cooldown = 1.0
 			steals_resources = true
 			modulate = Color(1.0, 0.85, 0.4)
+		"ember":
+			# Fast fragile fire imp — rushes units and burns through lines.
+			max_hp = 28
+			hp = max_hp
+			attack_damage = 6
+			move_speed = 130.0
+			attack_cooldown = 0.85
+			melee_range = 50.0
+			scale = Vector2(0.85, 0.85)
+		"mire":
+			# Slow toad-golem tank — shreds walls and absorbs damage.
+			max_hp = 160
+			hp = max_hp
+			attack_damage = 14
+			move_speed = 42.0
+			attack_cooldown = 1.6
+			wall_damage_bonus = 2.2
+			melee_range = 70.0
+			scale = Vector2(1.4, 1.4)
+		"hexwing":
+			# Floating hex-bat — hunts military units, high damage fragile.
+			max_hp = 55
+			hp = max_hp
+			attack_damage = 15
+			move_speed = 110.0
+			attack_cooldown = 1.05
+			melee_range = 58.0
+			hunts_military = true
+			scale = Vector2(1.05, 1.05)
 		_:
 			enemy_kind = "normal"
 			max_hp = 40
@@ -257,12 +298,18 @@ func _acquire_target() -> void:
 		attack_target_unit(nearby_player)
 		return
 
+	if hunts_military:
+		var military := _find_nearest_player_unit(420.0, true)
+		if military != null:
+			attack_target_unit(military)
+			return
+
 	var target_building := _find_best_player_building()
 	if target_building != null:
 		attack_target_building_node(target_building)
 
 
-func _find_nearest_player_unit(max_range: float) -> Unit:
+func _find_nearest_player_unit(max_range: float, military_only: bool = false) -> Unit:
 	var best_unit: Unit = null
 	var best_distance_sq := max_range * max_range
 	var origin := global_position
@@ -276,6 +323,8 @@ func _find_nearest_player_unit(max_range: float) -> Unit:
 		if player_unit._is_dying or player_unit.hp <= 0:
 			continue
 		if player_unit.garrisoned_building != null:
+			continue
+		if military_only and player_unit.is_civilian:
 			continue
 		var distance_sq := origin.distance_squared_to(player_unit.global_position)
 		if distance_sq < best_distance_sq:
@@ -305,8 +354,10 @@ func _find_best_player_building() -> Building:
 		var type_index := priorities.find(building.building_type_id)
 		if type_index >= 0:
 			priority_bonus = -300.0 - float(type_index) * 50.0
-		if enemy_kind == "siege" and building.building_type_id == "wall":
+		if (enemy_kind == "siege" or enemy_kind == "mire") and building.building_type_id == "wall":
 			priority_bonus -= 200.0
+		if enemy_kind == "hexwing" and building.building_type_id in ["barracks", "stable", "arcanum", "tower"]:
+			priority_bonus -= 180.0
 
 		var score := distance + priority_bonus
 		if score < best_score:

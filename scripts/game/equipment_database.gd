@@ -25,6 +25,14 @@ const DEFINITIONS: Dictionary = {
 		"transforms_to": "archer",
 		"squad_size": BalanceConfig.SQUAD_SIZE,
 	},
+	"mage_squad": {
+		"name": "Escuadrón de magos",
+		"train_time": BalanceConfig.SQUAD_TRAIN_TIME,
+		"cost": {"wood": 0, "gold": BalanceConfig.SQUAD_GOLD_COST + 10, "food": BalanceConfig.SQUAD_FOOD_COST},
+		"building_types": ["arcanum"],
+		"transforms_to": "mage",
+		"squad_size": BalanceConfig.SQUAD_SIZE,
+	},
 }
 
 

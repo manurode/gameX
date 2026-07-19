@@ -434,6 +434,6 @@ func _update_help_for_cycle() -> void:
 			help_label.text = "AMANECER — Elige una bendición y reorganiza la base."
 		_:
 			help_label.text = (
-				"DÍA — Recolecta y fortifica  |  Sobrevive %d noches  |  1-9: construir"
+				"DÍA — Recolecta y fortifica  |  Sobrevive %d noches  |  1-9/0: construir"
 				% BalanceConfig.WIN_NIGHTS
 			)

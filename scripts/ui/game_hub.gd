@@ -2,7 +2,7 @@ extends PanelContainer
 
 const BUILD_ORDER: Array[String] = [
 	"house_small", "house_big", "lumber_camp", "mill",
-	"mine", "stable", "barracks", "tower", "wall",
+	"mine", "stable", "barracks", "arcanum", "tower", "wall",
 ]
 
 const FORMATION_ORDER: Array[Unit.FormationType] = [
@@ -261,7 +261,9 @@ func _ensure_production_box() -> void:
 func _build_command_grid() -> void:
 	for i in BUILD_ORDER.size():
 		var type_id: String = BUILD_ORDER[i]
-		var slot := _create_build_slot(type_id, i + 1)
+		# Hotkeys 1-9 then 0 for the 10th buildable (muralla).
+		var hotkey_num := (i + 1) % 10
+		var slot := _create_build_slot(type_id, hotkey_num)
 		_build_grid.add_child(slot)
 		_build_slots[type_id] = slot
 

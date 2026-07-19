@@ -10,8 +10,9 @@ const BUILD_HOTKEYS: Dictionary = {
 	KEY_5: "mine",
 	KEY_6: "stable",
 	KEY_7: "barracks",
-	KEY_8: "tower",
-	KEY_9: "wall",
+	KEY_8: "arcanum",
+	KEY_9: "tower",
+	KEY_0: "wall",
 }
 
 ## Minimum travel along a leg before a mid-drag turn commits a corner.

@@ -128,13 +128,15 @@ func _try_spawn_unit(world_pos: Vector2, type_id: String = "") -> void:
 	_units_container.add_child(unit)
 	unit.global_position = world_pos
 	UnitDatabase.apply_definition_to_unit(unit, spawn_type)
-	if spawn_type == "enemy" and unit is EnemyUnit:
-		(unit as EnemyUnit).configure_kind("normal")
+	var enemy_kinds := ["enemy", "ember", "mire", "hexwing"]
+	if spawn_type in enemy_kinds and unit is EnemyUnit:
+		var kind := "normal" if spawn_type == "enemy" else spawn_type
+		(unit as EnemyUnit).configure_kind(kind)
 	if _ground_layer != null:
 		unit.set_ground_layer(_ground_layer)
 	unit.reset_navigation()
 	var world := get_tree().get_first_node_in_group("game_world")
-	if world != null and world.has_method("register_player_unit") and spawn_type != "enemy":
+	if world != null and world.has_method("register_player_unit") and spawn_type not in enemy_kinds:
 		world.call("register_player_unit", unit)
 
 

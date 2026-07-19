@@ -35,8 +35,9 @@ const DEFINITIONS := {
 		"fog": false,
 		"eclipse": false,
 		"composition": [
-			{"kind": "siege", "weight": 0.55},
-			{"kind": "normal", "weight": 0.45},
+			{"kind": "siege", "weight": 0.35},
+			{"kind": "mire", "weight": 0.35},
+			{"kind": "normal", "weight": 0.3},
 		],
 	},
 	Id.AMBUSH: {
@@ -49,8 +50,9 @@ const DEFINITIONS := {
 		"fog": false,
 		"eclipse": false,
 		"composition": [
-			{"kind": "normal", "weight": 0.7},
-			{"kind": "swarm", "weight": 0.3},
+			{"kind": "normal", "weight": 0.45},
+			{"kind": "ember", "weight": 0.3},
+			{"kind": "hexwing", "weight": 0.25},
 		],
 	},
 	Id.RAID: {
@@ -105,9 +107,10 @@ const DEFINITIONS := {
 		"fog": false,
 		"eclipse": true,
 		"composition": [
-			{"kind": "normal", "weight": 0.65},
-			{"kind": "siege", "weight": 0.2},
-			{"kind": "swarm", "weight": 0.15},
+			{"kind": "normal", "weight": 0.4},
+			{"kind": "hexwing", "weight": 0.25},
+			{"kind": "mire", "weight": 0.15},
+			{"kind": "ember", "weight": 0.2},
 		],
 	},
 }

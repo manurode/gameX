@@ -70,6 +70,10 @@ static var _shared_dust_texture: Texture2D
 @export var melee_range: float = 52.0
 @export var attack_range_min: float = 90.0
 @export var attack_range_max: float = 210.0
+## When > 0, ranged attacks spawn a chain-lightning bolt instead of an arrow.
+@export var chain_radius: float = 0.0
+@export var chain_damage: int = 0
+@export var chain_max_targets: int = 0
 @export var team_id: int = Team.PLAYER
 
 var hp: int
@@ -2160,6 +2164,9 @@ func _spawn_stone_at_building(target_building: Building) -> void:
 func _spawn_arrow_at_unit(target_unit: Unit) -> void:
 	if target_unit == null:
 		return
+	if _uses_chain_lightning():
+		_spawn_lightning_at_unit(target_unit)
+		return
 
 	var arrow_scene: PackedScene = preload("res://scenes/combat/arrow.tscn")
 	var arrow: Arrow = arrow_scene.instantiate()
@@ -2181,6 +2188,9 @@ func _spawn_arrow_at_unit(target_unit: Unit) -> void:
 func _spawn_arrow_at_building(target_building: Building) -> void:
 	if target_building == null:
 		return
+	if _uses_chain_lightning():
+		_spawn_lightning_at_building(target_building)
+		return
 
 	var arrow_scene: PackedScene = preload("res://scenes/combat/arrow.tscn")
 	var arrow: Arrow = arrow_scene.instantiate()
@@ -2197,6 +2207,56 @@ func _spawn_arrow_at_building(target_building: Building) -> void:
 	var world := _get_combat_world()
 	world.add_child(arrow)
 	arrow.global_position = origin + dir * _get_projectile_spawn_offset()
+
+
+func _uses_chain_lightning() -> bool:
+	return chain_radius > 0.0 and chain_damage > 0
+
+
+func _spawn_lightning_at_unit(target_unit: Unit) -> void:
+	if target_unit == null:
+		return
+	var bolt_scene: PackedScene = preload("res://scenes/combat/lightning_bolt.tscn")
+	var bolt: LightningBolt = bolt_scene.instantiate()
+	var origin := get_sprite_center()
+	var target_point := target_unit.get_sprite_center()
+	var dir := origin.direction_to(target_point)
+	if dir == Vector2.ZERO:
+		dir = Vector2.RIGHT
+
+	bolt.shooter = self
+	bolt.target = target_unit
+	bolt.damage = get_attack_damage()
+	bolt.chain_damage = chain_damage
+	bolt.chain_radius = chain_radius
+	bolt.chain_max_targets = maxi(1, chain_max_targets)
+	bolt.direction = dir
+	var world := _get_combat_world()
+	world.add_child(bolt)
+	bolt.global_position = origin + dir * _get_projectile_spawn_offset()
+
+
+func _spawn_lightning_at_building(target_building: Building) -> void:
+	if target_building == null:
+		return
+	var bolt_scene: PackedScene = preload("res://scenes/combat/lightning_bolt.tscn")
+	var bolt: LightningBolt = bolt_scene.instantiate()
+	var origin := get_sprite_center()
+	var target_point := target_building.get_attack_point()
+	var dir := origin.direction_to(target_point)
+	if dir == Vector2.ZERO:
+		dir = Vector2.RIGHT
+
+	bolt.shooter = self
+	bolt.building_target = target_building
+	bolt.damage = get_attack_damage()
+	bolt.chain_damage = chain_damage
+	bolt.chain_radius = chain_radius
+	bolt.chain_max_targets = maxi(1, chain_max_targets)
+	bolt.direction = dir
+	var world := _get_combat_world()
+	world.add_child(bolt)
+	bolt.global_position = origin + dir * _get_projectile_spawn_offset()
 
 
 func _get_projectile_spawn_offset() -> float:

@@ -1,0 +1,40 @@
+[gd_scene format=3 uid="uid://cunitmage"]
+
+[ext_resource type="PackedScene" uid="uid://cunit001" path="res://scenes/units/unit.tscn" id="1_base"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/mage/chr_mage_idle.png" id="2_idle"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/mage/chr_mage_idle_back.png" id="3_idle_up"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/mage/chr_mage_idle_side.png" id="4_idle_side"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/mage/chr_mage_run_upward.png" id="5_walk_up"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/mage/chr_mage_run_downward.png" id="6_walk_down"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/mage/chr_mage_run_side.png" id="7_walk_side"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/mage/chr_mage_attack.png" id="8_attack_down"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/mage/chr_mage_attack_back.png" id="9_attack_up"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/mage/chr_mage_attack_side.png" id="10_attack_side"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/mage/chr_mage_deploy.png" id="11_death_down"]
+[ext_resource type="Texture2D" path="res://assets/tilesets/mediterranean/Characters/mage/chr_mage_deploy_back.png" id="12_death_up"]
+
+[node name="UnitMage" instance=ExtResource("1_base")]
+move_speed = 90.0
+max_hp = 85
+combat_style = 1
+can_attack = true
+is_civilian = false
+unit_type_id = "mage"
+attack_damage = 12
+attack_cooldown = 1.35
+attack_range_min = 80.0
+attack_range_max = 200.0
+chain_radius = 70.0
+chain_damage = 4
+chain_max_targets = 2
+idle_sheet = ExtResource("2_idle")
+idle_up_sheet = ExtResource("3_idle_up")
+idle_side_sheet = ExtResource("4_idle_side")
+walk_up_sheet = ExtResource("5_walk_up")
+walk_down_sheet = ExtResource("6_walk_down")
+walk_side_sheet = ExtResource("7_walk_side")
+attack_up_sheet = ExtResource("9_attack_up")
+attack_down_sheet = ExtResource("8_attack_down")
+attack_side_sheet = ExtResource("10_attack_side")
+death_up_sheet = ExtResource("12_death_up")
+death_down_sheet = ExtResource("11_death_down")

@@ -1,0 +1,15 @@
+[gd_scene format=3 uid="uid://clightning001"]
+
+[ext_resource type="Script" path="res://scripts/combat/lightning_bolt.gd" id="1_bolt"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_bolt"]
+radius = 6.0
+
+[node name="LightningBolt" type="Area2D"]
+collision_layer = 0
+collision_mask = 2
+monitorable = false
+script = ExtResource("1_bolt")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_bolt")
