@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://t5dobggxtkan"
-path="res://.godot/imported/town_center_damaged.png-92250ce650be1c460f54e5567cca125e.ctex"
+uid="uid://bp17wflpunmh5"
+path="res://.godot/imported/town_center.png-ebfac503c37841cd494d19bd802323b1.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/tilesets/mediterranean/Buildings/town_center_damaged.png"
-dest_files=["res://.godot/imported/town_center_damaged.png-92250ce650be1c460f54e5567cca125e.ctex"]
+source_file="res://assets/_archive/town_center_old/town_center.png"
+dest_files=["res://.godot/imported/town_center.png-ebfac503c37841cd494d19bd802323b1.ctex"]
 
 [params]
 

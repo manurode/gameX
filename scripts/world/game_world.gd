@@ -161,7 +161,7 @@ func spawn_free_tower() -> void:
 	if ground_layer == null or _town_center == null:
 		return
 	var center := ground_layer.get_town_center_cell()
-	var cell = _find_free_spawn_cell(center, "tower", 2, 14)
+	var cell = _find_free_spawn_cell(center, "tower", 4, 16)
 	if cell == null:
 		push_warning("spawn_free_tower: no free cell around town center")
 		return

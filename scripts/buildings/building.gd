@@ -158,7 +158,9 @@ func _refresh_night_light_params() -> void:
 func _resolve_night_light_params() -> Dictionary:
 	# Same brightness as units; only a bit more radius for settlement coverage.
 	match building_type_id:
-		"town_center", "castle_big", "castle_small":
+		"town_center":
+			return {"energy": 1.15, "scale": 3.1, "offset_y": -46.0}
+		"castle_big", "castle_small":
 			return {"energy": 1.15, "scale": 2.35, "offset_y": -32.0}
 		"tower":
 			return {"energy": 1.15, "scale": 2.15, "offset_y": -36.0}
