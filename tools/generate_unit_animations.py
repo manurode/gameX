@@ -2,7 +2,7 @@
 Generate walk / attack / work sprite strips from idle base frames.
 
 - Preserves true alpha (no opaque black boxes)
-- Walk = upright stride bob + leg split (no drunken whole-body sway)
+- Walk = whole-body bob/lean + foot/hem steps only (torso never warped)
 - Attack / work = upright body; weapon arm rotates around the shoulder
 """
 
@@ -79,8 +79,10 @@ def place_sprite(
 
 def split_legs(sprite: Image.Image, stride: float, lift: float = 0.0) -> Image.Image:
     """
-    Move left/right halves of the lower body in opposite directions and lift
-    the trailing foot so the cycle reads as a step, not a sway.
+    Move outer lower-body pixels for a stride and lift the trailing foot.
+
+    Starts from a full copy of the sprite so the torso/crotch never opens a
+    transparent tear; only the outer leg columns are shifted.
     stride > 0 => viewer's-right foot forward.
     """
     arr = np.array(sprite)
@@ -92,20 +94,25 @@ def split_legs(sprite: Image.Image, stride: float, lift: float = 0.0) -> Image.I
     y0, y1 = int(ys.min()), int(ys.max())
     x0, x1 = int(xs.min()), int(xs.max())
     mid_x = (x0 + x1) * 0.5
-    hip_y = y0 + int((y1 - y0) * 0.52)
+    width = max(x1 - x0, 1)
+    # Legs only — pelvis/torso stay intact (old 0.52 cut mid-body and tore open).
+    hip_y = y0 + int((y1 - y0) * 0.72)
+    # Inner columns stay put; only outer legs stride.
+    core_half = max(3.0, width * 0.18)
 
-    out = np.zeros_like(arr)
-    out[:hip_y] = arr[:hip_y]
-
+    # Full body first — then shift outer legs on top of the sealed core.
+    out = arr.copy()
     height = max(y1 - hip_y, 1)
+    moves: list[tuple[int, int, np.ndarray, int, int]] = []
     for y in range(hip_y, FRAME):
         t = (y - hip_y) / height
         strength = t * t
         for x in range(FRAME):
             if arr[y, x, 3] < 8:
                 continue
+            if abs(x - mid_x) <= core_half:
+                continue
             right = x >= mid_x
-            # Trailing foot lifts; planting foot stays down
             if right:
                 foot_lift = -lift * strength if stride < 0 else 0.0
                 sx = int(round(x + stride * strength))
@@ -113,8 +120,29 @@ def split_legs(sprite: Image.Image, stride: float, lift: float = 0.0) -> Image.I
                 foot_lift = -lift * strength if stride > 0 else 0.0
                 sx = int(round(x - stride * strength))
             sy = int(round(y + foot_lift))
-            if 0 <= sx < FRAME and 0 <= sy < FRAME and arr[y, x, 3] >= out[sy, sx, 3]:
-                out[sy, sx] = arr[y, x]
+            moves.append((x, y, arr[y, x].copy(), sx, sy))
+
+    for x, y, _pix, _sx, _sy in moves:
+        out[y, x] = 0
+
+    for x, y, pix, sx, sy in moves:
+        if 0 <= sx < FRAME and 0 <= sy < FRAME and pix[3] >= out[sy, sx, 3]:
+            out[sy, sx] = pix
+
+    # Restore any interior holes created by clearing sources (keeps body sealed).
+    for y in range(hip_y, min(FRAME, y1 + 1)):
+        opaque = out[y, :, 3] >= 8
+        xs_row = np.where(opaque)[0]
+        if len(xs_row) < 2:
+            continue
+        left, right = int(xs_row[0]), int(xs_row[-1])
+        for x in range(left, right + 1):
+            if out[y, x, 3] >= 8:
+                continue
+            if arr[y, x, 3] >= 8:
+                out[y, x] = arr[y, x]
+            elif x > 0 and out[y, x - 1, 3] >= 8:
+                out[y, x] = out[y, x - 1]
 
     return Image.fromarray(out, "RGBA")
 
@@ -133,33 +161,47 @@ def character_bounds(sprite: Image.Image) -> tuple[int, int, int, int, float, fl
 
 
 def swing_arm_band(sprite: Image.Image, amount: float, right_side: bool) -> Image.Image:
-    """Nudge one side of the torso horizontally to suggest arm swing (walk)."""
+    """Nudge the outer arm fringe horizontally to suggest swing (walk)."""
     arr = np.array(sprite)
     x0, y0, x1, y1, mid_x, _shoulder = character_bounds(sprite)
+    width = max(x1 - x0, 1)
     shoulder = y0 + int((y1 - y0) * 0.34)
     waist = y0 + int((y1 - y0) * 0.58)
+    # Outer fringe only — never clear the torso midline (that tore bodies open).
+    fringe = mid_x + width * 0.18 if right_side else mid_x - width * 0.18
 
     out = arr.copy()
-    for y in range(shoulder, waist + 1):
-        for x in range(FRAME):
-            if arr[y, x, 3] < 8:
-                continue
-            on_side = x >= mid_x - 1 if right_side else x <= mid_x + 1
-            if on_side:
-                out[y, x] = 0
-
+    moves: list[tuple[int, int, np.ndarray, int]] = []
     for y in range(shoulder, waist + 1):
         t = (y - shoulder) / max(waist - shoulder, 1)
         dx = amount * (0.35 + 0.65 * t)
         for x in range(FRAME):
             if arr[y, x, 3] < 8:
                 continue
-            on_side = x >= mid_x - 1 if right_side else x <= mid_x + 1
+            on_side = x >= fringe if right_side else x <= fringe
             if not on_side:
                 continue
             sx = int(round(x + dx))
-            if 0 <= sx < FRAME and arr[y, x, 3] >= out[y, sx, 3]:
-                out[y, sx] = arr[y, x]
+            moves.append((x, y, arr[y, x].copy(), sx))
+
+    for x, y, _pix, _sx in moves:
+        out[y, x] = 0
+    for x, y, pix, sx in moves:
+        if 0 <= sx < FRAME and pix[3] >= out[y, sx, 3]:
+            out[y, sx] = pix
+
+    # Seal any holes left by the fringe shift.
+    for y in range(shoulder, waist + 1):
+        opaque = out[y, :, 3] >= 8
+        xs_row = np.where(opaque)[0]
+        if len(xs_row) < 2:
+            continue
+        left, right = int(xs_row[0]), int(xs_row[-1])
+        for x in range(left, right + 1):
+            if out[y, x, 3] >= 8:
+                continue
+            if arr[y, x, 3] >= 8:
+                out[y, x] = arr[y, x]
 
     return Image.fromarray(out, "RGBA")
 
@@ -331,27 +373,100 @@ def stitch(frames: list[Image.Image]) -> Image.Image:
     return sheet
 
 
+def step_feet(sprite: Image.Image, stride: float, lift: float = 0.0) -> Image.Image:
+    """
+    Step cycle on lower legs / hem only. Head, torso, and arms stay untouched.
+
+    Cubic falloff: knees barely move, toes stride and lift. No hard waist cut.
+    stride > 0 => viewer's-right foot forward; swing foot lifts, plant foot stays.
+    """
+    arr = np.array(sprite)
+    alpha = arr[:, :, 3] > 8
+    ys, xs = np.where(alpha)
+    if len(xs) == 0:
+        return sprite
+
+    y0, y1 = int(ys.min()), int(ys.max())
+    x0, x1 = int(xs.min()), int(xs.max())
+    mid_x = (x0 + x1) * 0.5
+    half_w = max((x1 - x0) * 0.5, 1.0)
+    body_h = max(y1 - y0, 1)
+    # Start below the waist; strength^3 keeps the top of this band almost still.
+    foot_y = y0 + int(body_h * 0.68)
+    band_h = max(y1 - foot_y, 1)
+
+    out = arr.copy()
+    moves: list[tuple[int, int, np.ndarray, int, int]] = []
+    for y in range(foot_y, min(FRAME, y1 + 1)):
+        t = (y - foot_y) / band_h
+        strength = t * t * t
+        for x in range(FRAME):
+            if arr[y, x, 3] < 8:
+                continue
+            dist = abs(x - mid_x) / half_w
+            if dist < 0.10:
+                continue  # keep crotch / hem center sealed
+            right = x >= mid_x
+            if right:
+                sx = int(round(x + stride * strength))
+                foot_lift = lift * strength if stride < 0 else 0.0
+            else:
+                sx = int(round(x - stride * strength))
+                foot_lift = lift * strength if stride > 0 else 0.0
+            sy = int(round(y - foot_lift))
+            moves.append((x, y, arr[y, x].copy(), sx, sy))
+
+    for x, y, _pix, _sx, _sy in moves:
+        out[y, x] = 0
+    for x, y, pix, sx, sy in moves:
+        if 0 <= sx < FRAME and 0 <= sy < FRAME and pix[3] >= out[sy, sx, 3]:
+            out[sy, sx] = pix
+
+    # Re-seal holes inside the original lower silhouette.
+    for y in range(foot_y, min(FRAME, y1 + 1)):
+        opaque = out[y, :, 3] >= 8
+        xs_row = np.where(opaque)[0]
+        if len(xs_row) < 2:
+            continue
+        left, right = int(xs_row[0]), int(xs_row[-1])
+        for x in range(left, right + 1):
+            if out[y, x, 3] >= 8:
+                continue
+            if arr[y, x, 3] >= 8:
+                out[y, x] = arr[y, x]
+
+    return Image.fromarray(out, "RGBA")
+
+
 def make_walk(base: Image.Image, facing_back: bool = False) -> Image.Image:
+    """
+    Readable walk without shearing the torso apart.
+
+    - Feet/hem take real steps (forward + lift)
+    - Whole sprite bobs and weight-shifts (readable under long capes)
+    - No arm/torso warping and no bilinear squash (those cut pixel-art bodies)
+    """
+    del facing_back  # reserved for future facing-specific tweaks
     sprite = to_sprite(base)
     frames = []
     for i in range(8):
         t = i / 8.0 * math.tau
-        # Contact -> passing -> contact; lift peaks at mid-stride
-        stride = math.sin(t) * 5.0
-        lift = abs(math.sin(t)) * 3.0
-        posed = split_legs(sprite, stride, lift=lift)
-        arm = math.sin(t + math.pi) * 2.5
-        posed = swing_arm_band(posed, arm, right_side=not facing_back)
-        # Upright bob only (never rotate the whole body while walking)
-        bob = -abs(math.sin(t)) * 2.0
-        squash = 1.0 - abs(math.sin(t)) * 0.03
+        # Contact (t=0,π) → passing → contact; two steps per loop.
+        # Prefer lift over wide lateral spread — a deep V-stance reads as "torn".
+        stride = math.sin(t) * 3.0
+        lift = abs(math.sin(t)) * 5.5
+        posed = step_feet(sprite, stride, lift=lift)
+
+        # Mid-stride rise; contact settles — main anti-slide cue for cape units.
+        bob = -abs(math.sin(t)) * 4.0
+        lean = math.sin(t) * 0.8
         frames.append(
             place_sprite(
                 posed,
                 angle=0.0,
-                dx=0.0,
+                dx=lean,
                 dy=bob,
-                squash_y=squash,
+                squash_y=1.0,
             )
         )
     return stitch(frames)
@@ -842,6 +957,25 @@ def process_unit(unit: str, *, has_attack: bool, has_work: bool, ranged: bool = 
         save(make_work(front, False, tool=tool, unit=unit), unit_dir / f"chr_{unit}_afk.png")
 
 
+def regenerate_walks(unit: str) -> None:
+    """Rebuild only run sheets from existing anim_refs (no attack/work overwrite)."""
+    front_path = REFS / f"{unit}_base.png"
+    if not front_path.exists():
+        print(f"skip {unit}: missing {front_path.name}")
+        return
+    front = load_base(unit)
+    back_path = REFS / f"{unit}_back_base.png"
+    back = load_base(f"{unit}_back") if back_path.exists() else front
+    side_path = REFS / f"{unit}_side_base.png"
+    side = load_base(f"{unit}_side") if side_path.exists() else front
+    unit_dir = ROOT / unit
+    unit_dir.mkdir(parents=True, exist_ok=True)
+    save(make_walk(front, False), unit_dir / f"chr_{unit}_run_downward.png")
+    save(make_walk(back, True), unit_dir / f"chr_{unit}_run_upward.png")
+    save(make_walk(back, True), unit_dir / f"chr_{unit}_run_backward.png")
+    save(make_walk(side, False), unit_dir / f"chr_{unit}_run_side.png")
+
+
 def main() -> None:
     # Refresh refs from ORIGINAL idle frames (transparent)
     for unit in ("villager", "builder", "knight", "archer", "enemy"):
@@ -863,6 +997,9 @@ def main() -> None:
     process_unit("knight", has_attack=True, has_work=False)
     process_unit("archer", has_attack=True, has_work=False, ranged=True)
     process_unit("enemy", has_attack=True, has_work=False)
+    # Newer units keep attack/work from pose pipeline; only refresh walks.
+    for unit in ("mage", "ember", "mire", "hexwing"):
+        regenerate_walks(unit)
     print("Done.")
 
 

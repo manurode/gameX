@@ -27,7 +27,7 @@ static func build_character_frames(
 	death_down_sheet: Texture2D = null,
 	frame_size: int = 80,
 	idle_fps: float = 6.0,
-	walk_fps: float = 10.0,
+	walk_fps: float = 12.0,
 	attack_fps: float = 12.0,
 	death_fps: float = 7.0,
 	death_frame_count: int = -1,

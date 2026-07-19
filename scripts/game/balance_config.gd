@@ -13,9 +13,9 @@ const PHASE_DURATIONS := {
 
 const WIN_NIGHTS := 5
 
-const INITIAL_WOOD := 260
-const INITIAL_GOLD := 0
-const INITIAL_FOOD := 135
+const INITIAL_WOOD := 2000
+const INITIAL_GOLD := 2000
+const INITIAL_FOOD := 2000
 const INITIAL_VILLAGERS := 5
 
 const WOOD_PER_SECOND := 1.0
