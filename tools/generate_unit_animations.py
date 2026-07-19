@@ -773,7 +773,8 @@ def make_villager_work(
     Front: hoe drawn on top of body (tool between camera and character).
     Back: hoe drawn UNDER body so it sits in front of the character (away from
     camera), with only the tip peeking above the hat — same as working ahead.
-    Side: raise tip high above/behind the head, then strike forward with lean.
+    Side: procedural fallback only — production side sheets come from
+    tools/build_side_work_sheets.py (AI raise/strike poses, same cadence).
     """
     sprite = harden_alpha(to_sprite(base), cut=30)
     # Remove green sash-drape streaks that read as a second stick

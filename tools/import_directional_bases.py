@@ -171,12 +171,17 @@ def rebuild_sheets(bases: dict[str, dict[str, Image.Image]]) -> None:
 
         if unit in WORKERS:
             tool = "hoe" if unit == "villager" else "axe"
-            # Front/back work prefer AI pose sheets; side is procedural with dedicated facing.
-            # Skip rewriting afk_back here — tools/build_back_work_sheets.py owns it.
-            save(
-                make_work(side, facing_side=True, tool=tool, unit=unit),
-                unit_dir / f"chr_{unit}_afk_side.png",
-            )
+            # Front/back/side work prefer AI pose sheets when available.
+            # Skip rewriting afk_back — tools/build_back_work_sheets.py owns it.
+            # Skip rewriting afk_side when side poses exist — tools/build_side_work_sheets.py.
+            side_pose = Path(r"C:\Repos\gameX\tools\ai_poses") / f"{unit}_side_pose_raise.png"
+            if side_pose.exists():
+                print(f"skip procedural afk_side for {unit} (AI side poses present)")
+            else:
+                save(
+                    make_work(side, facing_side=True, tool=tool, unit=unit),
+                    unit_dir / f"chr_{unit}_afk_side.png",
+                )
 
         # Side attack fallback for enemy (mirror-friendly side idle lunge via walk bob)
         if unit == "enemy":
