@@ -104,7 +104,7 @@ const DEFINITIONS: Dictionary = {
 		"combat_style": Unit.CombatStyle.RANGED,
 		"attack_damage": 12,
 		"attack_cooldown": 1.35,
-		"attack_range_min": 80.0,
+		"attack_range_min": 0.0,
 		"attack_range_max": 200.0,
 		"chain_radius": 90.0,
 		"chain_damage": 4,
