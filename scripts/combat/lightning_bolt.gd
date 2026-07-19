@@ -1,100 +1,138 @@
 class_name LightningBolt
-extends Area2D
+extends Node2D
 
-const MAX_LIFETIME := 1.6
-const CHAIN_VFX_SECONDS := 0.28
+## Instant chain-lightning VFX: staff → primary, then fan branches to nearby foes.
 
-var speed: float = 420.0
+const MAIN_GROW_SECONDS := 0.09
+const BRANCH_GROW_SECONDS := 0.11
+const HOLD_SECONDS := 0.26
+const BRANCH_START_DELAY := 0.07
+
 var damage: int = 12
 var chain_damage: int = 4
 var chain_radius: float = 70.0
 var chain_max_targets: int = 2
-var direction: Vector2 = Vector2.RIGHT
 var shooter: Unit
 var target: Unit
 var building_target: Building
+var emit_origin: Vector2 = Vector2.ZERO
 
-var _lifetime: float = 0.0
-var _has_hit := false
-var _chain_points: Array[Vector2] = []
-var _chain_timer: float = 0.0
-var _show_chain := false
+var _segments: Array[Dictionary] = []
+var _impact_points: Array[Vector2] = []
+var _elapsed: float = 0.0
+var _rng := RandomNumberGenerator.new()
+var _fired := false
+var _flicker_token: int = 0
 
 
 func _ready() -> void:
-	body_entered.connect(_on_body_entered)
-	rotation = direction.angle()
-	queue_redraw()
+	z_index = 40
+	_rng.seed = Time.get_ticks_usec()
+	# Defer so emit_origin / targets set by the shooter are available.
+	call_deferred("_fire")
 
 
-func _physics_process(delta: float) -> void:
-	if _show_chain:
-		_chain_timer -= delta
-		queue_redraw()
-		if _chain_timer <= 0.0:
-			queue_free()
+func _process(delta: float) -> void:
+	if not _fired:
 		return
-
-	var motion := direction * speed * delta
-	global_position += motion
-	_lifetime += delta
-
-	if not _has_hit and target != null and _can_hit_unit(target):
-		if global_position.distance_squared_to(target.get_sprite_center()) <= 324.0:
-			_hit_unit(target)
-
-	if not _has_hit and building_target != null and _can_hit_building(building_target):
-		if global_position.distance_squared_to(building_target.get_attack_point()) <= 484.0:
-			_hit_building(building_target)
-
-	if _lifetime >= MAX_LIFETIME:
+	_elapsed += delta
+	_flicker_token = int(_elapsed * 28.0)
+	queue_redraw()
+	if _elapsed >= MAIN_GROW_SECONDS + BRANCH_GROW_SECONDS + HOLD_SECONDS:
 		queue_free()
 
 
-func _draw() -> void:
-	if _show_chain and not _chain_points.is_empty():
-		var origin_local := to_local(_chain_points[0])
-		for i in range(1, _chain_points.size()):
-			var a := to_local(_chain_points[i - 1]) if i > 1 else origin_local
-			if i == 1:
-				a = origin_local
-			var b := to_local(_chain_points[i])
-			_draw_jagged_bolt(a, b, Color(0.55, 0.85, 1.0, 0.95), 2.4)
-			_draw_jagged_bolt(a, b, Color(0.85, 0.95, 1.0, 0.55), 1.1)
+func _fire() -> void:
+	if _fired:
+		return
+	_fired = true
+
+	var origin := emit_origin
+	if origin == Vector2.ZERO and shooter != null and is_instance_valid(shooter):
+		origin = shooter.get_staff_emit_point()
+	emit_origin = origin
+	global_position = origin
+
+	var primary_point := origin + Vector2(40.0, 0.0)
+	if target != null and _can_hit_unit(target):
+		primary_point = target.get_sprite_center()
+		target.take_damage(damage, shooter)
+		_impact_points.append(primary_point)
+		_segments.append({
+			"from": origin,
+			"to": primary_point,
+			"delay": 0.0,
+			"grow": MAIN_GROW_SECONDS,
+			"main": true,
+		})
+		_apply_chain_branches(target, primary_point)
+	elif building_target != null and _can_hit_building(building_target):
+		primary_point = building_target.get_attack_point()
+		building_target.take_damage(damage, shooter)
+		_impact_points.append(primary_point)
+		_segments.append({
+			"from": origin,
+			"to": primary_point,
+			"delay": 0.0,
+			"grow": MAIN_GROW_SECONDS,
+			"main": true,
+		})
+	else:
+		# Fallback flash if target vanished mid-cast.
+		_segments.append({
+			"from": origin,
+			"to": origin + Vector2(28.0, -18.0),
+			"delay": 0.0,
+			"grow": MAIN_GROW_SECONDS,
+			"main": true,
+		})
+		_impact_points.append(origin + Vector2(28.0, -18.0))
+
+	queue_redraw()
+
+
+func _apply_chain_branches(primary: Unit, primary_point: Vector2) -> void:
+	if chain_damage <= 0 or chain_radius <= 0.0 or chain_max_targets <= 0:
+		return
+	if shooter == null or not is_instance_valid(shooter):
 		return
 
-	# Primary flying bolt tip.
-	draw_colored_polygon(
-		PackedVector2Array([
-			Vector2(12.0, 0.0),
-			Vector2(-5.0, -3.5),
-			Vector2(-2.0, 0.0),
-			Vector2(-5.0, 3.5),
-		]),
-		Color(0.65, 0.9, 1.0, 1.0)
+	var tree := get_tree()
+	if tree == null:
+		return
+
+	var candidates: Array[Dictionary] = []
+	for item in UnitSpatialIndex.query_nearby(tree, primary.global_position, chain_radius):
+		if not item is Unit:
+			continue
+		var enemy := item as Unit
+		if enemy == primary or not _can_hit_unit(enemy):
+			continue
+		candidates.append({
+			"unit": enemy,
+			"dist": primary.global_position.distance_squared_to(enemy.global_position),
+		})
+
+	candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return float(a.dist) < float(b.dist)
 	)
-	draw_circle(Vector2(-1.0, 0.0), 3.0, Color(0.9, 0.98, 1.0, 0.85))
 
-
-func _draw_jagged_bolt(from: Vector2, to: Vector2, color: Color, width: float) -> void:
-	var delta := to - from
-	var length := delta.length()
-	if length <= 0.001:
-		return
-	var dir := delta / length
-	var perp := Vector2(-dir.y, dir.x)
-	var segments := maxi(2, int(length / 18.0))
-	var points := PackedVector2Array()
-	points.append(from)
-	for i in range(1, segments):
-		var t := float(i) / float(segments)
-		var base := from.lerp(to, t)
-		var wobble := sin(float(i) * 2.7 + length * 0.05) * 9.0
-		var jitter := perp * wobble * (1.0 - absf(t - 0.5) * 1.2)
-		points.append(base + jitter)
-	points.append(to)
-	for i in range(points.size() - 1):
-		draw_line(points[i], points[i + 1], color, width, true)
+	var chained := 0
+	for entry in candidates:
+		if chained >= chain_max_targets:
+			break
+		var enemy: Unit = entry.unit
+		var hit_point := enemy.get_sprite_center()
+		enemy.take_damage(chain_damage, shooter)
+		_impact_points.append(hit_point)
+		_segments.append({
+			"from": primary_point,
+			"to": hit_point,
+			"delay": BRANCH_START_DELAY + float(chained) * 0.03,
+			"grow": BRANCH_GROW_SECONDS,
+			"main": false,
+		})
+		chained += 1
 
 
 func _can_hit_unit(unit: Unit) -> bool:
@@ -121,86 +159,137 @@ func _can_hit_building(building: Building) -> bool:
 	return true
 
 
-func _on_body_entered(body: Node2D) -> void:
-	if _has_hit or _show_chain:
-		return
-	if body is Unit:
-		var unit := body as Unit
-		if not _can_hit_unit(unit):
-			return
-		_hit_unit(unit)
-	elif body is Building:
-		var building := body as Building
-		if not _can_hit_building(building):
-			return
-		_hit_building(building)
-
-
-func _hit_unit(unit: Unit) -> void:
-	if _has_hit:
-		return
-	_has_hit = true
-	unit.take_damage(damage, shooter)
-	_apply_chain(unit)
-	_begin_chain_vfx(unit.get_sprite_center())
-
-
-func _hit_building(building: Building) -> void:
-	if _has_hit:
-		return
-	_has_hit = true
-	building.take_damage(damage, shooter)
-	# No unit chain from buildings; brief impact flash then free.
-	_chain_points = [global_position, building.get_attack_point()]
-	_show_chain = true
-	_chain_timer = CHAIN_VFX_SECONDS * 0.6
-	queue_redraw()
-
-
-func _apply_chain(primary: Unit) -> void:
-	_chain_points.clear()
-	_chain_points.append(primary.get_sprite_center())
-	if chain_damage <= 0 or chain_radius <= 0.0 or chain_max_targets <= 0:
-		return
-	if shooter == null or not is_instance_valid(shooter):
+func _draw() -> void:
+	if _segments.is_empty():
 		return
 
-	var origin := primary.global_position
-	var candidates: Array[Dictionary] = []
-	var tree := get_tree()
-	if tree == null:
-		return
+	# Staff tip charge flash.
+	var tip_local := to_local(emit_origin)
+	var tip_pulse := 0.55 + 0.45 * absf(sin(_elapsed * 40.0))
+	draw_circle(tip_local, 5.5 * tip_pulse, Color(0.55, 0.9, 1.0, 0.35 * tip_pulse))
+	draw_circle(tip_local, 2.8, Color(0.95, 1.0, 1.0, 0.9 * tip_pulse))
 
-	for item in UnitSpatialIndex.query_nearby(tree, origin, chain_radius):
-		if not item is Unit:
+	for i in range(_segments.size()):
+		var seg: Dictionary = _segments[i]
+		var progress := _segment_progress(seg)
+		if progress <= 0.0:
 			continue
-		var enemy := item as Unit
-		if enemy == primary or not _can_hit_unit(enemy):
+		var from_g: Vector2 = seg.from
+		var to_g: Vector2 = seg.to
+		var end_g := from_g.lerp(to_g, progress)
+		var from_l := to_local(from_g)
+		var to_l := to_local(end_g)
+		var is_main: bool = bool(seg.main)
+		var fade := _fade_alpha()
+		var core_w := 2.8 if is_main else 2.0
+		var glow_w := 5.2 if is_main else 3.6
+
+		_draw_jagged_bolt(
+			from_l, to_l,
+			Color(0.25, 0.55, 1.0, 0.35 * fade),
+			glow_w,
+			i * 17 + _flicker_token,
+			true
+		)
+		_draw_jagged_bolt(
+			from_l, to_l,
+			Color(0.55, 0.88, 1.0, 0.95 * fade),
+			core_w,
+			i * 17 + _flicker_token,
+			false
+		)
+		_draw_jagged_bolt(
+			from_l, to_l,
+			Color(0.92, 0.98, 1.0, 0.75 * fade),
+			maxf(1.0, core_w * 0.45),
+			i * 31 + _flicker_token * 3,
+			false
+		)
+
+		# Decorative forks near the tip of a growing / held bolt.
+		if progress > 0.55:
+			_draw_forks(from_l, to_l, is_main, fade, i)
+
+	for point in _impact_points:
+		var local_p := to_local(point)
+		var burst := clampf((_elapsed - BRANCH_START_DELAY) / 0.12, 0.0, 1.0)
+		if burst <= 0.0:
 			continue
-		var dist_sq := origin.distance_squared_to(enemy.global_position)
-		candidates.append({"unit": enemy, "dist": dist_sq})
-
-	candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-		return float(a.dist) < float(b.dist)
-	)
-
-	var chained := 0
-	for entry in candidates:
-		if chained >= chain_max_targets:
-			break
-		var enemy: Unit = entry.unit
-		enemy.take_damage(chain_damage, shooter)
-		_chain_points.append(enemy.get_sprite_center())
-		chained += 1
+		var a := (1.0 - burst * 0.65) * _fade_alpha()
+		draw_circle(local_p, 6.0 * burst, Color(0.45, 0.8, 1.0, 0.28 * a))
+		draw_circle(local_p, 2.4, Color(1.0, 1.0, 1.0, 0.85 * a))
 
 
-func _begin_chain_vfx(primary_center: Vector2) -> void:
-	if _chain_points.is_empty():
-		_chain_points.append(primary_center)
-	if _chain_points.size() == 1:
-		# Still show a short impact spark even without splash targets.
-		_chain_points.append(primary_center + Vector2(8.0, -10.0))
-	global_position = primary_center
-	_show_chain = true
-	_chain_timer = CHAIN_VFX_SECONDS
-	queue_redraw()
+func _segment_progress(seg: Dictionary) -> float:
+	var t := _elapsed - float(seg.delay)
+	if t <= 0.0:
+		return 0.0
+	var grow := maxf(0.001, float(seg.grow))
+	return clampf(t / grow, 0.0, 1.0)
+
+
+func _fade_alpha() -> float:
+	var end_t := MAIN_GROW_SECONDS + BRANCH_GROW_SECONDS + HOLD_SECONDS
+	var fade_start := end_t - 0.12
+	if _elapsed < fade_start:
+		return 1.0
+	return clampf(1.0 - (_elapsed - fade_start) / 0.12, 0.0, 1.0)
+
+
+func _draw_jagged_bolt(
+	from: Vector2,
+	to: Vector2,
+	color: Color,
+	width: float,
+	seed_offset: int,
+	soft: bool
+) -> void:
+	var delta := to - from
+	var length := delta.length()
+	if length <= 0.001:
+		return
+	var dir := delta / length
+	var perp := Vector2(-dir.y, dir.x)
+	var segments := maxi(3, int(length / 14.0))
+	var points := PackedVector2Array()
+	points.append(from)
+	for i in range(1, segments):
+		var t := float(i) / float(segments)
+		var base := from.lerp(to, t)
+		var wobble_amp := (11.0 if soft else 7.5) * (1.0 - absf(t - 0.5) * 1.15)
+		# Deterministic flicker from seed + segment index.
+		var n := _hash_noise(seed_offset + i * 13)
+		var wobble := (n * 2.0 - 1.0) * wobble_amp
+		points.append(base + perp * wobble)
+	points.append(to)
+	for i in range(points.size() - 1):
+		draw_line(points[i], points[i + 1], color, width, true)
+
+
+func _draw_forks(from: Vector2, to: Vector2, is_main: bool, fade: float, seg_index: int) -> void:
+	var delta := to - from
+	var length := delta.length()
+	if length < 28.0:
+		return
+	var dir := delta / length
+	var perp := Vector2(-dir.y, dir.x)
+	var fork_count := 2 if is_main else 1
+	for f in range(fork_count):
+		var along := 0.35 + 0.2 * float(f) + 0.08 * _hash_noise(seg_index * 9 + f * 5 + _flicker_token)
+		var root := from.lerp(to, clampf(along, 0.2, 0.75))
+		var side := 1.0 if (f + seg_index) % 2 == 0 else -1.0
+		var fork_len := (16.0 if is_main else 11.0) * (0.75 + 0.35 * _hash_noise(seg_index + f * 11))
+		var tip := root + dir * fork_len * 0.35 + perp * side * fork_len
+		_draw_jagged_bolt(
+			root, tip,
+			Color(0.7, 0.92, 1.0, 0.55 * fade),
+			1.4,
+			seg_index * 41 + f * 7 + _flicker_token,
+			false
+		)
+
+
+func _hash_noise(v: int) -> float:
+	# Cheap 0..1 hash for flicker without reallocating RNG every draw.
+	var x := (v * 1103515245 + 12345) & 0x7fffffff
+	return float(x % 1000) / 999.0

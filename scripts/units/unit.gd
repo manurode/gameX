@@ -676,6 +676,28 @@ func get_sprite_center() -> Vector2:
 	return global_position + sprite_offset * VISUAL_SCALE
 
 
+## World position of the mage staff orb (cast pose), used as lightning emit point.
+func get_staff_emit_point() -> Vector2:
+	var center := get_sprite_center()
+	if unit_type_id != "mage":
+		return center + _last_facing_direction.normalized() * 14.0 if _last_facing_direction != Vector2.ZERO else center
+
+	var facing := _facing_from_direction(_last_facing_direction)
+	var local := Vector2(-12.0, 2.0)
+	match facing["axis"]:
+		&"side":
+			# Pointed staff tip with cast spark (east-facing sheet).
+			local = Vector2(18.0, 20.0)
+		&"up":
+			local = Vector2(8.0, 6.0)
+		_:
+			# Front cast orb (staff raised at mid-swing).
+			local = Vector2(-12.0, 2.0)
+	if bool(facing["flip_h"]):
+		local.x = -local.x
+	return center + local * VISUAL_SCALE
+
+
 func get_selection_rect() -> Rect2:
 	return Rect2(get_sprite_center() - selection_half_size, selection_half_size * 2.0)
 
@@ -2046,6 +2068,9 @@ func _on_animation_frame_changed() -> void:
 		return
 
 	var hit_frame := MELEE_DAMAGE_FRAME if combat_style == CombatStyle.MELEE else RANGED_DAMAGE_FRAME
+	# Mage cast peak (staff spark) is earlier than the generic ranged release frame.
+	if _uses_chain_lightning():
+		hit_frame = 4
 	if animated_sprite.frame == hit_frame and not _damage_dealt_this_swing:
 		_damage_dealt_this_swing = true
 		_deal_attack()
@@ -2218,22 +2243,18 @@ func _spawn_lightning_at_unit(target_unit: Unit) -> void:
 		return
 	var bolt_scene: PackedScene = preload("res://scenes/combat/lightning_bolt.tscn")
 	var bolt: LightningBolt = bolt_scene.instantiate()
-	var origin := get_sprite_center()
-	var target_point := target_unit.get_sprite_center()
-	var dir := origin.direction_to(target_point)
-	if dir == Vector2.ZERO:
-		dir = Vector2.RIGHT
+	var origin := get_staff_emit_point()
 
 	bolt.shooter = self
 	bolt.target = target_unit
+	bolt.emit_origin = origin
 	bolt.damage = get_attack_damage()
 	bolt.chain_damage = chain_damage
 	bolt.chain_radius = chain_radius
 	bolt.chain_max_targets = maxi(1, chain_max_targets)
-	bolt.direction = dir
 	var world := _get_combat_world()
 	world.add_child(bolt)
-	bolt.global_position = origin + dir * _get_projectile_spawn_offset()
+	bolt.global_position = origin
 
 
 func _spawn_lightning_at_building(target_building: Building) -> void:
@@ -2241,22 +2262,18 @@ func _spawn_lightning_at_building(target_building: Building) -> void:
 		return
 	var bolt_scene: PackedScene = preload("res://scenes/combat/lightning_bolt.tscn")
 	var bolt: LightningBolt = bolt_scene.instantiate()
-	var origin := get_sprite_center()
-	var target_point := target_building.get_attack_point()
-	var dir := origin.direction_to(target_point)
-	if dir == Vector2.ZERO:
-		dir = Vector2.RIGHT
+	var origin := get_staff_emit_point()
 
 	bolt.shooter = self
 	bolt.building_target = target_building
+	bolt.emit_origin = origin
 	bolt.damage = get_attack_damage()
 	bolt.chain_damage = chain_damage
 	bolt.chain_radius = chain_radius
 	bolt.chain_max_targets = maxi(1, chain_max_targets)
-	bolt.direction = dir
 	var world := _get_combat_world()
 	world.add_child(bolt)
-	bolt.global_position = origin + dir * _get_projectile_spawn_offset()
+	bolt.global_position = origin
 
 
 func _get_projectile_spawn_offset() -> float:
