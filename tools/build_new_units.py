@@ -140,6 +140,72 @@ def stitch(frames: list[Image.Image], path: Path) -> None:
     save(sheet, path)
 
 
+def _sil_stats(im: Image.Image) -> tuple[int, int]:
+    """Opaque silhouette height + pixel mass (matches rescale_directional_sheets)."""
+    arr = np.array(harden_alpha(im.convert("RGBA"), cut=30))
+    mask = arr[:, :, 3] > 40
+    if not mask.any():
+        return 0, 0
+    ys, _xs = np.where(mask)
+    return int(ys.max() - ys.min() + 1), int(mask.sum())
+
+
+def _shrink_frame_to_ref(
+    frame: Image.Image, ref_h: int, ref_px: int, foot_y: int
+) -> Image.Image:
+    """Shrink (never enlarge) a frame to the smaller idle silhouette."""
+    frame = harden_alpha(frame.convert("RGBA"), cut=30)
+    bb = frame.getbbox()
+    canvas = Image.new("RGBA", (FRAME, FRAME), (0, 0, 0, 0))
+    if bb is None:
+        return canvas
+    cropped = frame.crop(bb)
+    pose_h, pose_px = _sil_stats(cropped)
+    if pose_h <= 0:
+        return canvas
+    scale_h = ref_h / pose_h
+    scale_px = (ref_px / max(pose_px, 1)) ** 0.5
+    scale = min(scale_h, scale_px) * 0.98
+    scale = max(0.5, min(scale, 1.0))
+    max_scale = min((FRAME - 2) / max(cropped.width, 1), (FRAME - 2) / max(cropped.height, 1))
+    scale = min(scale, max_scale)
+    nw = max(1, int(round(cropped.width * scale)))
+    nh = max(1, int(round(cropped.height * scale)))
+    fitted = cropped.resize((nw, nh), Image.Resampling.LANCZOS)
+    px = (FRAME - nw) // 2
+    py = foot_y - nh
+    px = max(0, min(FRAME - nw, px))
+    py = max(0, min(FRAME - nh, py))
+    canvas.alpha_composite(fitted, (px, py))
+    return harden_alpha(canvas, cut=40)
+
+
+def match_all_sheets_to_smallest_idle(unit: str) -> None:
+    """After build, force every sheet to the smallest idle facing (no upscale)."""
+    unit_dir = CHARS / unit
+    candidates: list[tuple[str, int, int, int]] = []
+    for name in (f"chr_{unit}_idle.png", f"chr_{unit}_idle_side.png", f"chr_{unit}_idle_back.png"):
+        path = unit_dir / name
+        if not path.exists():
+            continue
+        fr = Image.open(path).convert("RGBA").crop((0, 0, FRAME, FRAME))
+        h, px = _sil_stats(fr)
+        foot_y = content_bbox(harden_alpha(fr, cut=30))[3]
+        candidates.append((name, h, px, foot_y))
+    if not candidates:
+        return
+    _name, ref_h, ref_px, foot_y = min(candidates, key=lambda t: (t[1], t[2]))
+    print(f"  normalize scale → {_name} h={ref_h} px={ref_px}")
+    for path in sorted(unit_dir.glob(f"chr_{unit}_*.png")):
+        im = Image.open(path).convert("RGBA")
+        count = max(1, im.width // FRAME)
+        out = Image.new("RGBA", (FRAME * count, FRAME), (0, 0, 0, 0))
+        for i in range(count):
+            fr = im.crop((i * FRAME, 0, (i + 1) * FRAME, FRAME))
+            out.alpha_composite(_shrink_frame_to_ref(fr, ref_h, ref_px, foot_y), (i * FRAME, 0))
+        save(out, path)
+
+
 def build_unit(unit: str, knight_h: int, knight_foot: int) -> None:
     unit_dir = CHARS / unit
     unit_dir.mkdir(parents=True, exist_ok=True)
@@ -219,6 +285,20 @@ def build_unit(unit: str, knight_h: int, knight_foot: int) -> None:
     # Deploy / death
     save(make_deploy_sheet(front, 4), unit_dir / f"chr_{unit}_deploy.png")
     save(make_deploy_sheet(back, 3), unit_dir / f"chr_{unit}_deploy_back.png")
+
+    # Facings can land at different visual sizes; lock everything to the smaller idle.
+    match_all_sheets_to_smallest_idle(unit)
+    # Refresh refs from normalized idles
+    for facing, fname in (
+        ("", f"{unit}_base.png"),
+        ("_side", f"{unit}_side_base.png"),
+        ("_back", f"{unit}_back_base.png"),
+    ):
+        idle_path = unit_dir / (
+            f"chr_{unit}_idle.png" if not facing else f"chr_{unit}_idle{facing}.png"
+        )
+        if idle_path.exists():
+            Image.open(idle_path).convert("RGBA").crop((0, 0, FRAME, FRAME)).save(REFS / fname)
     print(f"  OK {unit} sheets written (STYLE_SHRINK={STYLE_SHRINK})")
 
 
