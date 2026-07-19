@@ -83,6 +83,8 @@ var _production_queue_label: Label
 var _production_progress_label: Label
 var _production_pending_label: Label
 var _production_panel_key: String = ""
+var _production_feedback_text: String = ""
+var _production_feedback_timer: float = 0.0
 var _resource_manager: ResourceManager
 var _build_manager: Node
 var _selection_manager: Node
@@ -595,6 +597,8 @@ func _on_food_shortage(active: bool) -> void:
 
 func _on_building_selection_changed(building: Building) -> void:
 	_selected_building = building
+	_production_feedback_text = ""
+	_production_feedback_timer = 0.0
 	_refresh_production_panel()
 
 
@@ -608,6 +612,12 @@ func _process(delta: float) -> void:
 	if _food_ui_timer <= 0.0 and _population_manager != null:
 		_food_ui_timer = 0.35
 		_on_food_upkeep_changed(_population_manager.get_food_upkeep_per_second())
+	if _production_feedback_timer > 0.0:
+		_production_feedback_timer -= delta
+		if _production_feedback_timer <= 0.0:
+			_production_feedback_text = ""
+			if _production_box != null and _production_box.visible:
+				_update_production_status_labels()
 	if _production_box == null or not _production_box.visible:
 		return
 	_update_production_progress_label()
@@ -698,14 +708,18 @@ func _update_production_status_labels() -> void:
 
 	_update_production_progress_label()
 
-	var pending := _production_manager.get_pending_recruitment(_selected_building)
-	if not pending.is_empty() and pending.get("count", 0) > 0:
-		var pending_def := EquipmentDatabase.get_definition(pending.get("item_id", ""))
-		var pending_name: String = pending_def.get("name", "equipo")
-		_production_pending_label.text = "Esperando %d aldeano(s) para %s" % [pending.count, pending_name]
+	if not _production_feedback_text.is_empty():
+		_production_pending_label.text = _production_feedback_text
 		_production_pending_label.visible = true
 	else:
-		_production_pending_label.visible = false
+		var pending := _production_manager.get_pending_recruitment(_selected_building)
+		if not pending.is_empty() and pending.get("count", 0) > 0:
+			var pending_def := EquipmentDatabase.get_definition(pending.get("item_id", ""))
+			var pending_name: String = pending_def.get("name", "equipo")
+			_production_pending_label.text = "Esperando %d aldeano(s) para %s" % [pending.count, pending_name]
+			_production_pending_label.visible = true
+		else:
+			_production_pending_label.visible = false
 
 
 func _update_production_progress_label() -> void:
@@ -744,7 +758,16 @@ func _on_production_pressed(item_id: String) -> void:
 	if _production_manager == null or _selected_building == null:
 		return
 	if _production_manager.enqueue(_selected_building, item_id):
+		_production_feedback_text = ""
+		_production_feedback_timer = 0.0
 		_update_production_status_labels()
+		return
+	var reason := _production_manager.get_enqueue_block_reason(_selected_building, item_id)
+	if reason.is_empty():
+		reason = "No se puede producir ahora"
+	_production_feedback_text = reason
+	_production_feedback_timer = 3.5
+	_update_production_status_labels()
 
 
 func _on_selection_changed(selected_units: Array) -> void:

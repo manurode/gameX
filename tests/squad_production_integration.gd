@@ -26,7 +26,7 @@ func _run() -> void:
 	production.register_producer(stable)
 
 	assert(production.enqueue(stable, "knight_squad"))
-	assert(population.reserved_population == 4)
+	assert(population.reserved_population == 0)
 	production._advance_queue(stable, BalanceConfig.SQUAD_TRAIN_TIME + 0.1)
 	production._process_pending_recruitment()
 
@@ -44,8 +44,8 @@ func _run() -> void:
 	for node in world.get_node("Units").get_children():
 		if node is Unit and not (node as Unit).is_civilian:
 			military_count += 1
-	assert(military_count == 5)
-	assert(population.population == 9)
+	assert(military_count == 1)
+	assert(population.population == 5)
 	assert(population.reserved_population == 0)
 	main.free()
 	await process_frame

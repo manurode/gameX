@@ -73,8 +73,8 @@ func _test_balance_data() -> void:
 	assert(BuildingDatabase.get_definition("house_small").housing == 5)
 	assert(BuildingDatabase.get_definition("wall").build_time == 3.0)
 	assert(BuildingDatabase.get_definition("tower").automatic_defense)
-	assert(EquipmentDatabase.get_definition("knight_squad").squad_size == 5)
-	assert(EquipmentDatabase.get_definition("archer_squad").squad_size == 5)
+	assert(EquipmentDatabase.get_definition("knight_squad").squad_size == 1)
+	assert(EquipmentDatabase.get_definition("archer_squad").squad_size == 1)
 	# Opening must afford both gather buildings + a house without waiting on income.
 	var open_wood := (
 		int(BuildingDatabase.get_definition("lumber_camp").wood)

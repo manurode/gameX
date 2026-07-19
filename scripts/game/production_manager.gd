@@ -66,24 +66,40 @@ func unregister_producer(building: Building) -> void:
 	_pending_recruitment.erase(building)
 
 
-func enqueue(building: Building, item_id: String, batch_count: int = 1) -> bool:
+func get_enqueue_block_reason(building: Building, item_id: String, batch_count: int = 1) -> String:
 	if not is_instance_valid(building) or building.building_state != Building.BuildingState.ACTIVE:
-		return false
+		return "El edificio no está activo"
 	if not EquipmentDatabase.can_produce_at(building.building_type_id, item_id):
+		return "No se puede producir aquí"
+	var def := EquipmentDatabase.get_definition(item_id)
+	if def.is_empty():
+		return "Unidad desconocida"
+	var squad_size: int = def.get("squad_size", 1)
+	var reserved_needed := maxi(0, squad_size - 1) * batch_count
+	if reserved_needed > 0:
+		if _population_manager == null:
+			return "No hay gestor de población"
+		if not _population_manager.can_reserve_population(reserved_needed):
+			var free_slots := maxi(
+				0,
+				_population_manager.population_cap
+				- _population_manager.population
+				- _population_manager.reserved_population
+			)
+			return "No hay suficiente población (faltan %d, libres %d)" % [reserved_needed, free_slots]
+	return ""
+
+
+func enqueue(building: Building, item_id: String, batch_count: int = 1) -> bool:
+	if not get_enqueue_block_reason(building, item_id, batch_count).is_empty():
 		return false
 
 	var def := EquipmentDatabase.get_definition(item_id)
-	if def.is_empty():
-		return false
-
 	var cost: Dictionary = def.get("cost", {})
 	var squad_size: int = def.get("squad_size", 1)
 	var reserved_per_item := maxi(0, squad_size - 1)
 	var total_reserved := reserved_per_item * batch_count
-	if total_reserved > 0 and (
-		_population_manager == null
-		or not _population_manager.reserve_population(total_reserved)
-	):
+	if total_reserved > 0 and not _population_manager.reserve_population(total_reserved):
 		return false
 	register_producer(building)
 	var queue: Array = _queues[building]
