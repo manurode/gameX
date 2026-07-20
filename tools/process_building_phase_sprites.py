@@ -163,6 +163,20 @@ def find_source(stem: str, phase: str) -> Path | None:
 	return None
 
 
+def fill_enclosed_damage_holes(img: Image.Image) -> Image.Image:
+	"""Restore opaque dark interiors punched out by remove_dark_bg."""
+	import importlib.util
+
+	mod_path = Path(__file__).with_name("fix_damaged_building_holes.py")
+	spec = importlib.util.spec_from_file_location("fix_damaged_building_holes", mod_path)
+	if spec is None or spec.loader is None:
+		raise RuntimeError(f"Cannot load {mod_path}")
+	mod = importlib.util.module_from_spec(spec)
+	spec.loader.exec_module(mod)
+	fixed, _n_holes, _n_hard = mod.fix_image(img)
+	return fixed
+
+
 def process_one(stem: str, phase: str) -> bool:
 	if stem == "town_center" and phase != "damaged":
 		return False
@@ -179,6 +193,8 @@ def process_one(stem: str, phase: str) -> bool:
 	img = Image.open(src).convert("RGBA")
 	img = remove_dark_bg(img)
 	img = fit_to_canvas(img, size, ref)
+	if phase == "damaged":
+		img = fill_enclosed_damage_holes(img)
 
 	out = OUT_DIR / f"{stem}_{phase}.png"
 	img.save(out)
