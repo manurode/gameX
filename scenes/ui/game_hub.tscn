@@ -71,15 +71,6 @@ theme_override_constants/h_separation = 4
 theme_override_constants/v_separation = 2
 columns = 9
 
-[node name="FormationGrid" type="GridContainer" parent="MarginContainer/HBoxContainer/CommandArea"]
-visible = false
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 4
-theme_override_constants/h_separation = 4
-theme_override_constants/v_separation = 2
-columns = 4
-
 [node name="Separator2" type="VSeparator" parent="MarginContainer/HBoxContainer/CommandArea"]
 layout_mode = 2
 

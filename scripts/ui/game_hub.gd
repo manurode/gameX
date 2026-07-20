@@ -5,58 +5,6 @@ const BUILD_ORDER: Array[String] = [
 	"mine", "stable", "barracks", "arcanum", "tower", "wall",
 ]
 
-const FORMATION_ORDER: Array[Unit.FormationType] = [
-	Unit.FormationType.COLUMN,
-	Unit.FormationType.LINE,
-	Unit.FormationType.WEDGE,
-	Unit.FormationType.DIAMOND,
-]
-
-const FORMATION_INFO: Dictionary = {
-	Unit.FormationType.COLUMN: {
-		"name": "Columna",
-		"subtitle": "Columna de marcha",
-		"tooltip": (
-			"Columna de marcha\n"
-			+ "Todos los soldados van uno detrás del otro.\n\n"
-			+ "Uso: Ideal para moverse rápido por caminos estrechos, bosques densos o de noche.\n"
-			+ "Ventaja: Fácil de controlar y seguir.\n"
-			+ "Desventaja: Vulnerable a emboscadas frontales."
-		),
-	},
-	Unit.FormationType.LINE: {
-		"name": "Línea",
-		"subtitle": "En línea",
-		"tooltip": (
-			"En línea\n"
-			+ "Todos los soldados se colocan uno al lado del otro, formando un frente horizontal.\n\n"
-			+ "Uso: Asaltar una posición enemiga o hacer una barrida de seguridad.\n"
-			+ "Ventaja: Maximiza el poder de fuego hacia el frente.\n"
-			+ "Desventaja: Difícil en terrenos irregulares; vulnerable por los flancos."
-		),
-	},
-	Unit.FormationType.WEDGE: {
-		"name": "Cuña",
-		"subtitle": "Formación en V",
-		"tooltip": (
-			"Formación en V\n"
-			+ "Un líder va adelante y los demás se despliegan en diagonal hacia atrás.\n\n"
-			+ "Uso: Formación básica para patrullar; se adapta a casi cualquier terreno.\n"
-			+ "Ventaja: Excelente fuego de cobertura hacia el frente y los lados."
-		),
-	},
-	Unit.FormationType.DIAMOND: {
-		"name": "Cuadro",
-		"subtitle": "En diamante",
-		"tooltip": (
-			"En diamante\n"
-			+ "Los soldados se agrupan formando un rombo. Un soldado va en el centro.\n\n"
-			+ "Uso: Cuando la amenaza puede venir de cualquier dirección (360°).\n"
-			+ "Ventaja: Defensa total y fácil de reorganizar."
-		),
-	},
-}
-
 const TEX_WOOD := "res://assets/tilesets/tiny_tiles/UI/Icons/UI_icon_resources_wood_clear.png"
 const TEX_GOLD := "res://assets/tilesets/tiny_tiles/UI/Icons/UI_icon_resources_gold.png"
 const TEX_FOOD := "res://assets/tilesets/tiny_tiles/UI/Icons/UI_icon_resources_food.png"
@@ -66,18 +14,20 @@ const ICON_VARIANT_SIZE := 128
 const SLOT_SIZE := Vector2(66, 80)
 const ICON_SIZE := Vector2(36, 30)
 const RESOURCE_ICON_SIZE := Vector2(28, 28)
-const MIN_FORMATION_UNITS := 2
 
 @onready var _resources_box: VBoxContainer = $MarginContainer/HBoxContainer/ResourcesBox
 @onready var _build_tab_icon: TextureRect = $MarginContainer/HBoxContainer/CommandArea/TabColumn/BuildTabIcon
 @onready var _build_grid: GridContainer = $MarginContainer/HBoxContainer/CommandArea/BuildGrid
-@onready var _formation_grid: GridContainer = $MarginContainer/HBoxContainer/CommandArea/FormationGrid
 @onready var _status_column: VBoxContainer = $MarginContainer/HBoxContainer/CommandArea/StatusColumn
 
 var _production_box: VBoxContainer
 var _production_title: Label
 var _production_items_box: BoxContainer
 var _production_item_buttons: Dictionary = {}
+var _market_title: Label
+var _market_items_box: GridContainer
+var _market_limit_label: Label
+var _market_buttons: Dictionary = {}
 var _food_ui_timer := 0.0
 var _production_queue_label: Label
 var _production_progress_label: Label
@@ -92,17 +42,15 @@ var _population_manager: PopulationManager
 var _production_manager: ProductionManager
 var _curfew_manager: CurfewManager
 var _run_boon_manager: RunBoonManager
+var _market_manager: MarketManager
 var _curfew_button: Button
 var _resource_labels: Dictionary = {}
 var _build_slots: Dictionary = {}
-var _formation_slots: Dictionary = {}
 var _population_label: Label
 var _food_upkeep_label: Label
 var _gather_bonus_label: Label
 var _production_double_label: Label
 var _active_build_type: String = ""
-var _formation_mode: bool = false
-var _selected_unit_count: int = 0
 var _selected_building: Building = null
 
 
@@ -119,7 +67,8 @@ func setup(
 	population_manager: PopulationManager = null,
 	production_manager: ProductionManager = null,
 	curfew_manager: CurfewManager = null,
-	run_boon_manager: RunBoonManager = null
+	run_boon_manager: RunBoonManager = null,
+	market_manager: MarketManager = null
 ) -> void:
 	_resource_manager = resource_manager
 	_build_manager = build_manager
@@ -128,24 +77,21 @@ func setup(
 	_production_manager = production_manager
 	_curfew_manager = curfew_manager
 	_run_boon_manager = run_boon_manager
+	_market_manager = market_manager
 	_build_resource_rows()
 	_build_command_grid()
-	_build_formation_grid()
 	_build_curfew_button()
 	_ensure_production_box()
 	if _resource_manager != null:
 		_resource_manager.resources_changed.connect(_on_resources_changed)
 		_on_resources_changed(_resource_manager.wood, _resource_manager.gold, _resource_manager.food)
+	if _market_manager != null and not _market_manager.trades_changed.is_connected(_on_market_trades_changed):
+		_market_manager.trades_changed.connect(_on_market_trades_changed)
 	if _build_manager != null and _build_manager.has_signal("build_mode_changed"):
 		_build_manager.build_mode_changed.connect(_on_build_mode_changed)
 	if _selection_manager != null:
-		if _selection_manager.has_signal("selection_changed"):
-			_selection_manager.selection_changed.connect(_on_selection_changed)
-		if _selection_manager.has_signal("formation_changed"):
-			_selection_manager.formation_changed.connect(_on_formation_changed)
 		if _selection_manager.has_signal("building_selection_changed"):
 			_selection_manager.building_selection_changed.connect(_on_building_selection_changed)
-		_on_selection_changed(_selection_manager.selected_units)
 	if _population_manager != null:
 		_population_manager.population_changed.connect(_on_population_changed)
 		_population_manager.food_shortage.connect(_on_food_shortage)
@@ -237,7 +183,7 @@ func _ensure_production_box() -> void:
 	var hbox := $MarginContainer/HBoxContainer
 	_production_box = VBoxContainer.new()
 	_production_box.name = "ProductionBox"
-	_production_box.custom_minimum_size = Vector2(140, 0)
+	_production_box.custom_minimum_size = Vector2(220, 0)
 	_production_box.visible = false
 	_production_box.add_theme_constant_override("separation", 2)
 	hbox.add_child(_production_box)
@@ -269,6 +215,26 @@ func _ensure_production_box() -> void:
 	_production_pending_label.visible = false
 	_production_box.add_child(_production_pending_label)
 
+	_market_title = Label.new()
+	_market_title.text = "Mercado"
+	_market_title.add_theme_font_size_override("font_size", 11)
+	_market_title.add_theme_color_override("font_color", Color(0.72, 0.82, 0.9))
+	_market_title.visible = false
+	_production_box.add_child(_market_title)
+
+	_market_items_box = GridContainer.new()
+	_market_items_box.columns = 2
+	_market_items_box.add_theme_constant_override("h_separation", 4)
+	_market_items_box.add_theme_constant_override("v_separation", 2)
+	_market_items_box.visible = false
+	_production_box.add_child(_market_items_box)
+
+	_market_limit_label = Label.new()
+	_market_limit_label.add_theme_font_size_override("font_size", 10)
+	_market_limit_label.add_theme_color_override("font_color", Color(0.65, 0.74, 0.82))
+	_market_limit_label.visible = false
+	_production_box.add_child(_market_limit_label)
+
 
 func _build_command_grid() -> void:
 	for i in BUILD_ORDER.size():
@@ -278,14 +244,6 @@ func _build_command_grid() -> void:
 		var slot := _create_build_slot(type_id, hotkey_num)
 		_build_grid.add_child(slot)
 		_build_slots[type_id] = slot
-
-
-func _build_formation_grid() -> void:
-	for i in FORMATION_ORDER.size():
-		var formation: Unit.FormationType = FORMATION_ORDER[i]
-		var slot := _create_formation_slot(formation, i + 1)
-		_formation_grid.add_child(slot)
-		_formation_slots[formation] = slot
 
 
 func _build_curfew_button() -> void:
@@ -397,70 +355,6 @@ func _create_build_slot(type_id: String, hotkey: int) -> Button:
 	return button
 
 
-func _create_formation_slot(formation: Unit.FormationType, hotkey: int) -> Button:
-	var info: Dictionary = FORMATION_INFO[formation]
-	var button := Button.new()
-	button.custom_minimum_size = SLOT_SIZE
-	button.flat = true
-	button.focus_mode = Control.FOCUS_NONE
-	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	button.pressed.connect(_on_formation_slot_pressed.bind(formation))
-
-	var style := _create_slot_style()
-	button.add_theme_stylebox_override("normal", style)
-	button.add_theme_stylebox_override("hover", style.duplicate())
-	button.add_theme_stylebox_override("pressed", style.duplicate())
-	button.add_theme_stylebox_override("disabled", style.duplicate())
-	button.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
-
-	var content := MarginContainer.new()
-	content.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	content.add_theme_constant_override("margin_left", 2)
-	content.add_theme_constant_override("margin_top", 1)
-	content.add_theme_constant_override("margin_right", 2)
-	content.add_theme_constant_override("margin_bottom", 1)
-	button.add_child(content)
-
-	var vbox := VBoxContainer.new()
-	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 1)
-	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	vbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	content.add_child(vbox)
-
-	var icon := TextureRect.new()
-	icon.custom_minimum_size = ICON_SIZE
-	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.texture = _create_formation_icon(formation)
-	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vbox.add_child(icon)
-
-	var name_label := Label.new()
-	name_label.text = info.get("name", "")
-	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_label.add_theme_font_size_override("font_size", 9)
-	name_label.add_theme_color_override("font_color", Color(0.85, 0.82, 0.72))
-	name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vbox.add_child(name_label)
-
-	var hotkey_label := Label.new()
-	hotkey_label.text = str(hotkey)
-	hotkey_label.add_theme_font_size_override("font_size", 10)
-	hotkey_label.add_theme_color_override("font_color", Color(0.7, 0.65, 0.5))
-	hotkey_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
-	hotkey_label.position = Vector2(3, 1)
-	hotkey_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	button.add_child(hotkey_label)
-
-	button.tooltip_text = info.get("tooltip", "")
-	button.set_meta("style", style)
-	button.set_meta("icon", icon)
-	button.set_meta("formation", formation)
-	return button
-
-
 func _create_slot_style() -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.08, 0.07, 0.06, 0.85)
@@ -469,42 +363,6 @@ func _create_slot_style() -> StyleBoxFlat:
 	style.set_corner_radius_all(3)
 	style.set_content_margin_all(2)
 	return style
-
-
-func _create_formation_icon(formation: Unit.FormationType) -> Texture2D:
-	var image := Image.create(48, 40, false, Image.FORMAT_RGBA8)
-	image.fill(Color(0, 0, 0, 0))
-
-	var dot_color := Color(0.82, 0.76, 0.55, 1.0)
-	var leader_color := Color(0.95, 0.82, 0.35, 1.0)
-	var dot_size := 5
-
-	var points: Array[Vector2] = []
-	match formation:
-		Unit.FormationType.COLUMN:
-			points = [Vector2(24, 8), Vector2(24, 16), Vector2(24, 24), Vector2(24, 32)]
-		Unit.FormationType.LINE:
-			points = [Vector2(8, 20), Vector2(18, 20), Vector2(28, 20), Vector2(38, 20)]
-		Unit.FormationType.WEDGE:
-			points = [Vector2(24, 8), Vector2(14, 20), Vector2(34, 20), Vector2(8, 32), Vector2(24, 32), Vector2(40, 32)]
-		Unit.FormationType.DIAMOND:
-			points = [Vector2(24, 20), Vector2(24, 8), Vector2(34, 20), Vector2(24, 32), Vector2(14, 20)]
-
-	for i in points.size():
-		var color := leader_color if i == 0 else dot_color
-		_draw_dot(image, points[i], dot_size, color)
-
-	return ImageTexture.create_from_image(image)
-
-
-func _draw_dot(image: Image, center: Vector2, size: int, color: Color) -> void:
-	var half := size / 2
-	for y in range(-half, half + 1):
-		for x in range(-half, half + 1):
-			var px := int(center.x) + x
-			var py := int(center.y) + y
-			if px >= 0 and px < image.get_width() and py >= 0 and py < image.get_height():
-				image.set_pixel(px, py, color)
 
 
 func _get_building_icon(type_id: String) -> Texture2D:
@@ -543,14 +401,6 @@ func _on_build_slot_pressed(type_id: String) -> void:
 		return
 	if _build_manager.has_method("start_build_mode"):
 		_build_manager.start_build_mode(type_id)
-
-
-func _on_formation_slot_pressed(formation: Unit.FormationType) -> void:
-	if _selection_manager == null:
-		return
-	if _selection_manager.has_method("set_move_formation"):
-		_selection_manager.set_move_formation(formation)
-	_refresh_formation_highlight()
 
 
 func _on_resources_changed(wood: int, gold: int, food: int) -> void:
@@ -649,7 +499,8 @@ func _refresh_production_panel() -> void:
 		return
 
 	var items := _get_production_items_for_building(_selected_building)
-	if items.is_empty():
+	var show_market := _should_show_market(_selected_building)
+	if items.is_empty() and not show_market:
 		_production_box.visible = false
 		_production_panel_key = ""
 		return
@@ -663,16 +514,30 @@ func _refresh_production_panel() -> void:
 		_production_title.text = building_name
 		_production_title.add_theme_color_override("font_color", Color(0.85, 0.78, 0.55))
 
-	var panel_key := "%d:%s:%s" % [
+	var trades_left := 0
+	if _market_manager != null:
+		trades_left = _market_manager.get_trades_remaining()
+	var panel_key := "%d:%s:%s:m%d" % [
 		_selected_building.get_instance_id(),
 		",".join(items),
 		"x2" if _has_production_double() else "x1",
+		trades_left if show_market else -1,
 	]
 	if _production_panel_key != panel_key:
 		_rebuild_production_item_buttons(items)
+		_rebuild_market_buttons(show_market)
 		_production_panel_key = panel_key
 
 	_update_production_status_labels()
+	_update_market_status()
+
+
+func _should_show_market(building: Building) -> bool:
+	return (
+		building != null
+		and building.building_type_id == "town_center"
+		and _market_manager != null
+	)
 
 
 func _has_production_double() -> bool:
@@ -690,6 +555,7 @@ func _rebuild_production_item_buttons(items: Array[String]) -> void:
 	for child in _production_items_box.get_children():
 		child.queue_free()
 	_production_item_buttons.clear()
+	_production_items_box.visible = not items.is_empty()
 
 	for item_id in items:
 		var def := EquipmentDatabase.get_definition(item_id)
@@ -720,6 +586,101 @@ func _rebuild_production_item_buttons(items: Array[String]) -> void:
 		button.pressed.connect(_on_production_pressed.bind(item_id))
 		_production_items_box.add_child(button)
 		_production_item_buttons[item_id] = button
+
+
+func _rebuild_market_buttons(show_market: bool) -> void:
+	for child in _market_items_box.get_children():
+		child.queue_free()
+	_market_buttons.clear()
+
+	if not show_market or _market_manager == null:
+		_market_title.visible = false
+		_market_items_box.visible = false
+		_market_limit_label.visible = false
+		return
+
+	_market_title.visible = true
+	_market_items_box.visible = true
+	_market_limit_label.visible = true
+
+	for offer in _market_manager.get_offers():
+		var from_key: String = offer.from
+		var to_key: String = offer.to
+		var button := Button.new()
+		button.text = _market_manager.format_offer_text(offer)
+		button.tooltip_text = (
+			"Intercambia en el mercado del Centro Urbano.\n"
+			+ "Comisión del mercado: %d%% · máximo %d intercambios por día."
+		) % [
+			int(BalanceConfig.MARKET_FEE * 100.0),
+			BalanceConfig.MARKET_TRADES_PER_CYCLE,
+		]
+		button.focus_mode = Control.FOCUS_NONE
+		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		button.custom_minimum_size = Vector2(0, 22)
+		button.add_theme_font_size_override("font_size", 10)
+		button.pressed.connect(_on_market_exchange_pressed.bind(from_key, to_key))
+		_market_items_box.add_child(button)
+		_market_buttons["%s>%s" % [from_key, to_key]] = button
+
+
+func _update_market_status() -> void:
+	if _market_manager == null or not _should_show_market(_selected_building):
+		return
+
+	var remaining := _market_manager.get_trades_remaining()
+	_market_limit_label.text = "Intercambios hoy: %d/%d" % [
+		remaining,
+		BalanceConfig.MARKET_TRADES_PER_CYCLE,
+	]
+	if remaining <= 0:
+		_market_limit_label.add_theme_color_override("font_color", Color(1.0, 0.55, 0.45))
+	else:
+		_market_limit_label.add_theme_color_override("font_color", Color(0.65, 0.74, 0.82))
+
+	for offer in _market_manager.get_offers():
+		var key := "%s>%s" % [offer.from, offer.to]
+		var button: Button = _market_buttons.get(key)
+		if button == null:
+			continue
+		var can_trade := _market_manager.can_exchange(offer.from, offer.to)
+		button.disabled = not can_trade
+		button.text = _market_manager.format_offer_text(offer)
+		var reason := _market_manager.get_exchange_block_reason(offer.from, offer.to)
+		if reason.is_empty():
+			button.tooltip_text = (
+				"Intercambia en el mercado del Centro Urbano.\n"
+				+ "Comisión del mercado: %d%% · máximo %d intercambios por día."
+			) % [
+				int(BalanceConfig.MARKET_FEE * 100.0),
+				BalanceConfig.MARKET_TRADES_PER_CYCLE,
+			]
+		else:
+			button.tooltip_text = reason
+
+
+func _on_market_exchange_pressed(from_key: String, to_key: String) -> void:
+	if _market_manager == null:
+		return
+	if _market_manager.try_exchange(from_key, to_key):
+		_production_feedback_text = ""
+		_production_feedback_timer = 0.0
+		_update_market_status()
+		_update_production_status_labels()
+		return
+	var reason := _market_manager.get_exchange_block_reason(from_key, to_key)
+	if reason.is_empty():
+		reason = "No se puede intercambiar ahora"
+	_production_feedback_text = reason
+	_production_feedback_timer = 3.5
+	_update_market_status()
+	_update_production_status_labels()
+
+
+func _on_market_trades_changed(_trades_remaining: int) -> void:
+	if _production_box != null and _production_box.visible:
+		_production_panel_key = ""
+		_refresh_production_panel()
 
 
 func _update_production_status_labels() -> void:
@@ -816,49 +777,11 @@ func _on_production_pressed(item_id: String) -> void:
 	_update_production_status_labels()
 
 
-func _on_selection_changed(selected_units: Array) -> void:
-	_selected_unit_count = selected_units.size()
-	var show_formations := _selected_unit_count >= MIN_FORMATION_UNITS
-	if show_formations:
-		_show_formation_panel()
-	else:
-		_show_build_panel()
-	_refresh_formation_highlight()
-
-
-func _on_formation_changed(_formation: Unit.FormationType) -> void:
-	_refresh_formation_highlight()
-
-
 func _show_build_panel() -> void:
-	_formation_mode = false
 	if _build_grid != null:
 		_build_grid.visible = true
-	if _formation_grid != null:
-		_formation_grid.visible = false
 	if _build_tab_icon != null:
 		_build_tab_icon.texture = _make_icon_atlas(TEX_HAMMER)
-
-
-func _show_formation_panel() -> void:
-	_formation_mode = true
-	if _build_grid != null:
-		_build_grid.visible = false
-	if _formation_grid != null:
-		_formation_grid.visible = true
-	if _build_tab_icon != null:
-		_build_tab_icon.texture = _create_formation_tab_icon()
-	_refresh_formation_highlight()
-
-
-func _create_formation_tab_icon() -> Texture2D:
-	var image := Image.create(ICON_VARIANT_SIZE, ICON_VARIANT_SIZE, false, Image.FORMAT_RGBA8)
-	image.fill(Color(0.12, 0.1, 0.08, 1.0))
-	var points := [Vector2(64, 28), Vector2(40, 56), Vector2(88, 56), Vector2(24, 84), Vector2(64, 84), Vector2(104, 84)]
-	for i in points.size():
-		var color := Color(0.95, 0.82, 0.35, 1.0) if i == 0 else Color(0.82, 0.76, 0.55, 1.0)
-		_draw_dot(image, points[i], 10, color)
-	return ImageTexture.create_from_image(image)
 
 
 func _refresh_affordability() -> void:
@@ -881,28 +804,6 @@ func _refresh_affordability() -> void:
 			style.border_color = Color(0.25, 0.22, 0.18, 1.0)
 			style.bg_color = Color(0.06, 0.05, 0.04, 0.9)
 		_apply_slot_style(button, style)
-
-
-func _refresh_formation_highlight() -> void:
-	if _selection_manager == null:
-		return
-	var active_formation: Unit.FormationType = _selection_manager.move_formation
-	for formation_key in _formation_slots:
-		var formation: Unit.FormationType = formation_key
-		var button: Button = _formation_slots[formation]
-		var style: StyleBoxFlat = button.get_meta("style")
-		var icon: TextureRect = button.get_meta("icon")
-		var is_active: bool = _formation_mode and formation == active_formation
-		if is_active:
-			style.border_color = Color(0.95, 0.82, 0.28, 1.0)
-			style.bg_color = Color(0.22, 0.17, 0.08, 0.98)
-			icon.modulate = Color(1.15, 1.05, 0.7, 1.0)
-			_apply_slot_style(button, style, 4)
-		else:
-			style.border_color = Color(0.35, 0.3, 0.22, 1.0)
-			style.bg_color = Color(0.08, 0.07, 0.06, 0.85)
-			icon.modulate = Color(0.72, 0.68, 0.58, 0.9)
-			_apply_slot_style(button, style, 2)
 
 
 func _apply_slot_style(button: Button, style: StyleBoxFlat, border_width: int = 2) -> void:

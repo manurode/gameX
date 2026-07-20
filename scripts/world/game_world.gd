@@ -22,6 +22,7 @@ extends Node2D
 @onready var night_wave_manager: NightWaveManager = $NightWaveManager
 @onready var curfew_manager: CurfewManager = $CurfewManager
 @onready var run_boon_manager: RunBoonManager = $RunBoonManager
+@onready var market_manager: MarketManager = $MarketManager
 
 const BUILDING_SCENE: PackedScene = preload("res://scenes/buildings/building.tscn")
 const VILLAGER_SCENE: PackedScene = preload("res://scenes/units/unit_villager.tscn")
@@ -75,6 +76,7 @@ func on_ground_ready(ground: TinyTilesMap) -> void:
 	day_night_manager.setup(day_night_modulate, water_animator)
 	night_wave_manager.setup(day_night_manager, units, ground)
 	run_boon_manager.setup(day_night_manager, self, curfew_manager, resource_manager)
+	market_manager.setup(resource_manager, day_night_manager)
 
 	if _town_center != null:
 		game_state_manager.setup(_town_center, day_night_manager)
@@ -97,7 +99,8 @@ func on_ground_ready(ground: TinyTilesMap) -> void:
 			ground,
 			run_boon_manager,
 			game_state_manager,
-			night_wave_manager
+			night_wave_manager,
+			market_manager
 		)
 
 

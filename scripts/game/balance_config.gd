@@ -46,6 +46,25 @@ const META_REWARD_VICTORY := 25
 const ECLIPSE_NIGHT_DURATION_MULT := 1.4
 const ECLIPSE_FOOD_UPKEEP_MULT := 1.5
 
+## Town-center market: emergency swaps only. High fee + daily cap keep mono-gathering
+## from replacing a real economy (wood/food/gold each stay necessary).
+## Relative values ≈ gather scarcity + role (gold gates military; food has upkeep).
+const MARKET_RESOURCE_VALUE := {
+	"wood": 1.0,
+	"food": 2.5,
+	"gold": 3.5,
+}
+## Fraction of value lost on every trade (0.4 → keep 60%). Round-trips lose ~64%.
+const MARKET_FEE := 0.4
+## Fixed lot sizes you pay per click (meaningful commitment, not 1-unit nibbles).
+const MARKET_LOT_SIZE := {
+	"wood": 50,
+	"food": 30,
+	"gold": 25,
+}
+## Max successful exchanges per day cycle (resets when a new day begins).
+const MARKET_TRADES_PER_CYCLE := 3
+
 
 static func get_gather_rate(resource_key: String) -> float:
 	match resource_key:

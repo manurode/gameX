@@ -81,7 +81,8 @@ func setup(
 	ground: TinyTilesMap = null,
 	run_boon_manager: RunBoonManager = null,
 	game_state_manager: GameStateManager = null,
-	night_wave_manager: NightWaveManager = null
+	night_wave_manager: NightWaveManager = null,
+	market_manager: MarketManager = null
 ) -> void:
 	_build_manager = build_manager
 	_day_night_manager = day_night_manager
@@ -98,7 +99,8 @@ func setup(
 			population_manager,
 			production_manager,
 			curfew_manager,
-			run_boon_manager
+			run_boon_manager,
+			market_manager
 		)
 	if minimap != null and minimap.has_method("setup") and camera != null and ground != null:
 		minimap.setup(camera, ground)

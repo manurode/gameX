@@ -90,6 +90,58 @@ func _test_balance_data() -> void:
 	assert(not population_manager.reserve_population(2))
 	population_manager.release_reserved_population(4)
 	population_manager.free()
+	_test_market_economy()
+
+
+func _test_market_economy() -> void:
+	# Fee must bite hard enough that round-trips never profit.
+	assert(BalanceConfig.MARKET_FEE >= 0.35)
+	assert(BalanceConfig.MARKET_TRADES_PER_CYCLE <= 3)
+	# Gold stays the most valuable resource so wood-only play cannot fund armies cheaply.
+	assert(BalanceConfig.MARKET_RESOURCE_VALUE.gold > BalanceConfig.MARKET_RESOURCE_VALUE.food)
+	assert(BalanceConfig.MARKET_RESOURCE_VALUE.food > BalanceConfig.MARKET_RESOURCE_VALUE.wood)
+
+	var resources := ResourceManager.new()
+	root.add_child(resources)
+	resources.wood = 500
+	resources.gold = 200
+	resources.food = 200
+	var market := MarketManager.new()
+	root.add_child(market)
+	market.setup(resources, null)
+
+	var offers := market.get_offers()
+	assert(offers.size() == 6)
+
+	# Round-trip wood → food → wood loses most of the stock.
+	var wood_to_food := market.get_offer("wood", "food")
+	var food_to_wood := market.get_offer("food", "wood")
+	assert(int(wood_to_food.receive) < int(wood_to_food.pay))
+	var recovered_wood := int(
+		floor(
+			float(wood_to_food.receive)
+			* float(food_to_wood.receive)
+			/ float(food_to_wood.pay)
+		)
+	)
+	assert(recovered_wood < int(wood_to_food.pay) / 2)
+
+	# Daily cap: only N successful trades, then blocked until next cycle.
+	assert(market.try_exchange("wood", "food"))
+	assert(market.try_exchange("wood", "gold"))
+	assert(market.try_exchange("food", "wood"))
+	assert(market.get_trades_remaining() == 0)
+	assert(not market.try_exchange("gold", "food"))
+	assert(not market.get_exchange_block_reason("gold", "food").is_empty())
+
+	# Converting wood into a full squad gold cost needs more than one day's trades.
+	var wood_to_gold := market.get_offer("wood", "gold")
+	var gold_per_trade: int = int(wood_to_gold.receive)
+	var trades_for_squad := int(ceili(float(BalanceConfig.SQUAD_GOLD_COST) / float(gold_per_trade)))
+	assert(trades_for_squad > BalanceConfig.MARKET_TRADES_PER_CYCLE)
+
+	market.free()
+	resources.free()
 
 
 func _simulate_ten_cycles() -> void:

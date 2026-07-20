@@ -3,7 +3,6 @@ extends CharacterBody2D
 
 enum CombatStyle { MELEE, RANGED }
 enum UnitState { IDLE, MOVING, CHASING, ATTACKING, CONSTRUCTING, REPAIRING, GARRISON_APPROACH, GATHERING, DEPOSITING, RECRUITING, DYING }
-enum FormationType { COLUMN, LINE, WEDGE, DIAMOND }
 
 signal health_changed(current_hp: int, max_hp: int)
 signal died
@@ -540,93 +539,7 @@ func reset_navigation() -> void:
 	_reset_navigation_recovery()
 
 
-static func compute_formation_positions(
-	center: Vector2,
-	count: int,
-	formation: FormationType = FormationType.WEDGE
-) -> PackedVector2Array:
-	if count <= 0:
-		return PackedVector2Array()
-
-	var spacing := PERSONAL_SPACE_RADIUS * 2.0
-	match formation:
-		FormationType.COLUMN:
-			return _compute_column_positions(center, count, spacing)
-		FormationType.LINE:
-			return _compute_line_positions(center, count, spacing)
-		FormationType.WEDGE:
-			return _compute_wedge_positions(center, count, spacing)
-		FormationType.DIAMOND:
-			return _compute_diamond_positions(center, count, spacing)
-		_:
-			return _compute_wedge_positions(center, count, spacing)
-
-
-static func _compute_column_positions(center: Vector2, count: int, spacing: float) -> PackedVector2Array:
-	var positions := PackedVector2Array()
-	for i in count:
-		positions.append(center + Vector2(0.0, float(i) * spacing))
-	return positions
-
-
-static func _compute_line_positions(center: Vector2, count: int, spacing: float) -> PackedVector2Array:
-	var positions := PackedVector2Array()
-	for i in count:
-		var offset := (float(i) - (float(count) - 1.0) / 2.0) * spacing
-		positions.append(center + Vector2(offset, 0.0))
-	return positions
-
-
-static func _compute_wedge_positions(center: Vector2, count: int, spacing: float) -> PackedVector2Array:
-	var positions := PackedVector2Array()
-	positions.append(center)
-
-	var assigned := 1
-	var row := 1
-	while assigned < count:
-		var depth := float(row) * spacing
-		var width := row + 1
-		for col in width:
-			if assigned >= count:
-				break
-			var lateral := (float(col) - float(width - 1) / 2.0) * spacing
-			positions.append(center + Vector2(lateral, depth))
-			assigned += 1
-		row += 1
-
-	return positions
-
-
-static func _compute_diamond_positions(center: Vector2, count: int, spacing: float) -> PackedVector2Array:
-	var positions := PackedVector2Array()
-	positions.append(center)
-
-	if count <= 1:
-		return positions
-
-	var offsets: Array[Vector2] = []
-	var layer := 1
-	while offsets.size() < count - 1:
-		for x in range(-layer, layer + 1):
-			offsets.append(Vector2(float(x), -float(layer)))
-		for y in range(-layer + 1, layer):
-			offsets.append(Vector2(float(layer), float(y)))
-			offsets.append(Vector2(-float(layer), float(y)))
-		for x in range(layer - 1, -layer, -1):
-			offsets.append(Vector2(float(x), float(layer)))
-		layer += 1
-
-	for i in count - 1:
-		positions.append(center + offsets[i] * spacing)
-
-	return positions
-
-
-static func assign_move_destinations(
-	units: Array,
-	center: Vector2,
-	formation: FormationType = FormationType.WEDGE
-) -> void:
+static func assign_move_destinations(units: Array, destination: Vector2) -> void:
 	var valid_units: Array[Unit] = []
 	for unit in units:
 		if is_instance_valid(unit) and unit.garrisoned_building == null:
@@ -635,26 +548,17 @@ static func assign_move_destinations(
 	if valid_units.is_empty():
 		return
 
-	var slots := compute_formation_positions(center, valid_units.size(), formation)
-
-	valid_units.sort_custom(func(a: Unit, b: Unit) -> bool:
-		return a.get_instance_id() < b.get_instance_id()
-	)
-
 	var navigation_manager: Node = null
-	if not valid_units.is_empty():
-		var tree := valid_units[0].get_tree()
-		if tree != null:
-			navigation_manager = tree.get_first_node_in_group("navigation_manager")
+	var tree := valid_units[0].get_tree()
+	if tree != null:
+		navigation_manager = tree.get_first_node_in_group("navigation_manager")
 
 	var path_requests: Array = []
-	for i in valid_units.size():
-		var unit := valid_units[i]
-		var slot := slots[i]
-		unit.move_to(slot)
+	for unit in valid_units:
+		unit.move_to(destination)
 		path_requests.append({
 			"from": unit.global_position,
-			"to": slot,
+			"to": destination,
 		})
 
 	if navigation_manager != null and navigation_manager.has_method("queue_navigation_paths"):

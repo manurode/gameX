@@ -3,17 +3,14 @@ extends Node
 signal selection_changed(selected_units: Array)
 signal building_selection_changed(selected_building: Building)
 signal resource_selection_changed(selected_resource: ResourceNode)
-signal formation_changed(formation: Unit.FormationType)
 
 const DRAG_THRESHOLD := 6.0
 const UNIT_COLLISION_MASK := 2
-const MIN_FORMATION_UNITS := 2
 const GARRISON_ATTACK_PICK_RADIUS := 80.0
 
 var selected_units: Array[Unit] = []
 var selected_building: Building = null
 var selected_resource: ResourceNode = null
-var move_formation: Unit.FormationType = Unit.FormationType.WEDGE
 
 var _drag_start_screen: Vector2
 var _drag_current_screen: Vector2
@@ -231,38 +228,7 @@ func _exit_garrison_for_selected() -> void:
 
 
 func _move_selected_units(world_point: Vector2) -> void:
-	Unit.assign_move_destinations(selected_units, world_point, move_formation)
-
-
-func set_move_formation(formation: Unit.FormationType) -> void:
-	move_formation = formation
-	formation_changed.emit(move_formation)
-	_apply_formation_to_selected()
-
-
-func _apply_formation_to_selected() -> void:
-	var valid_units: Array[Unit] = []
-	for unit in selected_units:
-		if is_instance_valid(unit) and unit.garrisoned_building == null:
-			valid_units.append(unit)
-
-	if valid_units.size() < MIN_FORMATION_UNITS:
-		return
-
-	var center := Vector2.ZERO
-	for unit in valid_units:
-		center += unit.global_position
-	center /= float(valid_units.size())
-
-	Unit.assign_move_destinations(selected_units, center, move_formation)
-
-
-func get_movable_selected_count() -> int:
-	var count := 0
-	for unit in selected_units:
-		if is_instance_valid(unit) and unit.garrisoned_building == null:
-			count += 1
-	return count
+	Unit.assign_move_destinations(selected_units, world_point)
 
 
 func _notify_selection_changed() -> void:
