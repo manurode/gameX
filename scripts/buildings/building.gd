@@ -93,7 +93,7 @@ func _ready() -> void:
 	selection_indicator.visible = false
 	set_process(true)
 	var day_night := get_tree().get_first_node_in_group("day_night_manager")
-	if day_night != null and day_night.has_method("is_night") and day_night.is_night():
+	if day_night != null and day_night.has_method("should_apply_night_visuals") and day_night.should_apply_night_visuals():
 		apply_cycle_visuals(true, true)
 
 
@@ -1284,7 +1284,7 @@ func _complete_construction() -> void:
 	_notify_building_ready()
 	_request_nav_rebuild()
 	var day_night := get_tree().get_first_node_in_group("day_night_manager")
-	if day_night != null and day_night.has_method("is_night") and day_night.is_night():
+	if day_night != null and day_night.has_method("should_apply_night_visuals") and day_night.should_apply_night_visuals():
 		apply_cycle_visuals(true, true)
 
 

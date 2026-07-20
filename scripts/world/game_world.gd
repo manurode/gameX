@@ -26,6 +26,7 @@ extends Node2D
 const BUILDING_SCENE: PackedScene = preload("res://scenes/buildings/building.tscn")
 const VILLAGER_SCENE: PackedScene = preload("res://scenes/units/unit_villager.tscn")
 const ARCHER_SCENE: PackedScene = preload("res://scenes/units/unit_archer.tscn")
+const KNIGHT_SCENE: PackedScene = preload("res://scenes/units/unit_knight.tscn")
 
 var _town_center: Building
 
@@ -306,30 +307,47 @@ func spawn_bonus_villagers(count: int) -> void:
 
 
 func spawn_temp_archers(count: int) -> void:
-	if ground_layer == null or _town_center == null:
+	_spawn_temp_boon_units(ARCHER_SCENE, "archer", count, Vector2i(-1, -2))
+
+
+func spawn_temp_knights(count: int) -> void:
+	_spawn_temp_boon_units(KNIGHT_SCENE, "knight", count, Vector2i(-1, -3))
+
+
+func _spawn_temp_boon_units(
+	scene: PackedScene,
+	type_id: String,
+	count: int,
+	base_offset: Vector2i
+) -> void:
+	if ground_layer == null or _town_center == null or scene == null:
 		return
 	var center := ground_layer.get_town_center_cell()
 	for i in count:
-		var archer: Unit = ARCHER_SCENE.instantiate()
-		units.add_child(archer)
-		archer.global_position = ground_layer.map_to_local(center + Vector2i(i - 1, -2))
-		UnitDatabase.apply_definition_to_unit(archer, "archer")
-		archer.set_ground_layer(ground_layer)
-		archer.reset_navigation()
-		archer.set_meta("temp_boon_unit", true)
-		register_player_unit(archer)
-		if day_night_manager.is_night():
-			archer.apply_cycle_visuals(true, true)
+		var unit: Unit = scene.instantiate()
+		units.add_child(unit)
+		unit.global_position = ground_layer.map_to_local(center + base_offset + Vector2i(i, 0))
+		UnitDatabase.apply_definition_to_unit(unit, type_id)
+		unit.set_ground_layer(ground_layer)
+		unit.reset_navigation()
+		unit.set_meta("temp_boon_unit", true)
+		register_player_unit(unit)
+		if day_night_manager.should_apply_night_visuals():
+			unit.apply_cycle_visuals(true, true)
 
 
 func clear_temp_archers() -> void:
+	clear_temp_boon_units()
+
+
+func clear_temp_boon_units() -> void:
 	var to_remove: Array[Unit] = []
 	for child in units.get_children():
 		if child is Unit and child.has_meta("temp_boon_unit"):
 			to_remove.append(child as Unit)
-	for archer in to_remove:
-		if is_instance_valid(archer):
-			archer.queue_free()
+	for unit in to_remove:
+		if is_instance_valid(unit):
+			unit.queue_free()
 
 
 func repair_all_player_buildings() -> void:
@@ -383,7 +401,7 @@ func spawn_squad_members(
 			member.set_meta("squad_id", squad_id)
 		population_manager.register_unit(member)
 		register_player_unit(member)
-		if day_night_manager.is_night():
+		if day_night_manager.should_apply_night_visuals():
 			member.apply_cycle_visuals(true, true)
 	population_manager.release_reserved_population(extra_count)
 

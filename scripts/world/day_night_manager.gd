@@ -110,7 +110,8 @@ func toggle_cycle() -> void:
 func set_phase(phase: CyclePhase) -> void:
 	current_phase = phase
 	seconds_remaining = _get_phase_duration(phase)
-	var is_night := phase == CyclePhase.NIGHT
+	var keep_daylight := _should_keep_daylight()
+	var is_night := phase == CyclePhase.NIGHT and not keep_daylight
 	_animate_visuals()
 	_update_cycle_entity_visuals(is_night)
 	if _water_animator != null and _water_animator.has_method("set_night_mode"):
@@ -120,6 +121,15 @@ func set_phase(phase: CyclePhase) -> void:
 
 func is_night() -> bool:
 	return current_phase == CyclePhase.NIGHT
+
+
+func should_apply_night_visuals() -> bool:
+	return is_night() and not _should_keep_daylight()
+
+
+func _should_keep_daylight() -> bool:
+	var boons := get_tree().get_first_node_in_group("run_boon_manager")
+	return boons is RunBoonManager and (boons as RunBoonManager).should_keep_daylight()
 
 
 func is_construction_allowed() -> bool:
@@ -194,15 +204,16 @@ func _animate_visuals() -> void:
 		_transition_tween.kill()
 
 	var target_color := DAY_COLOR
-	match current_phase:
-		CyclePhase.NIGHT:
-			target_color = FOG_NIGHT_COLOR if use_fog_visuals else NIGHT_COLOR
-		CyclePhase.DUSK:
-			target_color = DUSK_COLOR
-		CyclePhase.DAWN:
-			target_color = DAWN_COLOR
-		_:
-			target_color = DAY_COLOR
+	if not _should_keep_daylight():
+		match current_phase:
+			CyclePhase.NIGHT:
+				target_color = FOG_NIGHT_COLOR if use_fog_visuals else NIGHT_COLOR
+			CyclePhase.DUSK:
+				target_color = DUSK_COLOR
+			CyclePhase.DAWN:
+				target_color = DAWN_COLOR
+			_:
+				target_color = DAY_COLOR
 	_transition_tween = create_tween()
 	_transition_tween.tween_property(_modulate, "color", target_color, TRANSITION_SECONDS)\
 		.set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_SINE)

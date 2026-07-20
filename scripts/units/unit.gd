@@ -153,7 +153,7 @@ func _ready() -> void:
 	animated_sprite.frame_changed.connect(_on_animation_frame_changed)
 	animated_sprite.animation_finished.connect(_on_animation_finished)
 	var day_night := get_tree().get_first_node_in_group("day_night_manager")
-	if day_night != null and day_night.has_method("is_night") and day_night.is_night():
+	if day_night != null and day_night.has_method("should_apply_night_visuals") and day_night.should_apply_night_visuals():
 		apply_cycle_visuals(true, true)
 	await get_tree().physics_frame
 	_setup_navigation_agent()
@@ -913,7 +913,7 @@ func on_exited_garrison(exit_position: Vector2) -> void:
 	_unit_state = UnitState.IDLE
 	_play_idle()
 	var day_night := get_tree().get_first_node_in_group("day_night_manager")
-	if day_night != null and day_night.has_method("is_night") and day_night.is_night():
+	if day_night != null and day_night.has_method("should_apply_night_visuals") and day_night.should_apply_night_visuals():
 		_update_night_light(true, true)
 
 

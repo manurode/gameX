@@ -70,6 +70,9 @@ func _on_cycle_changed(phase: DayNightManager.CyclePhase) -> void:
 			_try_emit_foresight()
 		DayNightManager.CyclePhase.DUSK:
 			_despawn_all()
+			if _is_summer_equinox():
+				_continuous_remaining = 0
+				return
 			_activate_modifier_for_night()
 			_attack_direction = ["Norte", "Este", "Sur", "Oeste"].pick_random()
 			_secondary_direction = ""
@@ -85,11 +88,19 @@ func _on_cycle_changed(phase: DayNightManager.CyclePhase) -> void:
 				NightModifier.get_display_name(_current_modifier)
 			)
 		DayNightManager.CyclePhase.NIGHT:
+			if _is_summer_equinox():
+				_continuous_remaining = 0
+				return
 			_spawn_wave()
 		DayNightManager.CyclePhase.DAWN:
 			_continuous_remaining = 0
 			_despawn_all()
 			_pick_next_modifier()
+
+
+func _is_summer_equinox() -> bool:
+	var boons := get_tree().get_first_node_in_group("run_boon_manager")
+	return boons is RunBoonManager and (boons as RunBoonManager).should_keep_daylight()
 
 
 func _activate_modifier_for_night() -> void:
@@ -108,6 +119,8 @@ func _pick_next_modifier() -> void:
 
 
 func _try_emit_foresight() -> void:
+	if _is_summer_equinox():
+		return
 	if MetaProgression.has_foresight():
 		foresight_ready.emit(
 			int(_next_modifier),

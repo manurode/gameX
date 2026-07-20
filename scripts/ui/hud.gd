@@ -327,6 +327,12 @@ func _on_build_mode_changed(active: bool, type_id: String) -> void:
 
 func _on_cycle_changed(phase: DayNightManager.CyclePhase) -> void:
 	_update_cycle_ui(phase, true)
+	if (
+		phase == DayNightManager.CyclePhase.DUSK
+		and _run_boon_manager != null
+		and _run_boon_manager.should_keep_daylight()
+	):
+		_show_banner("Equinoccio de verano — sin oscuridad ni enemigos", 4.5)
 	if _build_manager != null and _build_manager.build_mode_active:
 		return
 	_update_help_for_cycle()

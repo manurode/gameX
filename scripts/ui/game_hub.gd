@@ -99,6 +99,7 @@ var _formation_slots: Dictionary = {}
 var _population_label: Label
 var _food_upkeep_label: Label
 var _gather_bonus_label: Label
+var _production_double_label: Label
 var _active_build_type: String = ""
 var _formation_mode: bool = false
 var _selected_unit_count: int = 0
@@ -158,7 +159,9 @@ func setup(
 		_refresh_curfew_button()
 	if _run_boon_manager != null:
 		_run_boon_manager.gather_multiplier_changed.connect(_on_gather_multiplier_changed)
+		_run_boon_manager.production_double_changed.connect(_on_production_double_changed)
 		_on_gather_multiplier_changed(_run_boon_manager.get_gather_multiplier())
+		_on_production_double_changed(_run_boon_manager.has_production_double())
 
 
 func _build_resource_rows() -> void:
@@ -219,6 +222,13 @@ func _build_resource_rows() -> void:
 	_gather_bonus_label.add_theme_font_size_override("font_size", 10)
 	_gather_bonus_label.add_theme_color_override("font_color", Color(0.55, 0.92, 0.55))
 	stats_row.add_child(_gather_bonus_label)
+
+	_production_double_label = Label.new()
+	_production_double_label.text = "Producción x2"
+	_production_double_label.visible = false
+	_production_double_label.add_theme_font_size_override("font_size", 10)
+	_production_double_label.add_theme_color_override("font_color", Color(0.95, 0.82, 0.35))
+	stats_row.add_child(_production_double_label)
 
 
 func _ensure_production_box() -> void:
@@ -590,6 +600,12 @@ func _on_gather_multiplier_changed(multiplier: float) -> void:
 		_gather_bonus_label.visible = false
 
 
+func _on_production_double_changed(active: bool) -> void:
+	if _production_double_label != null:
+		_production_double_label.visible = active
+	_refresh_production_panel()
+
+
 func _on_food_shortage(active: bool) -> void:
 	if _food_upkeep_label != null and _population_manager != null:
 		_on_food_upkeep_changed(_population_manager.get_food_upkeep_per_second())
@@ -639,14 +655,28 @@ func _refresh_production_panel() -> void:
 		return
 
 	_production_box.visible = true
-	_production_title.text = _selected_building.get_display_name()
+	var building_name := _selected_building.get_display_name()
+	if _has_production_double():
+		_production_title.text = "%s · x2" % building_name
+		_production_title.add_theme_color_override("font_color", Color(0.95, 0.82, 0.35))
+	else:
+		_production_title.text = building_name
+		_production_title.add_theme_color_override("font_color", Color(0.85, 0.78, 0.55))
 
-	var panel_key := "%d:%s" % [_selected_building.get_instance_id(), ",".join(items)]
+	var panel_key := "%d:%s:%s" % [
+		_selected_building.get_instance_id(),
+		",".join(items),
+		"x2" if _has_production_double() else "x1",
+	]
 	if _production_panel_key != panel_key:
 		_rebuild_production_item_buttons(items)
 		_production_panel_key = panel_key
 
 	_update_production_status_labels()
+
+
+func _has_production_double() -> bool:
+	return _run_boon_manager != null and _run_boon_manager.has_production_double()
 
 
 func _get_production_items_for_building(building: Building) -> Array[String]:
@@ -674,8 +704,17 @@ func _rebuild_production_item_buttons(items: Array[String]) -> void:
 		var cost_text := ", ".join(cost_parts) if not cost_parts.is_empty() else "Gratis"
 
 		var button := Button.new()
-		button.text = def.get("name", item_id)
-		button.tooltip_text = "%s · %.0f s" % [cost_text, def.get("train_time", 0.0)]
+		var unit_name: String = def.get("name", item_id)
+		if _has_production_double():
+			button.text = "%s x2" % unit_name
+			button.add_theme_color_override("font_color", Color(0.95, 0.82, 0.35))
+		else:
+			button.text = unit_name
+		button.tooltip_text = "%s · %.0f s%s" % [
+			cost_text,
+			def.get("train_time", 0.0),
+			" · genera 2 unidades" if _has_production_double() else "",
+		]
 		button.focus_mode = Control.FOCUS_NONE
 		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 		button.pressed.connect(_on_production_pressed.bind(item_id))
@@ -689,13 +728,20 @@ func _update_production_status_labels() -> void:
 
 	var items := _get_production_items_for_building(_selected_building)
 	var queue_counts := _production_manager.get_queue_counts(_selected_building)
+	var double_active := _has_production_double()
 	for item_id in items:
 		var button: Button = _production_item_buttons.get(item_id)
 		if button == null:
 			continue
 		var def := EquipmentDatabase.get_definition(item_id)
 		var queued_count: int = queue_counts.get(item_id, 0)
-		button.text = def.get("name", item_id)
+		var unit_name: String = def.get("name", item_id)
+		if double_active:
+			button.text = "%s x2" % unit_name
+			button.add_theme_color_override("font_color", Color(0.95, 0.82, 0.35))
+		else:
+			button.text = unit_name
+			button.remove_theme_color_override("font_color")
 		if queued_count > 0:
 			button.text += " (x%d)" % queued_count
 

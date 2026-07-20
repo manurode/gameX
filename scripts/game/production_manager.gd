@@ -184,21 +184,31 @@ func _advance_queue(building: Building, delta: float) -> void:
 func _on_item_completed(building: Building, item_id: String, reserved_population: int = 0) -> void:
 	var def := EquipmentDatabase.get_definition(item_id)
 	var transforms_to: String = def.get("transforms_to", "")
+	var output_count := _get_production_output_count()
 	if transforms_to.is_empty():
-		_spawn_villager(building)
+		for _i in output_count:
+			_spawn_villager(building)
 		return
 
 	if not _pending_recruitment.has(building):
 		_pending_recruitment[building] = []
 	var pending_queue: Array = _pending_recruitment[building]
-	pending_queue.append({
-		"item_id": item_id,
-		"transforms_to": transforms_to,
-		"squad_size": def.get("squad_size", 1),
-		"reserved_population": reserved_population,
-		"squad_id": "%d-%d-%d" % [building.get_instance_id(), Time.get_ticks_msec(), randi()],
-	})
+	for i in output_count:
+		pending_queue.append({
+			"item_id": item_id,
+			"transforms_to": transforms_to,
+			"squad_size": def.get("squad_size", 1),
+			"reserved_population": reserved_population if i == 0 else 0,
+			"squad_id": "%d-%d-%d" % [building.get_instance_id(), Time.get_ticks_msec(), randi()],
+		})
 	queue_changed.emit(building)
+
+
+func _get_production_output_count() -> int:
+	var boons := get_tree().get_first_node_in_group("run_boon_manager")
+	if boons is RunBoonManager:
+		return (boons as RunBoonManager).get_production_output_count()
+	return 1
 
 
 func _process_pending_recruitment() -> void:
