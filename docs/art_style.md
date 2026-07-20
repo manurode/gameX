@@ -1,4 +1,4 @@
-# gameX — Art Style Guide
+# Nightfall — Art Style Guide
 
 Visual reference for keeping assets consistent across the project.
 

@@ -1,13 +1,11 @@
 extends Control
 
 const GAME_SCENE := "res://scenes/main.tscn"
+const MENU_BG := preload("res://assets/ui/menu_nightfall_bg.png")
 
 enum Screen { TITLE, SETUP, UPGRADES }
 
 # Palette aligned with in-game wood / gold UI
-const COL_SKY_TOP := Color(0.06, 0.08, 0.14, 1.0)
-const COL_SKY_MID := Color(0.12, 0.16, 0.14, 1.0)
-const COL_SKY_BOT := Color(0.18, 0.22, 0.12, 1.0)
 const COL_PANEL := Color(0.09, 0.07, 0.055, 0.94)
 const COL_PANEL_INNER := Color(0.12, 0.1, 0.075, 0.9)
 const COL_BORDER := Color(0.72, 0.58, 0.32, 1.0)
@@ -15,7 +13,7 @@ const COL_BORDER_DIM := Color(0.42, 0.35, 0.24, 1.0)
 const COL_GOLD := Color(1.0, 0.9, 0.55, 1.0)
 const COL_GOLD_SOFT := Color(0.92, 0.82, 0.52, 1.0)
 const COL_CREAM := Color(0.9, 0.86, 0.74, 1.0)
-const COL_MUTED := Color(0.72, 0.68, 0.58, 1.0)
+const COL_MUTED := Color(0.78, 0.74, 0.64, 1.0)
 const COL_BTN := Color(0.14, 0.11, 0.08, 0.95)
 const COL_BTN_HOVER := Color(0.22, 0.17, 0.1, 0.98)
 const COL_BTN_PRESSED := Color(0.1, 0.08, 0.05, 1.0)
@@ -70,102 +68,44 @@ func _unhandled_input(event: InputEvent) -> void:
 # ---------------------------------------------------------------------------
 
 func _build_atmosphere() -> void:
-	var sky := ColorRect.new()
-	sky.name = "SkyTop"
-	sky.color = COL_SKY_TOP
-	sky.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	sky.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(sky)
-	move_child(sky, 0)
+	var bg := TextureRect.new()
+	bg.name = "MenuBackground"
+	bg.texture = MENU_BG
+	bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(bg)
+	move_child(bg, 0)
 
-	var mid := ColorRect.new()
-	mid.name = "SkyMid"
-	mid.color = COL_SKY_MID
-	mid.set_anchors_preset(Control.PRESET_FULL_RECT)
-	mid.anchor_top = 0.35
-	mid.offset_top = 0.0
-	mid.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(mid)
-	move_child(mid, 1)
+	# Soft radial vignette (no hard color bands)
+	var vignette := TextureRect.new()
+	vignette.name = "Vignette"
+	vignette.texture = _make_vignette_texture()
+	vignette.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	vignette.stretch_mode = TextureRect.STRETCH_SCALE
+	vignette.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vignette.modulate = Color(1, 1, 1, 0.72)
+	add_child(vignette)
+	move_child(vignette, 1)
 
-	var ground := ColorRect.new()
-	ground.name = "GroundBand"
-	ground.color = COL_SKY_BOT
-	ground.set_anchors_preset(Control.PRESET_FULL_RECT)
-	ground.anchor_top = 0.62
-	ground.offset_top = 0.0
-	ground.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(ground)
-	move_child(ground, 2)
 
-	# Soft vignette via dark side fades
-	var left_fade := ColorRect.new()
-	left_fade.color = Color(0, 0, 0, 0.35)
-	left_fade.set_anchors_preset(Control.PRESET_LEFT_WIDE)
-	left_fade.anchor_right = 0.18
-	left_fade.offset_right = 0.0
-	left_fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(left_fade)
-
-	var right_fade := ColorRect.new()
-	right_fade.color = Color(0, 0, 0, 0.35)
-	right_fade.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
-	right_fade.anchor_left = 0.82
-	right_fade.offset_left = 0.0
-	right_fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(right_fade)
-
-	var bottom_fade := ColorRect.new()
-	bottom_fade.color = Color(0, 0, 0, 0.45)
-	bottom_fade.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	bottom_fade.anchor_top = 0.78
-	bottom_fade.offset_top = 0.0
-	bottom_fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(bottom_fade)
-
-	# Horizon gold line
-	var horizon := ColorRect.new()
-	horizon.color = Color(0.75, 0.55, 0.25, 0.35)
-	horizon.set_anchors_preset(Control.PRESET_HCENTER_WIDE)
-	horizon.anchor_top = 0.62
-	horizon.anchor_bottom = 0.62
-	horizon.offset_top = -1.0
-	horizon.offset_bottom = 1.0
-	horizon.anchor_left = 0.15
-	horizon.anchor_right = 0.85
-	horizon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(horizon)
-
-	# Soft “moon” glow
-	var moon := ColorRect.new()
-	moon.color = Color(0.85, 0.88, 0.75, 0.12)
-	moon.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	moon.offset_left = -140.0
-	moon.offset_right = -60.0
-	moon.offset_top = 48.0
-	moon.offset_bottom = 128.0
-	moon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(moon)
-
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 42
-	for i in 18:
-		var star := ColorRect.new()
-		var bright := rng.randf_range(0.25, 0.7)
-		star.color = Color(0.9, 0.88, 0.75, bright)
-		star.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var sz := rng.randi_range(1, 2)
-		star.custom_minimum_size = Vector2(sz, sz)
-		star.set_anchors_preset(Control.PRESET_TOP_LEFT)
-		star.anchor_left = rng.randf_range(0.05, 0.95)
-		star.anchor_right = star.anchor_left
-		star.anchor_top = rng.randf_range(0.04, 0.48)
-		star.anchor_bottom = star.anchor_top
-		star.offset_left = 0.0
-		star.offset_top = 0.0
-		star.offset_right = float(sz)
-		star.offset_bottom = float(sz)
-		add_child(star)
+func _make_vignette_texture() -> Texture2D:
+	var grad := Gradient.new()
+	grad.colors = PackedColorArray([
+		Color(0.02, 0.03, 0.07, 0.0),
+		Color(0.02, 0.03, 0.07, 0.55),
+	])
+	grad.offsets = PackedFloat32Array([0.35, 1.0])
+	var tex := GradientTexture2D.new()
+	tex.gradient = grad
+	tex.width = 512
+	tex.height = 512
+	tex.fill = GradientTexture2D.FILL_RADIAL
+	tex.fill_from = Vector2(0.5, 0.42)
+	tex.fill_to = Vector2(0.95, 0.95)
+	return tex
 
 
 # ---------------------------------------------------------------------------
@@ -196,17 +136,22 @@ func _build_title_screen() -> void:
 	eyebrow.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	eyebrow.add_theme_font_size_override("font_size", 12)
 	eyebrow.add_theme_color_override("font_color", COL_MUTED)
+	eyebrow.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
+	eyebrow.add_theme_constant_override("shadow_offset_x", 1)
+	eyebrow.add_theme_constant_override("shadow_offset_y", 1)
 	vbox.add_child(eyebrow)
 
 	_title_label = Label.new()
-	_title_label.text = "gameX"
+	_title_label.text = "Nightfall"
 	_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_title_label.add_theme_font_size_override("font_size", 96)
+	_title_label.add_theme_font_size_override("font_size", 88)
 	_title_label.add_theme_color_override("font_color", COL_GOLD)
-	_title_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.75))
+	_title_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
 	_title_label.add_theme_constant_override("shadow_offset_x", 3)
-	_title_label.add_theme_constant_override("shadow_offset_y", 4)
+	_title_label.add_theme_constant_override("shadow_offset_y", 5)
+	_title_label.add_theme_constant_override("outline_size", 4)
+	_title_label.add_theme_color_override("font_outline_color", Color(0.05, 0.04, 0.02, 0.65))
 	vbox.add_child(_title_label)
 
 	var rule := _make_gold_rule(280.0)
@@ -219,6 +164,9 @@ func _build_title_screen() -> void:
 	tagline.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tagline.add_theme_font_size_override("font_size", 16)
 	tagline.add_theme_color_override("font_color", COL_CREAM)
+	tagline.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.75))
+	tagline.add_theme_constant_override("shadow_offset_x", 1)
+	tagline.add_theme_constant_override("shadow_offset_y", 2)
 	vbox.add_child(tagline)
 
 	var spacer := Control.new()
@@ -285,7 +233,7 @@ func _build_setup_screen() -> void:
 	vbox.add_child(header)
 
 	var brand := Label.new()
-	brand.text = "gameX"
+	brand.text = "Nightfall"
 	brand.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	brand.add_theme_font_size_override("font_size", 28)
 	brand.add_theme_color_override("font_color", COL_GOLD)

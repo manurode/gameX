@@ -1,6 +1,6 @@
 # Mediterranean Coastal Art Pack
 
-Custom stylized Mediterranean coastal pack for gameX.
+Custom stylized Mediterranean coastal pack for Nightfall.
 
 - Buildings, characters, terrain diamonds and decorations under `assets/tilesets/mediterranean/`
 - Visual direction: white stucco, terracotta roofs, lush greens, turquoise water
