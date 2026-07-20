@@ -1,7 +1,7 @@
 class_name BalanceConfig
 extends RefCounted
 
-## Blitz pacing: short frenetic runs (~8–12 min for 5 nights).
+## Long climb: early exits are short; a full clear is a deep meta-powered run.
 ## Opening goal: first day can afford lumber + mill + house, with a thin wall buffer.
 ## Ignoring either wood or food still collapses the run; military stays gold-gated.
 const PHASE_DURATIONS := {
@@ -11,7 +11,8 @@ const PHASE_DURATIONS := {
 	"dawn": 10.0,
 }
 
-const WIN_NIGHTS := 5
+## Survive this many nights to win. Tuned so first runs die early and upgrades unlock depth.
+const WIN_NIGHTS := 20
 
 const INITIAL_WOOD := 260
 const INITIAL_GOLD := 0
@@ -41,8 +42,18 @@ const GARRISON_SOLDIER_DAMAGE_WEIGHT := 1.0
 const GARRISON_CIVILIAN_DAMAGE_WEIGHT := 0.35
 const GARRISON_CIVILIAN_ATTACK_COOLDOWN := 1.6
 
-const META_REWARD_PER_NIGHT := 5
-const META_REWARD_VICTORY := 25
+## Meta fragments: 0 before night 3, exponential climb, exactly TARGET on full clear.
+const META_FRAGMENT_TARGET_VICTORY := 50
+const META_FRAGMENT_REWARD_START_NIGHT := 3
+const META_FRAGMENT_GROWTH := 1.15
+
+## Night wave count: exponential in cycle number. Late nights intentionally overload.
+const WAVE_BASE_COUNT := 8
+const WAVE_GROWTH := 1.16
+const WAVE_COUNT_CAP := 140
+## Extra HP/damage per night after the first (1.0 + rate * (n-1)).
+const ENEMY_NIGHT_STAT_GROWTH := 0.04
+
 const ECLIPSE_NIGHT_DURATION_MULT := 1.4
 const ECLIPSE_FOOD_UPKEEP_MULT := 1.5
 
@@ -75,3 +86,38 @@ static func get_gather_rate(resource_key: String) -> float:
 		"food":
 			return FOOD_PER_SECOND
 	return 0.0
+
+
+## Base enemy count for a night cycle (before modifier / army pressure).
+static func get_wave_base_count(cycle_number: int) -> int:
+	var n := maxi(1, cycle_number)
+	var count := int(round(float(WAVE_BASE_COUNT) * pow(WAVE_GROWTH, float(n - 1))))
+	return clampi(count, 4, WAVE_COUNT_CAP)
+
+
+## Multiplier applied to enemy HP and attack damage for the given night.
+static func get_enemy_night_stat_mult(cycle_number: int) -> float:
+	var n := maxi(1, cycle_number)
+	return 1.0 + ENEMY_NIGHT_STAT_GROWTH * float(n - 1)
+
+
+## Cumulative fragments for ending a run after surviving `nights_survived` nights.
+## Victory (nights >= WIN_NIGHTS) always yields META_FRAGMENT_TARGET_VICTORY.
+static func meta_fragments_for_nights(nights_survived: int) -> int:
+	if nights_survived < META_FRAGMENT_REWARD_START_NIGHT:
+		return 0
+	var n := mini(nights_survived, WIN_NIGHTS)
+	if n >= WIN_NIGHTS:
+		return META_FRAGMENT_TARGET_VICTORY
+	var start := META_FRAGMENT_REWARD_START_NIGHT
+	var r := META_FRAGMENT_GROWTH
+	var total_w := 0.0
+	var earned_w := 0.0
+	for i in range(start, WIN_NIGHTS + 1):
+		var w := pow(r, float(i - start))
+		total_w += w
+		if i <= n:
+			earned_w += w
+	var reward := int(round(float(META_FRAGMENT_TARGET_VICTORY) * earned_w / total_w))
+	# Any paying night should feel like progress.
+	return maxi(1, reward)

@@ -50,7 +50,7 @@ func _test_victory() -> void:
 	manager.setup(null)
 	var won := false
 	manager.victory_reached.connect(func() -> void: won = true)
-	# Survive 5 nights, then complete the final dawn.
+	# Survive WIN_NIGHTS, then complete the final dawn.
 	for _i in BalanceConfig.WIN_NIGHTS:
 		manager.advance_time(
 			BalanceConfig.PHASE_DURATIONS.day
@@ -66,7 +66,10 @@ func _test_victory() -> void:
 
 func _test_balance_data() -> void:
 	assert(is_equal_approx(_cycle_length(), 122.0))
-	assert(BalanceConfig.WIN_NIGHTS == 5)
+	assert(BalanceConfig.WIN_NIGHTS == 20)
+	assert(BalanceConfig.META_FRAGMENT_TARGET_VICTORY == 50)
+	assert(BalanceConfig.meta_fragments_for_nights(2) == 0)
+	assert(BalanceConfig.meta_fragments_for_nights(20) == 50)
 	assert(BalanceConfig.TREE_CAPACITY == 2400)
 	assert(BalanceConfig.GOLD_VEIN_CAPACITY / BalanceConfig.SQUAD_GOLD_COST == 22)
 	assert(BalanceConfig.GOLD_MOUNTAIN_CAPACITY == BalanceConfig.GOLD_VEIN_CAPACITY * 5)

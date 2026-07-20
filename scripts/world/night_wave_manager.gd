@@ -59,7 +59,9 @@ func _process(delta: float) -> void:
 	if _continuous_timer > 0.0:
 		return
 	_continuous_timer = CONTINUOUS_SPAWN_INTERVAL
-	var batch := mini(3, _continuous_remaining)
+	# Late nights need bigger drip batches or the wave never finishes in time.
+	var batch_cap := clampi(3 + _day_night.cycle_number / 4, 3, 12)
+	var batch := mini(batch_cap, _continuous_remaining)
 	_continuous_remaining -= batch
 	_spawn_enemies(batch, _continuous_def)
 
@@ -156,9 +158,10 @@ func _spawn_wave() -> void:
 		_continuous_remaining = 0
 		_spawn_enemies(count, def)
 
-	# Ensure at least one elite on elite nights.
+	# Ensure elites on elite nights; more of them in the late climb.
 	if _current_modifier == NightModifier.Id.ELITE:
-		_spawn_enemies(maxi(1, mini(3, 1 + _day_night.cycle_number / 2)), {
+		var elite_count := maxi(1, mini(6, 1 + _day_night.cycle_number / 3))
+		_spawn_enemies(elite_count, {
 			"composition": [{"kind": "elite", "weight": 1.0}],
 			"fog": def.get("fog", false),
 		})
@@ -168,6 +171,7 @@ func _spawn_wave() -> void:
 
 func _spawn_enemies(count: int, def: Dictionary) -> void:
 	var spawn_points := _get_edge_spawn_points(count, bool(def.get("fog", false)))
+	var night_stat_mult := BalanceConfig.get_enemy_night_stat_mult(_day_night.cycle_number)
 	for i in spawn_points.size():
 		var enemy: EnemyUnit = ENEMY_SCENE.instantiate()
 		_units_container.add_child(enemy)
@@ -175,9 +179,18 @@ func _spawn_enemies(count: int, def: Dictionary) -> void:
 		enemy.set_ground_layer(_ground)
 		enemy.reset_navigation()
 		enemy.configure_kind(_pick_kind(def))
+		_apply_night_stat_scaling(enemy, night_stat_mult)
 		if _day_night.is_night():
 			enemy.apply_cycle_visuals(true, true)
 		_spawned.append(enemy)
+
+
+func _apply_night_stat_scaling(enemy: EnemyUnit, mult: float) -> void:
+	if mult <= 1.001:
+		return
+	enemy.max_hp = maxi(1, int(round(float(enemy.max_hp) * mult)))
+	enemy.hp = enemy.max_hp
+	enemy.attack_damage = maxi(1, int(round(float(enemy.attack_damage) * mult)))
 
 
 func _pick_kind(def: Dictionary) -> String:
@@ -195,13 +208,14 @@ func _pick_kind(def: Dictionary) -> String:
 
 
 func _get_wave_size() -> int:
-	var cycle_bonus := maxi(0, _day_night.cycle_number - 1) * 4
 	var military_count := 0
 	for node in get_tree().get_nodes_in_group("units"):
 		if node is Unit and (node as Unit).team_id == Team.PLAYER and not (node as Unit).is_civilian:
 			military_count += 1
-	# Early denser waves, lower soft cap for short intense fights.
-	return clampi(8 + cycle_bonus + floori(float(military_count) / 3.0), 8, 60)
+	# Exponential night climb; army pressure still adds a little pressure on top.
+	var count := BalanceConfig.get_wave_base_count(_day_night.cycle_number)
+	count += floori(float(military_count) / 3.0)
+	return clampi(count, 4, BalanceConfig.WAVE_COUNT_CAP)
 
 
 func _despawn_all() -> void:

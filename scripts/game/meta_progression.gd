@@ -104,9 +104,10 @@ func purchase(id: String) -> bool:
 
 
 func award_run_rewards(nights_survived: int, victory: bool) -> int:
-	var reward := nights_survived * BalanceConfig.META_REWARD_PER_NIGHT
+	var nights := nights_survived
 	if victory:
-		reward += BalanceConfig.META_REWARD_VICTORY
+		nights = maxi(nights, BalanceConfig.WIN_NIGHTS)
+	var reward := BalanceConfig.meta_fragments_for_nights(nights)
 	if reward <= 0:
 		return 0
 	fragments += reward
