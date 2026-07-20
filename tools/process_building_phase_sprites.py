@@ -119,34 +119,35 @@ def fit_to_canvas(img: Image.Image, size: tuple[int, int], ref: Image.Image | No
 	cw, ch = cropped.size
 
 	# Target content box from reference if available.
+	# Match complete size exactly — any margin makes damaged/plot phases visibly grow.
 	pad_x, pad_y = 8, 8
 	max_w = tw - pad_x * 2
 	max_h = th - pad_y * 2
+	ref_x0 = ref_y0 = ref_x1 = ref_y1 = None
 	if ref is not None:
 		ra = np.asarray(ref.convert("RGBA").split()[-1])
 		rys, rxs = np.where(ra > 16)
 		if len(rxs):
-			rw = int(rxs.max() - rxs.min() + 1)
-			rh = int(rys.max() - rys.min() + 1)
-			max_w = min(max_w, int(rw * 1.08))
-			max_h = min(max_h, int(rh * 1.08))
+			ref_x0 = int(rxs.min())
+			ref_y0 = int(rys.min())
+			ref_x1 = int(rxs.max()) + 1
+			ref_y1 = int(rys.max()) + 1
+			max_w = min(max_w, ref_x1 - ref_x0)
+			max_h = min(max_h, ref_y1 - ref_y0)
 
-	scale = min(max_w / cw, max_h / ch, 1.0)
+	scale = min(max_w / cw, max_h / ch)
 	nw = max(1, int(round(cw * scale)))
 	nh = max(1, int(round(ch * scale)))
 	resized = cropped.resize((nw, nh), Image.Resampling.LANCZOS)
 
 	canvas = Image.new("RGBA", (tw, th), (0, 0, 0, 0))
-	# Align bottom-center like typical building sprites.
-	ox = (tw - nw) // 2
-	oy = th - nh - pad_y
-	if ref is not None:
-		ra = np.asarray(ref.convert("RGBA").split()[-1])
-		rys, rxs = np.where(ra > 16)
-		if len(rys):
-			ref_bottom = int(rys.max())
-			oy = min(th - nh - 2, max(2, ref_bottom - nh + 2))
-			ox = (tw - nw) // 2
+	# Align bottom-center to the complete sprite's content box when possible.
+	if ref_x0 is not None and ref_y1 is not None:
+		ox = ref_x0 + ((ref_x1 - ref_x0) - nw) // 2
+		oy = ref_y1 - nh
+	else:
+		ox = (tw - nw) // 2
+		oy = th - nh - pad_y
 	canvas.paste(resized, (ox, oy), resized)
 	return canvas
 
