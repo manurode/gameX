@@ -140,8 +140,30 @@ func select_boon(boon_id: String) -> void:
 	boon_applied.emit(boon_id)
 
 
+## Aplica una bendición al instante (testing). Cierra la elección pendiente si la hay.
+func debug_apply_boon(boon_id: String) -> bool:
+	if not BOON_DEFS.has(boon_id):
+		return false
+	if _awaiting_choice:
+		_awaiting_choice = false
+		_pending_choices.clear()
+		if _day_night != null:
+			_day_night.automatic_cycle = true
+	_apply_boon(boon_id)
+	boon_applied.emit(boon_id)
+	return true
+
+
 func get_boon_def(boon_id: String) -> Dictionary:
 	return BOON_DEFS.get(boon_id, {})
+
+
+func get_all_boon_ids() -> Array[String]:
+	var ids: Array[String] = []
+	for key in BOON_DEFS.keys():
+		ids.append(str(key))
+	ids.sort()
+	return ids
 
 
 func _on_cycle_changed(phase: DayNightManager.CyclePhase) -> void:

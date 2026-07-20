@@ -18,6 +18,8 @@ var _event_banner_label: Label
 var _banner_timer: float = 0.0
 var _boon_overlay: Control
 var _boon_buttons_box: VBoxContainer
+var _debug_boon_overlay: Control
+var _debug_boon_list: VBoxContainer
 var _end_overlay: Control
 var _end_title: Label
 var _end_body: Label
@@ -32,8 +34,22 @@ func _ready() -> void:
 		cycle_button.disabled = true
 	_create_event_banner()
 	_create_boon_overlay()
+	_create_debug_boon_overlay()
 	_create_end_overlay()
 	_create_foresight_label()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not OS.is_debug_build():
+		return
+	if event is InputEventKey and event.pressed and not event.echo:
+		var key_event := event as InputEventKey
+		if key_event.keycode == KEY_F10:
+			_toggle_debug_boon_menu()
+			get_viewport().set_input_as_handled()
+		elif key_event.keycode == KEY_ESCAPE and _debug_boon_overlay != null and _debug_boon_overlay.visible:
+			_set_debug_boon_menu_visible(false)
+			get_viewport().set_input_as_handled()
 
 
 func _process(delta: float) -> void:
@@ -202,6 +218,116 @@ func _create_boon_overlay() -> void:
 	add_child(_boon_overlay)
 
 
+func _create_debug_boon_overlay() -> void:
+	_debug_boon_overlay = Control.new()
+	_debug_boon_overlay.visible = false
+	_debug_boon_overlay.process_mode = Node.PROCESS_MODE_ALWAYS
+	_debug_boon_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_debug_boon_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	_debug_boon_overlay.z_index = 20
+
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.5)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	_debug_boon_overlay.add_child(dim)
+
+	var panel := PanelContainer.new()
+	panel.set_anchors_preset(Control.PRESET_CENTER)
+	panel.offset_left = -280.0
+	panel.offset_right = 280.0
+	panel.offset_top = -240.0
+	panel.offset_bottom = 240.0
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.07, 0.1, 0.12, 0.97)
+	style.border_color = Color(0.35, 0.75, 0.85, 1.0)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(8)
+	style.set_content_margin_all(14)
+	panel.add_theme_stylebox_override("panel", style)
+	_debug_boon_overlay.add_child(panel)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	vbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	panel.add_child(vbox)
+
+	var header := HBoxContainer.new()
+	vbox.add_child(header)
+
+	var title := Label.new()
+	title.text = "DEBUG — Bendiciones"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 18)
+	title.add_theme_color_override("font_color", Color(0.55, 0.9, 1.0))
+	header.add_child(title)
+
+	var close_button := Button.new()
+	close_button.text = "Cerrar (Esc)"
+	close_button.pressed.connect(_set_debug_boon_menu_visible.bind(false))
+	header.add_child(close_button)
+
+	var hint := Label.new()
+	hint.text = "F8 para abrir/cerrar · click para aplicar al instante"
+	hint.add_theme_font_size_override("font_size", 11)
+	hint.add_theme_color_override("font_color", Color(0.65, 0.75, 0.8))
+	vbox.add_child(hint)
+
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	vbox.add_child(scroll)
+
+	_debug_boon_list = VBoxContainer.new()
+	_debug_boon_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_debug_boon_list.add_theme_constant_override("separation", 6)
+	scroll.add_child(_debug_boon_list)
+
+	add_child(_debug_boon_overlay)
+
+
+func _toggle_debug_boon_menu() -> void:
+	if _debug_boon_overlay == null:
+		return
+	_set_debug_boon_menu_visible(not _debug_boon_overlay.visible)
+
+
+func _set_debug_boon_menu_visible(visible: bool) -> void:
+	if _debug_boon_overlay == null:
+		return
+	if visible:
+		_rebuild_debug_boon_list()
+	_debug_boon_overlay.visible = visible
+
+
+func _rebuild_debug_boon_list() -> void:
+	if _debug_boon_list == null:
+		return
+	for child in _debug_boon_list.get_children():
+		child.queue_free()
+	if _run_boon_manager == null:
+		var empty := Label.new()
+		empty.text = "RunBoonManager no disponible"
+		_debug_boon_list.add_child(empty)
+		return
+	for boon_id in _run_boon_manager.get_all_boon_ids():
+		var def := _run_boon_manager.get_boon_def(boon_id)
+		var button := Button.new()
+		button.text = "%s\n%s" % [def.get("name", boon_id), def.get("description", "")]
+		button.custom_minimum_size = Vector2(0, 48)
+		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		button.tooltip_text = "id: %s" % boon_id
+		button.pressed.connect(_on_debug_boon_pressed.bind(boon_id))
+		_debug_boon_list.add_child(button)
+
+
+func _on_debug_boon_pressed(boon_id: String) -> void:
+	if _run_boon_manager == null:
+		return
+	if _run_boon_manager.debug_apply_boon(boon_id):
+		_set_debug_boon_menu_visible(false)
+
+
 func _create_end_overlay() -> void:
 	_end_overlay = Control.new()
 	_end_overlay.visible = false
@@ -268,6 +394,8 @@ func _on_game_over_legacy() -> void:
 func _on_run_ended(won: bool, nights_survived: int, fragments_earned: int) -> void:
 	if _boon_overlay != null:
 		_boon_overlay.visible = false
+	if _debug_boon_overlay != null:
+		_debug_boon_overlay.visible = false
 	if _end_overlay == null:
 		return
 	_ensure_paused_input_chain()

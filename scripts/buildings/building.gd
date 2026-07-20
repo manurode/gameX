@@ -1392,11 +1392,25 @@ func _destroy() -> void:
 	var population_manager := get_tree().get_first_node_in_group("population_manager")
 	if population_manager is PopulationManager:
 		(population_manager as PopulationManager).recalculate_cap_from_buildings()
-	var units_to_kill := garrisoned_units.duplicate()
-	garrisoned_units.clear()
-	for unit in units_to_kill:
-		if is_instance_valid(unit):
-			unit.die_from_garrison_destruction()
+	# During curfew, evacuate civilians and send them to the nearest other shelter
+	# instead of killing them. Enemies can still kill them while they travel.
+	var units_inside := garrisoned_units.duplicate()
+	var curfew := get_tree().get_first_node_in_group("curfew_manager")
+	var evacuate_for_curfew := (
+		curfew is CurfewManager
+		and (curfew as CurfewManager).is_active
+		and not units_inside.is_empty()
+	)
+	if evacuate_for_curfew:
+		exit_all_garrison()
+		for unit in units_inside:
+			if is_instance_valid(unit):
+				(curfew as CurfewManager).send_villager_to_shelter(unit)
+	else:
+		garrisoned_units.clear()
+		for unit in units_inside:
+			if is_instance_valid(unit):
+				unit.die_from_garrison_destruction()
 
 	deselect()
 	if health_bar != null:
