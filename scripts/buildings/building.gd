@@ -11,6 +11,10 @@ signal upgraded(new_level: int, weapon_type: String)
 
 const HEALTH_BAR_VISIBLE_MS := 4000
 const DAMAGED_HP_RATIO := 0.5
+## Fallback when a building has build_time 0 (e.g. town center): full-repair duration.
+const DEFAULT_REPAIR_TIME := 12.0
+## Never finish a repair faster than this, even for tiny damage.
+const MIN_REPAIR_TIME := 2.0
 const ENTRY_RANGE := 42.0
 const GARRISON_ATTACK_RANGE := 260.0
 const COLLISION_BODY_SHRINK := Vector2(0.84, 0.84)
@@ -738,18 +742,33 @@ func get_repair_cost() -> Dictionary:
 
 
 func get_repair_work_duration() -> float:
-	if not needs_repair():
+	if not needs_repair() and not repair_in_progress:
 		return 0.0
 	var missing_hp := max_hp - hp
 	if repair_in_progress:
 		missing_hp = max_hp - _repair_start_hp
-	return build_time_total * (float(maxi(1, missing_hp)) / float(maxi(1, max_hp)))
+	var ratio := float(maxi(1, missing_hp)) / float(maxi(1, max_hp))
+	var base_time := build_time_total if build_time_total > 0.0 else DEFAULT_REPAIR_TIME
+	return maxf(base_time * ratio, MIN_REPAIR_TIME)
+
+
+func get_repair_progress_ratio() -> float:
+	if not repair_in_progress:
+		return 1.0 if hp >= max_hp else 0.0
+	return clampf(_repair_progress, 0.0, 1.0)
 
 
 func try_start_repair(resource_manager: ResourceManager) -> bool:
 	if not can_be_repaired() or resource_manager == null:
 		return false
 	if repair_paid:
+		if not repair_in_progress:
+			repair_in_progress = true
+			_repair_start_hp = hp
+			_repair_progress = 0.0
+			_notify_health_bar()
+			if progress_bar != null and progress_bar.has_method("refresh_from_building"):
+				progress_bar.refresh_from_building()
 		return true
 
 	var cost := get_repair_cost()
@@ -762,6 +781,9 @@ func try_start_repair(resource_manager: ResourceManager) -> bool:
 	repair_in_progress = true
 	_repair_start_hp = hp
 	_repair_progress = 0.0
+	_notify_health_bar()
+	if progress_bar != null and progress_bar.has_method("refresh_from_building"):
+		progress_bar.refresh_from_building()
 	return true
 
 
@@ -774,13 +796,19 @@ func add_repair_progress(amount: float) -> void:
 		_complete_repair()
 		return
 
-	_repair_progress = clampf(_repair_progress + amount, 0.0, 1.0)
-	hp = _repair_start_hp + int(_repair_progress * float(missing_hp))
+	# Gradual HP fill (same idea as construction work), never jump to full in one tick.
+	_repair_progress = clampf(_repair_progress + minf(amount, 0.2), 0.0, 1.0)
+	hp = _repair_start_hp + int(floor(_repair_progress * float(missing_hp)))
 	hp = mini(hp, max_hp)
+	# Only snap to full when work is actually done (avoids 1-HP instant completes).
+	if _repair_progress >= 1.0:
+		hp = max_hp
 	health_changed.emit(hp, max_hp)
 	_update_visual_damage()
+	if progress_bar != null and progress_bar.has_method("refresh_from_building"):
+		progress_bar.refresh_from_building()
 
-	if _repair_progress >= 1.0 or hp >= max_hp:
+	if _repair_progress >= 1.0:
 		_complete_repair()
 
 
@@ -791,7 +819,10 @@ func _complete_repair() -> void:
 	_repair_start_hp = 0
 	_repair_progress = 0.0
 	health_changed.emit(hp, max_hp)
-	_update_visual_damage()
+	_apply_phase_texture(true)
+	_notify_health_bar()
+	if progress_bar != null and progress_bar.has_method("refresh_from_building"):
+		progress_bar.refresh_from_building()
 
 
 func get_upgrade_cost() -> Dictionary:
@@ -996,6 +1027,8 @@ func should_show_health_bar() -> bool:
 	if building_state == BuildingState.DESTROYED or hp <= 0:
 		return false
 	if building_state == BuildingState.CONSTRUCTING:
+		return true
+	if repair_in_progress:
 		return true
 	if is_selected:
 		return true

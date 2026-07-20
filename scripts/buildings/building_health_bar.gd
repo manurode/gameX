@@ -68,6 +68,7 @@ func _refresh_visibility() -> void:
 		set_process(
 			not _building.is_selected
 			and _building.building_state != Building.BuildingState.CONSTRUCTING
+			and not _building.repair_in_progress
 		)
 	else:
 		set_process(false)

@@ -1234,11 +1234,12 @@ func _physics_process(delta: float) -> void:
 
 	if repair_target != null and (
 		not is_instance_valid(repair_target)
-		or not repair_target.can_be_repaired()
+		or (
+			not repair_target.can_be_repaired()
+			and not repair_target.repair_in_progress
+		)
 	):
-		repair_target = null
-		if _unit_state == UnitState.REPAIRING:
-			_unit_state = UnitState.IDLE
+		_notify_repair_finished()
 
 	if garrison_approach_target != null and (
 		not is_instance_valid(garrison_approach_target)
@@ -1670,8 +1671,11 @@ func _notify_construction_finished() -> void:
 
 func _process_repair(delta: float) -> void:
 	var target := repair_target
-	if target == null:
-		_unit_state = UnitState.IDLE
+	if target == null or not is_instance_valid(target):
+		_notify_repair_finished()
+		return
+
+	if not target.can_be_repaired() and not target.repair_in_progress:
 		_notify_repair_finished()
 		return
 
@@ -1687,8 +1691,11 @@ func _process_repair(delta: float) -> void:
 		_follow_navigation_toward(approach, 4.0, delta)
 		return
 
-	var resource_manager := get_tree().get_first_node_in_group("resource_manager")
-	if resource_manager is ResourceManager and not target.repair_paid:
+	if not target.repair_in_progress:
+		var resource_manager := get_tree().get_first_node_in_group("resource_manager")
+		if not resource_manager is ResourceManager:
+			_notify_repair_finished()
+			return
 		if not target.try_start_repair(resource_manager as ResourceManager):
 			_notify_repair_finished()
 			return
@@ -1701,7 +1708,7 @@ func _process_repair(delta: float) -> void:
 		work_multiplier = (population_manager as PopulationManager).get_civilian_work_multiplier()
 
 	var repair_time := target.get_repair_work_duration()
-	var progress_rate := (1.0 / maxf(repair_time, 0.1)) * build_power * work_multiplier * delta
+	var progress_rate := (1.0 / maxf(repair_time, Building.MIN_REPAIR_TIME)) * build_power * work_multiplier * delta
 	var prev_needs_repair := target.needs_repair()
 	target.add_repair_progress(progress_rate)
 	if prev_needs_repair and not target.needs_repair():
