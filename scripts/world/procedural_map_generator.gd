@@ -35,13 +35,18 @@ const MOUNTAIN_FOOTPRINT: Array[Vector2i] = [
 ]
 
 ## Wang grass: 2 edge types (dense/soft) × 4 edges → 16 tiles.
-## Source IDs: 0..15 wang grass, 16 press, 17 water, 18 main.
+## Source IDs: 0..15 wang grass, 16 press, 17 water (legacy unused), 18 main.
+## Water is a gameplay mask only — ground under lakes is Wang grass; visuals are lake sprites.
 const GRASS_VARIANT_COUNT := 16
 const EDGE_DENSE := 0
 const EDGE_SOFT := 1
 const GRASS_A := 0 ## all-dense wang tile (N=E=S=W=dense)
 const GRASS_PRESS := 16
-const WATER := 17
+const WATER := 17 ## legacy tile id; no longer painted on the map
+const MIN_LAKE_CLUSTER := 6
+## Approx cells covered by one lake sprite — keep dense enough that grass never shows through.
+const LAKE_COVER_RADIUS := 2.75
+const LAKE_VARIANT_COUNT := 3
 
 var map_size := DEFAULT_MAP_SIZE
 
@@ -74,7 +79,8 @@ func generate(requested_seed: int = 0) -> Dictionary:
 			var water_value := terrain_noise.get_noise_2d(float(x), float(y))
 			var is_water := distance_to_town > _get_town_clear_radius() and water_value > WATER_THRESHOLD
 			# Placeholder grass; Wang codes resolved after water topology is final.
-			ground_tiles[_cell_index(cell)] = WATER if is_water else GRASS_A
+			# water_set is the non-walkable mask; lake sprites provide the visuals.
+			ground_tiles[_cell_index(cell)] = GRASS_A
 			if is_water:
 				water_cells.append(cell)
 				water_set[cell] = true
@@ -82,7 +88,10 @@ func generate(requested_seed: int = 0) -> Dictionary:
 	_carve_routes_to_edges(town_center_cell, ground_tiles, water_cells, water_set)
 	var reachable_set := _get_reachable_ground(town_center_cell, water_set)
 	_fill_unreachable_ground(ground_tiles, water_cells, water_set, reachable_set)
+	_prune_tiny_water_clusters(ground_tiles, water_cells, water_set)
+	# Visual ground is always Wang grass; water_set is the non-walkable mask under lake sprites.
 	_assign_wang_grass(ground_tiles, water_set, world_seed)
+	var lake_placements := _generate_lake_placements(water_cells, rng)
 
 	var occupied: Dictionary = {}
 	var resource_placements := _generate_resources(
@@ -99,15 +108,16 @@ func generate(requested_seed: int = 0) -> Dictionary:
 		"ground_tiles": ground_tiles,
 		"water_cells": water_cells,
 		"water_set": water_set,
+		"lake_placements": lake_placements,
 		"resource_placements": resource_placements,
 		"decoration_placements": decoration_placements,
 	}
 
 
-func _assign_wang_grass(ground_tiles: Array[int], water_set: Dictionary, world_seed: int) -> void:
+func _assign_wang_grass(ground_tiles: Array[int], _water_set: Dictionary, world_seed: int) -> void:
 	## Cell terrain (dense/soft) from low-freq noise → organic meadow patches.
-	## Shared edge = SOFT if either touching grass cell is soft (blob expands),
-	## else DENSE. That yields Wang codes whose art crosses the diamond grid.
+	## Shared edge = SOFT if either touching cell is soft (blob expands),
+	## else DENSE. Includes water mask cells so lake sprites sit on seamless grass.
 	var field_noise := FastNoiseLite.new()
 	field_noise.seed = world_seed ^ 0xA5A5A5A5
 	field_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
@@ -121,9 +131,6 @@ func _assign_wang_grass(ground_tiles: Array[int], water_set: Dictionary, world_s
 		for x in map_size.x:
 			var cell := Vector2i(x, y)
 			var idx := _cell_index(cell)
-			if cell in water_set:
-				cell_types[idx] = EDGE_DENSE
-				continue
 			cell_types[idx] = (
 				EDGE_SOFT if field_noise.get_noise_2d(float(x), float(y)) >= 0.0 else EDGE_DENSE
 			)
@@ -131,23 +138,20 @@ func _assign_wang_grass(ground_tiles: Array[int], water_set: Dictionary, world_s
 	for y in map_size.y:
 		for x in map_size.x:
 			var cell := Vector2i(x, y)
-			if cell in water_set:
-				continue
 			var self_type := cell_types[_cell_index(cell)]
-			var n := _shared_edge_type(self_type, Vector2i(x, y - 1), cell_types, water_set)
-			var s := _shared_edge_type(self_type, Vector2i(x, y + 1), cell_types, water_set)
-			var w := _shared_edge_type(self_type, Vector2i(x - 1, y), cell_types, water_set)
-			var e := _shared_edge_type(self_type, Vector2i(x + 1, y), cell_types, water_set)
+			var n := _shared_edge_type(self_type, Vector2i(x, y - 1), cell_types)
+			var s := _shared_edge_type(self_type, Vector2i(x, y + 1), cell_types)
+			var w := _shared_edge_type(self_type, Vector2i(x - 1, y), cell_types)
+			var e := _shared_edge_type(self_type, Vector2i(x + 1, y), cell_types)
 			ground_tiles[_cell_index(cell)] = _wang_index(n, e, s, w)
 
 
 func _shared_edge_type(
 	self_type: int,
 	neighbor: Vector2i,
-	cell_types: Array[int],
-	water_set: Dictionary
+	cell_types: Array[int]
 ) -> int:
-	if not _is_in_bounds(neighbor) or neighbor in water_set:
+	if not _is_in_bounds(neighbor):
 		return self_type
 	var other := cell_types[_cell_index(neighbor)]
 	# Soft meadow bleeds one edge into dense neighbors (organic blob, not a hard grid).
@@ -194,6 +198,105 @@ func _generate_decorations(
 	_occupied: Dictionary
 ) -> Array[Dictionary]:
 	return []
+
+
+func _generate_lake_placements(
+	water_cells: Array[Vector2i],
+	rng: RandomNumberGenerator
+) -> Array[Dictionary]:
+	var placements: Array[Dictionary] = []
+	for cluster in _water_clusters(water_cells):
+		placements.append_array(_cover_cluster_with_lakes(cluster, rng))
+	return placements
+
+
+func _prune_tiny_water_clusters(
+	ground_tiles: Array[int],
+	water_cells: Array[Vector2i],
+	water_set: Dictionary
+) -> void:
+	for cluster in _water_clusters(water_cells):
+		if cluster.size() >= MIN_LAKE_CLUSTER:
+			continue
+		for cell in cluster:
+			_set_cell_as_ground(cell, ground_tiles, water_cells, water_set)
+
+
+func _water_clusters(water_cells: Array[Vector2i]) -> Array:
+	var remaining: Dictionary = {}
+	for cell in water_cells:
+		remaining[cell] = true
+	var clusters: Array = []
+	var directions: Array[Vector2i] = [
+		Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN,
+	]
+	while not remaining.is_empty():
+		var start: Vector2i = remaining.keys()[0]
+		var cluster: Array[Vector2i] = []
+		var frontier: Array[Vector2i] = [start]
+		remaining.erase(start)
+		var index := 0
+		while index < frontier.size():
+			var cell := frontier[index]
+			index += 1
+			cluster.append(cell)
+			for direction in directions:
+				var neighbor := cell + direction
+				if neighbor not in remaining:
+					continue
+				remaining.erase(neighbor)
+				frontier.append(neighbor)
+		clusters.append(cluster)
+	return clusters
+
+
+func _cover_cluster_with_lakes(
+	cluster: Array[Vector2i],
+	rng: RandomNumberGenerator
+) -> Array[Dictionary]:
+	var placements: Array[Dictionary] = []
+	if cluster.is_empty():
+		return placements
+
+	var uncovered: Dictionary = {}
+	for cell in cluster:
+		uncovered[cell] = true
+
+	while not uncovered.is_empty():
+		var seed_cell := _pick_lake_seed(uncovered, rng)
+		placements.append({
+			"kind": "lake",
+			"cell": seed_cell,
+			"variant": rng.randi_range(0, LAKE_VARIANT_COUNT - 1),
+		})
+		var covered: Array[Vector2i] = []
+		for cell_variant in uncovered.keys():
+			var cell: Vector2i = cell_variant
+			if Vector2(cell - seed_cell).length() <= LAKE_COVER_RADIUS:
+				covered.append(cell)
+		for cell in covered:
+			uncovered.erase(cell)
+	return placements
+
+
+func _pick_lake_seed(uncovered: Dictionary, rng: RandomNumberGenerator) -> Vector2i:
+	## Prefer a cell near the centroid of remaining water so lakes sit in the mass.
+	var sum := Vector2.ZERO
+	for cell_variant in uncovered.keys():
+		var cell: Vector2i = cell_variant
+		sum += Vector2(cell)
+	var centroid := sum / float(uncovered.size())
+	var best: Vector2i = uncovered.keys()[0]
+	var best_dist := INF
+	for cell_variant in uncovered.keys():
+		var cell: Vector2i = cell_variant
+		var dist := Vector2(cell).distance_squared_to(centroid)
+		# Light jitter so variants don't always stack on the exact center.
+		dist += rng.randf() * 0.35
+		if dist < best_dist:
+			best_dist = dist
+			best = cell
+	return best
 
 
 func _append_random_placements(
@@ -334,7 +437,7 @@ func _fill_unreachable_ground(
 			var cell := Vector2i(x, y)
 			if cell in water_set or cell in reachable_set:
 				continue
-			ground_tiles[_cell_index(cell)] = WATER
+			ground_tiles[_cell_index(cell)] = GRASS_A
 			water_set[cell] = true
 			water_cells.append(cell)
 

@@ -14,6 +14,11 @@ const HILL_PATHS: Array[String] = [
 	"res://assets/tilesets/mediterranean/Decor/mountain_b.png",
 	"res://assets/tilesets/mediterranean/Decor/mountain_c.png",
 ]
+const LAKE_PATHS: Array[String] = [
+	"res://assets/tilesets/mediterranean/Decor/lake_a.png",
+	"res://assets/tilesets/mediterranean/Decor/lake_b.png",
+	"res://assets/tilesets/mediterranean/Decor/lake_c.png",
+]
 const FOREST_SLOW_MULTIPLIER := 0.62
 const FOREST_SLOW_RADIUS := 260.0
 const FOREST_BLOCK_HALF := Vector2(260.0, 120.0)
@@ -26,6 +31,9 @@ const MOUNTAIN_Y_SORT_BIAS := 160.0
 const MOUNTAIN_PICK_RADIUS := 220.0
 const MOUNTAIN_VISUAL_SCALE := 1.32
 const GOLD_VEIN_VISUAL_SCALE := 1.15
+## Organic lake bodies (same oversized-sprite pattern as forests/mountains).
+const LAKE_VISUAL_SCALE := 1.30
+const LAKE_Y_SORT_BIAS := 100.0
 ## Bottom fraction of the sprite used as solid footprint (peaks stay walkable behind).
 const MOUNTAIN_FOOTPRINT_BAND := 0.55
 const GOLD_FOOTPRINT_BAND := 0.65
@@ -39,6 +47,7 @@ var _ground_layer: TileMapLayer
 var _entity_parent: Node2D
 var _obstacles: Array[TerrainObstacle] = []
 var _resource_nodes: Array[ResourceNode] = []
+var _lake_nodes: Array[Node2D] = []
 
 
 func setup(ground_layer: TinyTilesMap, entity_parent: Node2D) -> void:
@@ -48,6 +57,7 @@ func setup(ground_layer: TinyTilesMap, entity_parent: Node2D) -> void:
 	_entity_parent = entity_parent
 	if _entity_parent != null:
 		_entity_parent.y_sort_enabled = true
+	_spawn_lakes(ground_layer.get_lake_placements())
 	_spawn_resources(ground_layer.get_resource_placements())
 	_spawn_decorations(ground_layer.get_decoration_placements())
 
@@ -215,6 +225,24 @@ func _spawn_resource_terrain(
 	return obstacle
 
 
+func _spawn_lakes(placements: Array[Dictionary]) -> void:
+	if _ground_layer == null or _entity_parent == null:
+		return
+	for placement in placements:
+		var variant := clampi(placement.get("variant", 0), 0, LAKE_PATHS.size() - 1)
+		var texture: Texture2D = load(LAKE_PATHS[variant])
+		if texture == null:
+			continue
+		var cell: Vector2i = placement.get("cell", Vector2i.ZERO)
+		var world_pos := _ground_layer.map_to_local(cell)
+		var offset := Vector2(0.0, -texture.get_height() * 0.5 + 64.0)
+		var lake := LakeBody.new()
+		lake.name = "Lake"
+		lake.setup(texture, world_pos, offset, LAKE_VISUAL_SCALE, LAKE_Y_SORT_BIAS)
+		_entity_parent.add_child(lake)
+		_lake_nodes.append(lake)
+
+
 func _spawn_decorations(placements: Array[Dictionary]) -> void:
 	if _ground_layer == null or _entity_parent == null:
 		return
@@ -253,5 +281,9 @@ func _clear_generated_content() -> void:
 	for node in _resource_nodes:
 		if is_instance_valid(node):
 			node.queue_free()
+	for lake in _lake_nodes:
+		if is_instance_valid(lake):
+			lake.queue_free()
 	_obstacles.clear()
 	_resource_nodes.clear()
+	_lake_nodes.clear()

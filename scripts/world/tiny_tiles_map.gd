@@ -24,6 +24,7 @@ var _town_center_cell := Vector2i.ZERO
 var _ground_tiles: Array[int] = []
 var _water_cells: Array[Vector2i] = []
 var _water_set: Dictionary = {}
+var _lake_placements: Array[Dictionary] = []
 var _resource_placements: Array[Dictionary] = []
 var _decoration_placements: Array[Dictionary] = []
 
@@ -92,6 +93,7 @@ func regenerate(seed_override: int = 0) -> void:
 	_ground_tiles.assign(result["ground_tiles"])
 	_water_cells.assign(result["water_cells"])
 	_water_set = result["water_set"].duplicate()
+	_lake_placements.assign(result["lake_placements"])
 	_resource_placements.assign(result["resource_placements"])
 	_decoration_placements.assign(result["decoration_placements"])
 	_pressed_cells.clear()
@@ -185,6 +187,10 @@ func release_grass_at_cell(cell: Vector2i) -> void:
 
 func get_water_cells() -> Array[Vector2i]:
 	return _water_cells.duplicate()
+
+
+func get_lake_placements() -> Array[Dictionary]:
+	return _lake_placements.duplicate(true)
 
 
 func get_map_size() -> Vector2i:
