@@ -12,7 +12,7 @@ const BASE_GOLD_COUNT := 18
 const BASE_HILL_COUNT := 8
 const WATER_THRESHOLD := 0.38
 
-## Relative cells occupied by one forest mass (~23 tiles, like mountains).
+## Relative cells occupied by one forest mass (matches oversized ~1100px sprite).
 const FOREST_FOOTPRINT: Array[Vector2i] = [
 	Vector2i(0, 0),
 	Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
@@ -20,10 +20,13 @@ const FOREST_FOOTPRINT: Array[Vector2i] = [
 	Vector2i(2, 0), Vector2i(-2, 0), Vector2i(0, 2), Vector2i(0, -2),
 	Vector2i(2, 1), Vector2i(2, -1), Vector2i(-2, 1), Vector2i(-2, -1),
 	Vector2i(1, 2), Vector2i(-1, 2), Vector2i(1, -2), Vector2i(-1, -2),
-	Vector2i(3, 0), Vector2i(-3, 0),
+	Vector2i(3, 0), Vector2i(-3, 0), Vector2i(0, 3), Vector2i(0, -3),
+	Vector2i(3, 1), Vector2i(3, -1), Vector2i(-3, 1), Vector2i(-3, -1),
+	Vector2i(2, 2), Vector2i(2, -2), Vector2i(-2, 2), Vector2i(-2, -2),
+	Vector2i(4, 0), Vector2i(-4, 0),
 ]
 
-## Relative cells occupied by one mountain chain (~23 tiles, elongated ridge).
+## Relative cells occupied by one mountain chain (matches oversized ~1100px sprite).
 const MOUNTAIN_FOOTPRINT: Array[Vector2i] = [
 	Vector2i(0, 0),
 	Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
@@ -31,7 +34,16 @@ const MOUNTAIN_FOOTPRINT: Array[Vector2i] = [
 	Vector2i(2, 0), Vector2i(-2, 0), Vector2i(0, 2), Vector2i(0, -2),
 	Vector2i(2, 1), Vector2i(2, -1), Vector2i(-2, 1), Vector2i(-2, -1),
 	Vector2i(1, 2), Vector2i(-1, 2), Vector2i(1, -2), Vector2i(-1, -2),
-	Vector2i(3, 0), Vector2i(-3, 0),
+	Vector2i(3, 0), Vector2i(-3, 0), Vector2i(0, 3), Vector2i(0, -3),
+	Vector2i(3, 1), Vector2i(3, -1), Vector2i(-3, 1), Vector2i(-3, -1),
+	Vector2i(2, 2), Vector2i(2, -2), Vector2i(-2, 2), Vector2i(-2, -2),
+	Vector2i(4, 0), Vector2i(-4, 0),
+]
+
+## Small gold vein sprite (~256px) — compact footprint.
+const GOLD_FOOTPRINT: Array[Vector2i] = [
+	Vector2i(0, 0),
+	Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
 ]
 
 ## Wang grass: 2 edge types (dense/soft) × 4 edges → 16 tiles.
@@ -44,8 +56,16 @@ const GRASS_A := 0 ## all-dense wang tile (N=E=S=W=dense)
 const GRASS_PRESS := 16
 const WATER := 17 ## legacy tile id; no longer painted on the map
 const MIN_LAKE_CLUSTER := 6
-## Approx cells covered by one lake sprite — keep dense enough that grass never shows through.
-const LAKE_COVER_RADIUS := 2.75
+## Cells covered by one lake sprite body (water mask under the prop).
+const LAKE_COVER_RADIUS := 4.0
+## Min center distance so lake shorelines do not visually stack.
+const LAKE_MIN_SEPARATION := 9.0
+## Land buffer around water/lakes reserved so mountains/forests cannot clip shores.
+const LAKE_SHORE_BUFFER := 3
+## Half-extent of lake/mountain/forest sprites in cells — keeps props inside the map.
+const LARGE_PROP_EDGE_MARGIN := 5
+## Chebyshev clear gap between any two large prop footprints.
+const PROP_CLEAR_BUFFER := 2
 const LAKE_VARIANT_COUNT := 3
 
 var map_size := DEFAULT_MAP_SIZE
@@ -89,11 +109,19 @@ func generate(requested_seed: int = 0) -> Dictionary:
 	var reachable_set := _get_reachable_ground(town_center_cell, water_set)
 	_fill_unreachable_ground(ground_tiles, water_cells, water_set, reachable_set)
 	_prune_tiny_water_clusters(ground_tiles, water_cells, water_set)
+	# Keep large lake sprites from hanging off the map edge.
+	_clear_edge_water(ground_tiles, water_cells, water_set)
+	_prune_tiny_water_clusters(ground_tiles, water_cells, water_set)
+	var lake_placements := _generate_lake_placements(
+		ground_tiles, water_cells, water_set, rng
+	)
+	# Recompute reachability after water may have been trimmed for lake coverage.
+	reachable_set = _get_reachable_ground(town_center_cell, water_set)
 	# Visual ground is always Wang grass; water_set is the non-walkable mask under lake sprites.
 	_assign_wang_grass(ground_tiles, water_set, world_seed)
-	var lake_placements := _generate_lake_placements(water_cells, rng)
 
 	var occupied: Dictionary = {}
+	_reserve_lake_exclusion(lake_placements, water_set, occupied)
 	var resource_placements := _generate_resources(
 		rng, town_center_cell, water_set, reachable_set, occupied
 	)
@@ -175,17 +203,21 @@ func _generate_resources(
 		"variant_count": 3,
 		"amount": BalanceConfig.TREE_CAPACITY,
 		"footprint": FOREST_FOOTPRINT,
+		"edge_margin": LARGE_PROP_EDGE_MARGIN,
 	})
 	_append_random_placements(placements, rng, town_center, water_set, reachable_set, occupied, _scaled_count(BASE_GOLD_COUNT), {
 		"kind": "gold",
 		"variant_count": 2,
 		"amount": BalanceConfig.GOLD_VEIN_CAPACITY,
+		"footprint": GOLD_FOOTPRINT,
+		"edge_margin": 2,
 	})
 	_append_random_placements(placements, rng, town_center, water_set, reachable_set, occupied, _scaled_count(BASE_HILL_COUNT), {
 		"kind": "gold_mountain",
 		"variant_count": 3,
 		"amount": BalanceConfig.GOLD_MOUNTAIN_CAPACITY,
 		"footprint": MOUNTAIN_FOOTPRINT,
+		"edge_margin": LARGE_PROP_EDGE_MARGIN,
 	})
 	return placements
 
@@ -201,12 +233,16 @@ func _generate_decorations(
 
 
 func _generate_lake_placements(
+	ground_tiles: Array[int],
 	water_cells: Array[Vector2i],
+	water_set: Dictionary,
 	rng: RandomNumberGenerator
 ) -> Array[Dictionary]:
 	var placements: Array[Dictionary] = []
 	for cluster in _water_clusters(water_cells):
-		placements.append_array(_cover_cluster_with_lakes(cluster, rng))
+		placements.append_array(
+			_cover_cluster_with_lakes(cluster, ground_tiles, water_cells, water_set, rng)
+		)
 	return placements
 
 
@@ -220,6 +256,27 @@ func _prune_tiny_water_clusters(
 			continue
 		for cell in cluster:
 			_set_cell_as_ground(cell, ground_tiles, water_cells, water_set)
+
+
+func _clear_edge_water(
+	ground_tiles: Array[int],
+	water_cells: Array[Vector2i],
+	water_set: Dictionary
+) -> void:
+	## Strip water near the map border so lake shore sprites stay on grass tiles.
+	var margin := LARGE_PROP_EDGE_MARGIN
+	var to_clear: Array[Vector2i] = []
+	for cell_variant in water_set.keys():
+		var cell: Vector2i = cell_variant
+		if (
+			cell.x < margin
+			or cell.y < margin
+			or cell.x >= map_size.x - margin
+			or cell.y >= map_size.y - margin
+		):
+			to_clear.append(cell)
+	for cell in to_clear:
+		_set_cell_as_ground(cell, ground_tiles, water_cells, water_set)
 
 
 func _water_clusters(water_cells: Array[Vector2i]) -> Array:
@@ -252,6 +309,9 @@ func _water_clusters(water_cells: Array[Vector2i]) -> Array:
 
 func _cover_cluster_with_lakes(
 	cluster: Array[Vector2i],
+	ground_tiles: Array[int],
+	water_cells: Array[Vector2i],
+	water_set: Dictionary,
 	rng: RandomNumberGenerator
 ) -> Array[Dictionary]:
 	var placements: Array[Dictionary] = []
@@ -262,13 +322,18 @@ func _cover_cluster_with_lakes(
 	for cell in cluster:
 		uncovered[cell] = true
 
+	var lake_centers: Array[Vector2i] = []
 	while not uncovered.is_empty():
-		var seed_cell := _pick_lake_seed(uncovered, rng)
+		var seed_cell := _pick_lake_seed(uncovered, lake_centers, rng)
+		if seed_cell.x < 0:
+			# No valid non-overlapping / in-bounds seed left — drop leftover water.
+			break
 		placements.append({
 			"kind": "lake",
 			"cell": seed_cell,
 			"variant": rng.randi_range(0, LAKE_VARIANT_COUNT - 1),
 		})
+		lake_centers.append(seed_cell)
 		var covered: Array[Vector2i] = []
 		for cell_variant in uncovered.keys():
 			var cell: Vector2i = cell_variant
@@ -276,27 +341,84 @@ func _cover_cluster_with_lakes(
 				covered.append(cell)
 		for cell in covered:
 			uncovered.erase(cell)
+
+	# Uncovered leftovers would show grass through the water mask — convert to ground.
+	for cell_variant in uncovered.keys():
+		var leftover: Vector2i = cell_variant
+		_set_cell_as_ground(leftover, ground_tiles, water_cells, water_set)
 	return placements
 
 
-func _pick_lake_seed(uncovered: Dictionary, rng: RandomNumberGenerator) -> Vector2i:
-	## Prefer a cell near the centroid of remaining water so lakes sit in the mass.
+func _pick_lake_seed(
+	uncovered: Dictionary,
+	existing_centers: Array[Vector2i],
+	rng: RandomNumberGenerator
+) -> Vector2i:
+	## Prefer a cell near the centroid that keeps the full lake sprite on the map
+	## and away from other lake shorelines.
+	var candidates: Array[Vector2i] = []
+	for cell_variant in uncovered.keys():
+		var cell: Vector2i = cell_variant
+		if not _is_large_prop_inset(cell):
+			continue
+		var too_close := false
+		for other in existing_centers:
+			if Vector2(cell - other).length() < LAKE_MIN_SEPARATION:
+				too_close = true
+				break
+		if too_close:
+			continue
+		candidates.append(cell)
+	if candidates.is_empty():
+		return Vector2i(-1, -1)
+
 	var sum := Vector2.ZERO
-	for cell_variant in uncovered.keys():
-		var cell: Vector2i = cell_variant
+	for cell in candidates:
 		sum += Vector2(cell)
-	var centroid := sum / float(uncovered.size())
-	var best: Vector2i = uncovered.keys()[0]
+	var centroid := sum / float(candidates.size())
+	var best: Vector2i = candidates[0]
 	var best_dist := INF
-	for cell_variant in uncovered.keys():
-		var cell: Vector2i = cell_variant
+	for cell in candidates:
 		var dist := Vector2(cell).distance_squared_to(centroid)
-		# Light jitter so variants don't always stack on the exact center.
 		dist += rng.randf() * 0.35
 		if dist < best_dist:
 			best_dist = dist
 			best = cell
 	return best
+
+
+func _reserve_lake_exclusion(
+	lake_placements: Array[Dictionary],
+	water_set: Dictionary,
+	occupied: Dictionary
+) -> void:
+	## Block mountains/forests from landing on water shores or overlapping lake sprites.
+	for cell_variant in water_set.keys():
+		var water_cell: Vector2i = cell_variant
+		_mark_radius(water_cell, LAKE_SHORE_BUFFER, occupied)
+	for placement in lake_placements:
+		var cell: Vector2i = placement.get("cell", Vector2i.ZERO)
+		_mark_radius(cell, LARGE_PROP_EDGE_MARGIN, occupied)
+
+
+func _mark_radius(origin: Vector2i, radius: int, occupied: Dictionary) -> void:
+	for y in range(origin.y - radius, origin.y + radius + 1):
+		for x in range(origin.x - radius, origin.x + radius + 1):
+			var cell := Vector2i(x, y)
+			if not _is_in_bounds(cell):
+				continue
+			if Vector2(cell - origin).length() <= float(radius) + 0.01:
+				occupied[cell] = true
+
+
+func _is_large_prop_inset(cell: Vector2i) -> bool:
+	var m := LARGE_PROP_EDGE_MARGIN
+	return (
+		cell.x >= m
+		and cell.y >= m
+		and cell.x < map_size.x - m
+		and cell.y < map_size.y - m
+	)
 
 
 func _append_random_placements(
@@ -312,12 +434,15 @@ func _append_random_placements(
 	var placed := 0
 	var attempts := 0
 	var footprint: Array = template.get("footprint", [Vector2i.ZERO])
-	var max_attempts := count * (120 if footprint.size() > 1 else 80)
+	var edge_margin: int = int(template.get("edge_margin", LARGE_PROP_EDGE_MARGIN))
+	var max_attempts := count * (140 if footprint.size() > 1 else 80)
 	while placed < count and attempts < max_attempts:
 		attempts += 1
-		var margin := maxi(2, map_size.x / 16)
+		var margin := maxi(edge_margin, map_size.x / 16)
 		var max_x := maxi(margin, map_size.x - margin - 1)
 		var max_y := maxi(margin, map_size.y - margin - 1)
+		if max_x < margin or max_y < margin:
+			break
 		var cell := Vector2i(
 			rng.randi_range(margin, max_x),
 			rng.randi_range(margin, max_y)
@@ -332,6 +457,7 @@ func _append_random_placements(
 		placement["variant"] = rng.randi_range(0, int(template.get("variant_count", 1)) - 1)
 		placement.erase("variant_count")
 		placement.erase("footprint")
+		placement.erase("edge_margin")
 		target.append(placement)
 		_mark_footprint(cell, footprint, occupied)
 		placed += 1
@@ -357,11 +483,12 @@ func _can_place_footprint(
 
 
 func _has_clear_buffer(footprint_set: Dictionary, occupied: Dictionary) -> bool:
-	# Keep a 1-cell buffer against other placements (outside this footprint).
+	# Keep a multi-cell buffer so large sprites do not visually clip each other.
+	var buf := PROP_CLEAR_BUFFER
 	for cell_variant in footprint_set.keys():
 		var cell: Vector2i = cell_variant
-		for y in range(cell.y - 1, cell.y + 2):
-			for x in range(cell.x - 1, cell.x + 2):
+		for y in range(cell.y - buf, cell.y + buf + 1):
+			for x in range(cell.x - buf, cell.x + buf + 1):
 				var neighbor := Vector2i(x, y)
 				if neighbor in footprint_set:
 					continue
@@ -377,8 +504,8 @@ func _mark_footprint(origin: Vector2i, footprint: Array, occupied: Dictionary) -
 
 
 func _has_occupied_neighbor(cell: Vector2i, occupied: Dictionary) -> bool:
-	for y in range(cell.y - 1, cell.y + 2):
-		for x in range(cell.x - 1, cell.x + 2):
+	for y in range(cell.y - PROP_CLEAR_BUFFER, cell.y + PROP_CLEAR_BUFFER + 1):
+		for x in range(cell.x - PROP_CLEAR_BUFFER, cell.x + PROP_CLEAR_BUFFER + 1):
 			if Vector2i(x, y) in occupied:
 				return true
 	return false
