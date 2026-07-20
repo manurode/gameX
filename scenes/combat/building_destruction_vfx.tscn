@@ -1,0 +1,7 @@
+[gd_scene format=3 uid="uid://2tq1t4jqx0l2"]
+
+[ext_resource type="Script" path="res://scripts/combat/building_destruction_vfx.gd" id="1_vfx"]
+
+[node name="BuildingDestructionVfx" type="Node2D"]
+y_sort_enabled = false
+script = ExtResource("1_vfx")

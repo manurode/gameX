@@ -863,6 +863,10 @@ func get_sprite_center() -> Vector2:
 	return global_position + sprite_offset
 
 
+func get_footprint() -> Vector2:
+	return _footprint
+
+
 func get_base_center() -> Vector2:
 	return global_position + Vector2(0.0, -_footprint.y * 0.2)
 
@@ -1263,14 +1267,23 @@ func _destroy() -> void:
 		if is_instance_valid(unit):
 			unit.die_from_garrison_destruction()
 
-	CombatEffects.spawn_death_burst(get_parent(), get_sprite_center())
 	deselect()
+	if health_bar != null:
+		health_bar.visible = false
+	if progress_bar != null:
+		progress_bar.visible = false
+	if selection_indicator != null:
+		selection_indicator.visible = false
+
+	# Capture destruction VFX from the live sprite, then hide it instantly (no fade).
+	CombatEffects.spawn_building_destruction(get_parent(), self)
+	if sprite != null:
+		sprite.visible = false
+	if damage_overlay != null:
+		damage_overlay.visible = false
+
 	destroyed.emit()
 	_request_nav_rebuild()
-
-	var tween := create_tween()
-	tween.tween_property(sprite, "modulate:a", 0.0, 0.8)
-	await tween.finished
 	queue_free()
 
 

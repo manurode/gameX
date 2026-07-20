@@ -5,6 +5,9 @@ const VFX_SHEET: Texture2D = preload(
 	"res://assets/tilesets/tiny_tiles/VFX/VFX_death_explosion.png"
 )
 const VFX_SCENE: PackedScene = preload("res://scenes/combat/animated_vfx.tscn")
+const BUILDING_DESTRUCTION_SCENE: PackedScene = preload(
+	"res://scenes/combat/building_destruction_vfx.tscn"
+)
 const FRAME_SIZE := 80
 
 static var _frames_cache: Dictionary = {}
@@ -20,6 +23,14 @@ static func spawn_ranged_impact(parent: Node, world_position: Vector2) -> void:
 
 static func spawn_death_burst(parent: Node, world_position: Vector2) -> void:
 	_spawn_vfx(parent, world_position, 0, 4, 9.0, 26)
+
+
+static func spawn_building_destruction(parent: Node, building: Building) -> void:
+	if parent == null or building == null:
+		return
+	var vfx: BuildingDestructionVfx = BUILDING_DESTRUCTION_SCENE.instantiate()
+	parent.add_child(vfx)
+	vfx.play_from_building(building)
 
 
 static func create_vfx_frames(from_frame: int, to_frame: int, fps: float) -> SpriteFrames:
