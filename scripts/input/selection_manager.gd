@@ -189,8 +189,8 @@ func _pick_resource_node_at(world_point: Vector2) -> ResourceNode:
 			continue
 		if not resource_node.contains_point(world_point):
 			continue
-		# Prefer the front-most resource in y-sort (higher y draws in front).
-		var depth := resource_node.global_position.y
+		# Prefer the front-most resource in y-sort (higher sort key draws in front).
+		var depth := DepthSort.sort_y(resource_node)
 		if depth > best_depth:
 			best_depth = depth
 			best_node = resource_node
@@ -470,7 +470,7 @@ func _pick_building_for_selection(world_point: Vector2) -> Building:
 				continue
 			if not building.contains_world_point(world_point):
 				continue
-			var depth := building.global_position.y
+			var depth := DepthSort.sort_y(building)
 			if depth < best_depth:
 				best_depth = depth
 				best_building = building
@@ -487,7 +487,7 @@ func _pick_building_at(world_point: Vector2) -> Building:
 				continue
 			if not building.contains_command_point(world_point):
 				continue
-			var depth := building.global_position.y
+			var depth := DepthSort.sort_y(building)
 			if depth < best_depth:
 				best_depth = depth
 				best_building = building
@@ -514,7 +514,7 @@ func _pick_unit_in_group(world_point: Vector2, group_name: StringName) -> Unit:
 			var unit := node as Unit
 			if unit._is_dying or unit.garrisoned_building != null or not unit.contains_world_point(world_point):
 				continue
-			var depth := unit.global_position.y
+			var depth := DepthSort.sort_y(unit)
 			if depth < best_depth:
 				best_depth = depth
 				best_unit = unit

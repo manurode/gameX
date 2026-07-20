@@ -16,6 +16,8 @@ const PERSONAL_SPACE_RADIUS := 28.0
 const NAV_AGENT_RADIUS := 16.0
 ## World scale so units read closer to building doors / human height.
 const VISUAL_SCALE := 0.92
+## Soft contact shadow sits on the feet (frame bottom after sprite_offset + scale).
+const SHADOW_FOOT_Y := 4.0
 const STUCK_TIME_SECONDS := 0.75
 const STUCK_MOVE_EPSILON_SQ := 2.0
 const STUCK_REPATH_MAX := 4
@@ -477,12 +479,13 @@ func _setup_shadow() -> void:
 				var dy := (y - 8.0) / 8.0
 				var dist := dx * dx + dy * dy
 				if dist <= 1.0:
-					var alpha := 0.3 * (1.0 - dist) * (1.0 - dist)
+					var alpha := 0.38 * (1.0 - dist) * (1.0 - dist)
 					image.set_pixel(x, y, Color(0.0, 0.0, 0.0, alpha))
 		_shared_shadow_texture = ImageTexture.create_from_image(image)
 	shadow_sprite.texture = _shared_shadow_texture
-	shadow_sprite.position = Vector2.ZERO
-	shadow_sprite.scale = Vector2(VISUAL_SCALE, VISUAL_SCALE)
+	# Align with opaque feet (~frame bottom after offset * scale).
+	shadow_sprite.position = Vector2(0.0, SHADOW_FOOT_Y)
+	shadow_sprite.scale = Vector2(VISUAL_SCALE * 1.05, VISUAL_SCALE * 0.95)
 	shadow_sprite.y_sort_enabled = false
 	shadow_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	shadow_sprite.modulate = Color(1, 1, 1, 1)
@@ -515,7 +518,7 @@ func _setup_selection_indicator() -> void:
 		points.append(Vector2(cos(angle) * RADIUS_X, sin(angle) * RADIUS_Y))
 	selection_indicator.points = points
 	selection_indicator.closed = true
-	selection_indicator.position = Vector2.ZERO
+	selection_indicator.position = Vector2(0.0, SHADOW_FOOT_Y * 0.5)
 	selection_indicator.y_sort_enabled = false
 
 

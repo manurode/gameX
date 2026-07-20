@@ -145,7 +145,7 @@ func _spawn_building(
 	var building: Building = BUILDING_SCENE.instantiate()
 	building.configure(type_id, state, progress)
 	buildings.add_child(building)
-	building.global_position = ground.map_to_local(cell)
+	building.place_at(ground.map_to_local(cell))
 	if state == Building.BuildingState.ACTIVE:
 		if BuildingDatabase.is_gather_building(type_id):
 			job_manager.on_building_completed(building)

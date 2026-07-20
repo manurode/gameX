@@ -35,6 +35,7 @@ func setup(
 	slow_multiplier = slow_mult
 	slow_radius = slow_rad
 	nav_block_half_size = block_half
+	y_sort_enabled = true
 	position = world_position
 
 	if show_sprite:
@@ -69,6 +70,10 @@ func setup(
 
 	if slow_multiplier < 1.0 and slow_radius > 0.0:
 		add_to_group("slow_zones")
+
+
+func get_sort_y() -> float:
+	return global_position.y
 
 
 func get_occlusion_sprites() -> Array[Sprite2D]:

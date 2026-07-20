@@ -485,7 +485,7 @@ func _building_covers_resource(building: Building, resource_node: ResourceNode) 
 		return false
 	var def := BuildingDatabase.get_definition(building.building_type_id)
 	var radius_cells: int = def.get("gather_radius_cells", 3)
-	var cell := _ground_layer.local_to_map(building.global_position)
+	var cell := _ground_layer.local_to_map(building.get_anchor_position())
 	var node_cell := _ground_layer.local_to_map(resource_node.global_position)
 	return Vector2(cell - node_cell).length() <= float(radius_cells)
 
@@ -516,7 +516,7 @@ func _find_nearest_resource_node(building: Building) -> ResourceNode:
 
 	var def := BuildingDatabase.get_definition(building.building_type_id)
 	var radius_cells: int = def.get("gather_radius_cells", 3)
-	var cell := _ground_layer.local_to_map(building.global_position)
+	var cell := _ground_layer.local_to_map(building.get_anchor_position())
 	var best_node: ResourceNode = null
 	var best_dist := INF
 

@@ -224,7 +224,7 @@ func _refresh_entity_markers() -> void:
 		var color := TOWN_CENTER_COLOR if building.building_type_id == "town_center" else BUILDING_COLOR
 		var radius := 3.0 if building.building_type_id == "town_center" else 2.5
 		_entity_markers.append({
-			"pos": _world_to_minimap(building.global_position),
+			"pos": _world_to_minimap(building.get_anchor_position()),
 			"color": color,
 			"radius": radius,
 			"outline": building.building_type_id == "town_center",

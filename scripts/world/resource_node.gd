@@ -53,15 +53,10 @@ func setup(
 	_initial_amount = amount
 	is_infinite = false
 	_anchor_position = world_pos
-	# Godot has no Node2D y_sort_origin — shift tall props for sort and
-	# compensate the sprite offset so the art stays anchored on the cell.
-	var sort_dy := 0.0
-	if sort_bias > 0.0:
-		sort_dy = 64.0 * scale_factor - sort_bias
+	# Shift for Y-sort; compensate sprite so art stays planted on the cell.
+	var sort_dy := DepthSort.biased_sort_dy(scale_factor, sort_bias)
 	global_position = world_pos + Vector2(0.0, sort_dy)
-	var draw_offset := sprite_offset
-	if not is_zero_approx(scale_factor) and not is_zero_approx(sort_dy):
-		draw_offset = sprite_offset - Vector2(0.0, sort_dy / scale_factor)
+	var draw_offset := DepthSort.compensate_draw_offset(sprite_offset, sort_dy, scale_factor)
 	_add_sprite(texture, Vector2.ZERO, draw_offset, scale_factor)
 	# Tall resource visuals (trees, gold rocks) occlude units; crop fields do not.
 	if kind != ResourceKind.FOOD:
@@ -109,6 +104,10 @@ func get_occlusion_sprites() -> Array[Sprite2D]:
 	return sprites
 
 
+func get_sort_y() -> float:
+	return global_position.y
+
+
 func setup_crop_field(
 	center_pos: Vector2,
 	textures: Array[Texture2D],
@@ -119,7 +118,9 @@ func setup_crop_field(
 	amount_remaining = 0
 	_initial_amount = 0
 	is_infinite = true
-	global_position = center_pos
+	_anchor_position = center_pos
+	var sort_dy := DepthSort.biased_sort_dy(0.95)
+	global_position = center_pos + Vector2(0.0, sort_dy)
 
 	var spacing := Vector2(38.0, 22.0)
 	var start := Vector2(-float(columns - 1) * spacing.x * 0.5, -float(rows - 1) * spacing.y * 0.5)
@@ -132,8 +133,13 @@ func setup_crop_field(
 			if texture == null:
 				continue
 			var offset := Vector2(float(col) * spacing.x, float(row) * spacing.y) + start
-			var sprite_offset := Vector2(0.0, -texture.get_height() * 0.5 + 64.0)
-			_add_sprite(texture, offset, sprite_offset, 0.92 + float(row) * 0.01)
+			var sprite_offset := Vector2(0.0, -texture.get_height() * 0.5 + DepthSort.ISO_HALF_TILE)
+			var draw_offset := DepthSort.compensate_draw_offset(
+				sprite_offset,
+				sort_dy,
+				0.92 + float(row) * 0.01
+			)
+			_add_sprite(texture, offset, draw_offset, 0.92 + float(row) * 0.01)
 	_ensure_amount_bar()
 	_setup_selection_indicator()
 

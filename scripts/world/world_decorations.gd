@@ -25,7 +25,7 @@ const FOREST_BLOCK_HALF := Vector2(260.0, 120.0)
 const FOREST_PICK_RADIUS := 240.0
 ## One large forest sprite covering many cells (same idea as mountains).
 const FOREST_VISUAL_SCALE := 1.28
-## Pull tall props north in Y-sort so edge canopy/cliffs don't cover buildings in front.
+## Pull tall props' sort key north so edge canopy/cliffs don't cover units in front.
 const FOREST_Y_SORT_BIAS := 140.0
 const MOUNTAIN_Y_SORT_BIAS := 160.0
 const MOUNTAIN_PICK_RADIUS := 220.0
@@ -81,7 +81,7 @@ func spawn_mill_wheat_for_building(building: Building) -> ResourceNode:
 	var def := BuildingDatabase.get_definition(building.building_type_id)
 	var farm_offset: Vector2 = def.get("farm_offset", MILL_FARM_OFFSET)
 	var farm_half: Vector2 = def.get("farm_half_size", MILL_FARM_HALF_SIZE)
-	var world_pos := building.global_position + farm_offset
+	var world_pos := building.get_anchor_position() + farm_offset
 	var node := ResourceNode.new()
 	node.setup_mill_farm_zone(world_pos, farm_half)
 	_entity_parent.add_child(node)
@@ -118,7 +118,7 @@ func _spawn_resources(placements: Array[Dictionary]) -> void:
 		var texture: Texture2D = load(paths[variant])
 		if texture == null:
 			continue
-		var offset := Vector2(0.0, -texture.get_height() * 0.5 + 64.0)
+		var offset := Vector2(0.0, -texture.get_height() * 0.5 + DepthSort.ISO_HALF_TILE)
 		var visual_scale := _visual_scale_for_kind(kind)
 		var node := ResourceNode.new()
 		var resource_kind := (
@@ -235,10 +235,9 @@ func _spawn_lakes(placements: Array[Dictionary]) -> void:
 			continue
 		var cell: Vector2i = placement.get("cell", Vector2i.ZERO)
 		var world_pos := _ground_layer.map_to_local(cell)
-		var offset := Vector2(0.0, -texture.get_height() * 0.5 + 64.0)
-		# Same sort bias as mountains; water body blocks like TerrainObstacle mountains.
-		var sort_dy := 64.0 * LAKE_VISUAL_SCALE - LAKE_Y_SORT_BIAS
-		var draw_offset := offset - Vector2(0.0, sort_dy / LAKE_VISUAL_SCALE)
+		var offset := Vector2(0.0, -texture.get_height() * 0.5 + DepthSort.ISO_HALF_TILE)
+		var sort_dy := DepthSort.biased_sort_dy(LAKE_VISUAL_SCALE, LAKE_Y_SORT_BIAS)
+		var draw_offset := DepthSort.compensate_draw_offset(offset, sort_dy, LAKE_VISUAL_SCALE)
 		var lake := TerrainObstacle.new()
 		lake.name = "Lake"
 		lake.setup(
@@ -269,10 +268,9 @@ func _spawn_decorations(placements: Array[Dictionary]) -> void:
 		if texture == null:
 			continue
 		var world_pos := _ground_layer.map_to_local(placement.get("cell", Vector2i.ZERO))
-		var offset := Vector2(0.0, -texture.get_height() * 0.5 + 64.0)
-		# Same sort bias as gold_mountain resources (no Node2D y_sort_origin).
-		var sort_dy := 64.0 * MOUNTAIN_VISUAL_SCALE - MOUNTAIN_Y_SORT_BIAS
-		var draw_offset := offset - Vector2(0.0, sort_dy / MOUNTAIN_VISUAL_SCALE)
+		var offset := Vector2(0.0, -texture.get_height() * 0.5 + DepthSort.ISO_HALF_TILE)
+		var sort_dy := DepthSort.biased_sort_dy(MOUNTAIN_VISUAL_SCALE, MOUNTAIN_Y_SORT_BIAS)
+		var draw_offset := DepthSort.compensate_draw_offset(offset, sort_dy, MOUNTAIN_VISUAL_SCALE)
 		var obstacle := TerrainObstacle.new()
 		obstacle.setup(
 			texture,

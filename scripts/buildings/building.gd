@@ -20,6 +20,9 @@ const ARROW_SCENE := preload("res://scenes/combat/arrow.tscn")
 const AUTO_DEFENSE_PROJECTILE_OFFSET := 36.0
 const NIGHT_LIGHT_COLOR := Color(1.0, 0.82, 0.52)
 const CONSTRUCTION_LIGHT_FACTOR := 0.42
+## Unscaled local Y where the sprite base plants on the iso cell (see DepthSort).
+const PLANT_UNSCALED := DepthSort.ISO_HALF_TILE
+const WALL_PLANT_UNSCALED := DepthSort.WALL_PLANT
 
 @export var building_type_id: String = "house_small"
 @export var team_id: int = Team.PLAYER
@@ -58,6 +61,12 @@ var _night_light: PointLight2D
 var _night_light_tween: Tween
 var _base_light_energy: float = 0.0
 var _base_light_scale: float = 1.0
+var _ground_shadow: Sprite2D
+## Cell-center snap; global_position is shifted south for Y-sort.
+var _anchor_position := Vector2.ZERO
+var _depth_ready: bool = false
+var _sort_dy: float = 0.0
+static var _shared_building_shadow_texture: Texture2D
 
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var damage_overlay: Sprite2D = $DamageOverlay
@@ -75,6 +84,7 @@ func _ready() -> void:
 	_update_visual_damage()
 	_update_construction_visual()
 	_setup_selection_indicator()
+	_setup_ground_shadow()
 	_setup_night_light()
 	selection_indicator.visible = false
 	set_process(true)
@@ -113,6 +123,8 @@ func configure(type_id: String, state: BuildingState = BuildingState.ACTIVE, pro
 
 
 func apply_cycle_visuals(is_night: bool, instant: bool = false) -> void:
+	if _ground_shadow != null:
+		_ground_shadow.modulate = Color(1, 1, 1, 0.65) if is_night else Color(1, 1, 1, 1)
 	if _night_light == null:
 		return
 	if building_state == BuildingState.DESTROYED:
@@ -226,9 +238,70 @@ func is_wall_vertical() -> bool:
 
 
 func notify_world_placed() -> void:
+	# Capture cell snap before shifting south for Y-sort depth.
+	if not _depth_ready:
+		_anchor_position = global_position
+		_depth_ready = true
+	_sync_depth_from_anchor()
 	# Only ACTIVE buildings carve nav; unfinished sites stay walkable.
 	if building_state == BuildingState.ACTIVE and blocks_navigation:
 		_request_nav_rebuild()
+
+
+func place_at(world_pos: Vector2) -> void:
+	_anchor_position = world_pos
+	_depth_ready = true
+	_sync_depth_from_anchor()
+
+
+func get_anchor_position() -> Vector2:
+	return _anchor_position if _depth_ready else global_position
+
+
+func get_sort_y() -> float:
+	return global_position.y
+
+
+func _sync_depth_from_anchor() -> void:
+	if not _depth_ready:
+		return
+	_sort_dy = DepthSort.plant_sort_dy(_plant_unscaled(), _visual_scale)
+	global_position = _anchor_position + Vector2(0.0, _sort_dy)
+	if sprite != null and sprite.texture != null:
+		_apply_sprite_transform()
+	else:
+		_refresh_ground_shadow()
+	_setup_collision()
+
+
+func _plant_unscaled() -> float:
+	if building_type_id == "wall":
+		return WALL_PLANT_UNSCALED
+	return PLANT_UNSCALED
+
+
+func _sprite_draw_offset() -> Vector2:
+	if sprite == null or sprite.texture == null:
+		return Vector2.ZERO
+	# Plant on the iso cell, then compensate if global_position was shifted for Y-sort.
+	var base := Vector2(0.0, -sprite.texture.get_height() * 0.5 + _plant_unscaled())
+	return DepthSort.compensate_draw_offset(base, _sort_dy, _visual_scale)
+
+
+func _apply_sprite_transform() -> void:
+	if sprite == null or sprite.texture == null:
+		return
+	if _depth_ready:
+		_sort_dy = DepthSort.plant_sort_dy(_plant_unscaled(), _visual_scale)
+		global_position = _anchor_position + Vector2(0.0, _sort_dy)
+	sprite.offset = _sprite_draw_offset()
+	sprite.scale = Vector2(_visual_scale, _visual_scale)
+	# Selection / combat helpers use world-space offset after scale.
+	sprite_offset = sprite.offset * sprite.scale
+	if damage_overlay != null:
+		damage_overlay.offset = sprite.offset
+		damage_overlay.scale = sprite.scale
+	_refresh_ground_shadow()
 
 
 func _apply_definition() -> void:
@@ -276,27 +349,6 @@ func _setup_texture() -> void:
 			damage_overlay.texture = sprite.texture
 			damage_overlay.offset = sprite.offset
 			damage_overlay.scale = sprite.scale
-
-
-func _sprite_draw_offset() -> Vector2:
-	if sprite == null or sprite.texture == null:
-		return Vector2.ZERO
-	# Walls sit lower so the stone base lands on the snap point.
-	if building_type_id == "wall":
-		return Vector2(0.0, -sprite.texture.get_height() * 0.5 + 48.0)
-	return Vector2(0.0, -sprite.texture.get_height() * 0.5 + 64.0)
-
-
-func _apply_sprite_transform() -> void:
-	if sprite == null or sprite.texture == null:
-		return
-	sprite.offset = _sprite_draw_offset()
-	sprite.scale = Vector2(_visual_scale, _visual_scale)
-	# Selection / combat helpers use world-space offset after scale.
-	sprite_offset = sprite.offset * sprite.scale
-	if damage_overlay != null:
-		damage_overlay.offset = sprite.offset
-		damage_overlay.scale = sprite.scale
 
 
 func _apply_wall_orientation() -> void:
@@ -782,8 +834,9 @@ func _apply_upgrade_visual() -> void:
 
 
 func get_collision_center() -> Vector2:
+	var origin := get_anchor_position()
 	if building_type_id == "wall":
-		return global_position + Vector2(0.0, -_footprint.y * WALL_COLLISION_CENTER_Y)
+		return origin + Vector2(0.0, -_footprint.y * WALL_COLLISION_CENTER_Y)
 	return get_interaction_center()
 
 
@@ -795,7 +848,7 @@ func get_collision_half_size() -> Vector2:
 
 func get_interaction_center() -> Vector2:
 	var center_y := WALL_COLLISION_CENTER_Y if building_type_id == "wall" else 0.2
-	return global_position + Vector2(0.0, -_footprint.y * center_y)
+	return get_anchor_position() + Vector2(0.0, -_footprint.y * center_y)
 
 
 func get_interaction_half_size() -> Vector2:
@@ -857,6 +910,51 @@ func _setup_selection_indicator() -> void:
 		points.append(Vector2(cos(angle) * radius_x, sin(angle) * radius_y))
 	selection_indicator.points = points
 	selection_indicator.closed = true
+	# After depth shift, node origin is the planted base.
+	selection_indicator.position = Vector2.ZERO
+	selection_indicator.y_sort_enabled = false
+
+
+func _setup_ground_shadow() -> void:
+	if _ground_shadow != null:
+		return
+	if _shared_building_shadow_texture == null:
+		var image := Image.create(64, 24, false, Image.FORMAT_RGBA8)
+		image.fill(Color(0, 0, 0, 0))
+		for y in 24:
+			for x in 64:
+				var dx := (x - 32.0) / 32.0
+				var dy := (y - 12.0) / 12.0
+				var dist := dx * dx + dy * dy
+				if dist <= 1.0:
+					var alpha := 0.22 * (1.0 - dist) * (1.0 - dist)
+					image.set_pixel(x, y, Color(0.0, 0.0, 0.0, alpha))
+		_shared_building_shadow_texture = ImageTexture.create_from_image(image)
+	_ground_shadow = Sprite2D.new()
+	_ground_shadow.name = "GroundShadow"
+	_ground_shadow.texture = _shared_building_shadow_texture
+	_ground_shadow.z_index = -1
+	_ground_shadow.y_sort_enabled = false
+	_ground_shadow.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	add_child(_ground_shadow)
+	move_child(_ground_shadow, 0)
+	_refresh_ground_shadow()
+
+
+func _refresh_ground_shadow() -> void:
+	if _ground_shadow == null:
+		return
+	# Node origin is the planted base after depth sync.
+	_ground_shadow.position = Vector2.ZERO
+	var radius_x := maxf(_footprint.x * 0.034, 1.15)
+	var radius_y := maxf(_footprint.y * 0.028, 0.75)
+	if building_type_id == "wall":
+		radius_x = maxf(_footprint.x * 0.028, 0.9)
+		radius_y = maxf(_footprint.y * 0.022, 0.55)
+	_ground_shadow.scale = Vector2(radius_x, radius_y)
+	_ground_shadow.visible = building_state != BuildingState.DESTROYED
+	if selection_indicator != null:
+		selection_indicator.position = Vector2.ZERO
 
 
 func get_sprite_center() -> Vector2:
@@ -868,7 +966,7 @@ func get_footprint() -> Vector2:
 
 
 func get_base_center() -> Vector2:
-	return global_position + Vector2(0.0, -_footprint.y * 0.2)
+	return get_anchor_position() + Vector2(0.0, -_footprint.y * 0.2)
 
 
 func get_melee_attack_point(from_position: Vector2 = Vector2.INF) -> Vector2:
@@ -1060,10 +1158,10 @@ func _find_exit_position(reserved: Array[Vector2] = []) -> Vector2:
 		Vector2(0.0, -_footprint.y * 0.6),
 	]
 	for offset in offsets:
-		var candidate := global_position + offset
+		var candidate := get_anchor_position() + offset
 		if _is_position_walkable(candidate):
 			return candidate
-	return global_position + Vector2(_footprint.x * 0.8, 0.0)
+	return get_anchor_position() + Vector2(_footprint.x * 0.8, 0.0)
 
 
 func _get_nearby_unit_positions(center: Vector2, radius: float) -> Array[Vector2]:
@@ -1281,6 +1379,8 @@ func _destroy() -> void:
 		sprite.visible = false
 	if damage_overlay != null:
 		damage_overlay.visible = false
+	if _ground_shadow != null:
+		_ground_shadow.visible = false
 
 	destroyed.emit()
 	_request_nav_rebuild()

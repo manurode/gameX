@@ -271,7 +271,7 @@ func _occlusion_cull_radius(occluder: Node2D) -> float:
 func _collect_overlapping_front_occluders(unit_rect: Rect2) -> Dictionary:
 	var result: Array = []
 	var sparse := false
-	var unit_y := _unit.global_position.y
+	var unit_y := DepthSort.sort_y(_unit)
 	var unit_pos := _unit.global_position
 	for node in _unit.get_tree().get_nodes_in_group("occlusion_props"):
 		if not is_instance_valid(node) or not (node is Node2D):
@@ -279,8 +279,8 @@ func _collect_overlapping_front_occluders(unit_rect: Rect2) -> Dictionary:
 		var occluder := node as Node2D
 		if not occluder.has_method("get_occlusion_sprites"):
 			continue
-		# Sort key is node position (resources may bias theirs for canopy edges).
-		var draws_in_front := occluder.global_position.y > unit_y
+		# Match Godot Y-sort key (may be position-shifted for tall props).
+		var draws_in_front := DepthSort.sort_y(occluder) > unit_y
 		var forest_interior := false
 		if not draws_in_front and occluder.has_method("is_forest_interior"):
 			forest_interior = bool(occluder.call("is_forest_interior", unit_pos))

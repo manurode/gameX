@@ -247,7 +247,7 @@ func _place_single_building(world_pos: Vector2, vertical: bool, charge_resources
 	if selected_building_type == "wall":
 		building.set_wall_vertical(vertical)
 	_buildings_container.add_child(building)
-	building.global_position = world_pos
+	building.place_at(world_pos)
 	if selected_building_type == "wall":
 		building.notify_world_placed()
 	if _job_manager != null:
