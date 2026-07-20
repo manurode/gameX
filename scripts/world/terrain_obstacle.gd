@@ -4,6 +4,8 @@ extends Node2D
 ## Alpha / simplify settings for visual footprint extraction from the sprite base.
 const ALPHA_THRESHOLD := 0.28
 const POLYGON_EPSILON := 3.5
+## Turquoise / teal water pixels used for lake collision (shore vegetation stays walkable).
+const WATER_MIN_BLUE := 0.32
 
 @export var blocks_movement: bool = false
 @export var slow_multiplier: float = 1.0
@@ -25,7 +27,9 @@ func setup(
 	block_half: Vector2 = Vector2(40.0, 25.0),
 	show_sprite: bool = true,
 	scale_factor: float = 1.0,
-	footprint_band: float = 0.0
+	footprint_band: float = 0.0,
+	occludes: bool = true,
+	use_water_mask: bool = false
 ) -> void:
 	blocks_movement = blocks
 	slow_multiplier = slow_mult
@@ -42,10 +46,17 @@ func setup(
 		_sprite.scale = Vector2(scale_factor, scale_factor)
 		_sprite.y_sort_enabled = true
 		add_child(_sprite)
-		add_to_group("occlusion_props")
+		if occludes:
+			add_to_group("occlusion_props")
 
 	if blocks_movement:
-		if footprint_band > 0.0 and texture != null:
+		if use_water_mask and texture != null:
+			_block_outlines_local = _build_water_block_outlines(
+				texture,
+				sprite_offset,
+				scale_factor
+			)
+		elif footprint_band > 0.0 and texture != null:
 			_block_outlines_local = _build_visual_block_outlines(
 				texture,
 				sprite_offset,
@@ -194,6 +205,55 @@ func _build_visual_block_outlines(
 		if local_poly.size() >= 3:
 			result.append(local_poly)
 	return result
+
+
+func _build_water_block_outlines(
+	texture: Texture2D,
+	sprite_offset: Vector2,
+	scale_factor: float
+) -> Array[PackedVector2Array]:
+	var result: Array[PackedVector2Array] = []
+	var image := OcclusionUtils.get_texture_image(texture)
+	if image == null:
+		return result
+
+	var width := image.get_width()
+	var height := image.get_height()
+	if width <= 0 or height <= 0:
+		return result
+
+	var mask := Image.create(width, height, false, Image.FORMAT_RGBA8)
+	mask.fill(Color(0.0, 0.0, 0.0, 0.0))
+	for y in height:
+		for x in width:
+			if _is_water_color(image.get_pixel(x, y)):
+				mask.set_pixel(x, y, Color.WHITE)
+
+	var bitmap := BitMap.new()
+	bitmap.create_from_image_alpha(mask, 0.5)
+	var raw_polys := bitmap.opaque_to_polygons(
+		Rect2(Vector2.ZERO, Vector2(width, height)),
+		POLYGON_EPSILON
+	)
+
+	var half_tex := Vector2(float(width), float(height)) * 0.5
+	for raw in raw_polys:
+		if raw.size() < 3:
+			continue
+		var local_poly := PackedVector2Array()
+		for point in raw:
+			var tex_local := Vector2(point.x, point.y) - half_tex
+			local_poly.append((sprite_offset + tex_local) * scale_factor)
+		if local_poly.size() >= 3:
+			result.append(local_poly)
+	return result
+
+
+func _is_water_color(color: Color) -> bool:
+	if color.a < ALPHA_THRESHOLD:
+		return false
+	# Turquoise / teal body of water — excludes shore rocks and green vegetation.
+	return color.b > color.g * 0.7 and color.g > color.r and color.b > WATER_MIN_BLUE
 
 
 func _block_center_local() -> Vector2:

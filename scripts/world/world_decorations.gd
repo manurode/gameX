@@ -40,6 +40,7 @@ const GOLD_FOOTPRINT_BAND := 0.65
 ## Fallback diamond if alpha polygon extraction fails.
 const MOUNTAIN_FALLBACK_HALF := Vector2(260.0, 120.0)
 const GOLD_FALLBACK_HALF := Vector2(70.0, 42.0)
+const LAKE_FALLBACK_HALF := Vector2(280.0, 130.0)
 ## Farm plot is painted into mill.png; gather zone sits on that front plot.
 const MILL_FARM_OFFSET := Vector2(0.0, 22.0)
 const MILL_FARM_HALF_SIZE := Vector2(44.0, 26.0)
@@ -47,7 +48,6 @@ var _ground_layer: TileMapLayer
 var _entity_parent: Node2D
 var _obstacles: Array[TerrainObstacle] = []
 var _resource_nodes: Array[ResourceNode] = []
-var _lake_nodes: Array[Node2D] = []
 
 
 func setup(ground_layer: TinyTilesMap, entity_parent: Node2D) -> void:
@@ -236,11 +236,28 @@ func _spawn_lakes(placements: Array[Dictionary]) -> void:
 		var cell: Vector2i = placement.get("cell", Vector2i.ZERO)
 		var world_pos := _ground_layer.map_to_local(cell)
 		var offset := Vector2(0.0, -texture.get_height() * 0.5 + 64.0)
-		var lake := LakeBody.new()
+		# Same sort bias as mountains; water body blocks like TerrainObstacle mountains.
+		var sort_dy := 64.0 * LAKE_VISUAL_SCALE - LAKE_Y_SORT_BIAS
+		var draw_offset := offset - Vector2(0.0, sort_dy / LAKE_VISUAL_SCALE)
+		var lake := TerrainObstacle.new()
 		lake.name = "Lake"
-		lake.setup(texture, world_pos, offset, LAKE_VISUAL_SCALE, LAKE_Y_SORT_BIAS)
+		lake.setup(
+			texture,
+			world_pos + Vector2(0.0, sort_dy),
+			draw_offset,
+			true,
+			1.0,
+			0.0,
+			LAKE_FALLBACK_HALF,
+			true,
+			LAKE_VISUAL_SCALE,
+			0.0,
+			false,
+			true
+		)
+		lake.add_to_group("terrain_obstacles")
 		_entity_parent.add_child(lake)
-		_lake_nodes.append(lake)
+		_obstacles.append(lake)
 
 
 func _spawn_decorations(placements: Array[Dictionary]) -> void:
@@ -281,9 +298,5 @@ func _clear_generated_content() -> void:
 	for node in _resource_nodes:
 		if is_instance_valid(node):
 			node.queue_free()
-	for lake in _lake_nodes:
-		if is_instance_valid(lake):
-			lake.queue_free()
 	_obstacles.clear()
 	_resource_nodes.clear()
-	_lake_nodes.clear()
