@@ -31,6 +31,7 @@ const DEATH_PROCEDURAL_WAIT := 0.55
 const HIT_FLASH_DURATION := 0.14
 const DEATH_FRAME_COUNT := 6
 const STONE_SCENE: PackedScene = preload("res://scenes/combat/stone.tscn")
+const FIREBALL_SCENE: PackedScene = preload("res://scenes/combat/fireball.tscn")
 const SEPARATION_UPDATE_INTERVAL := 0.08
 const NIGHT_LIGHT_COLOR := Color(1.0, 0.78, 0.48)
 const NIGHT_LIGHT_ENERGY := 1.15
@@ -76,6 +77,8 @@ static var _shared_dust_texture: Texture2D
 @export var chain_radius: float = 0.0
 @export var chain_damage: int = 0
 @export var chain_max_targets: int = 0
+## When true, ranged attacks spawn a fireball instead of an arrow.
+@export var uses_fireball: bool = false
 @export var team_id: int = Team.PLAYER
 
 var hp: int
@@ -2125,6 +2128,9 @@ func _spawn_arrow_at_unit(target_unit: Unit) -> void:
 	if _uses_chain_lightning():
 		_spawn_lightning_at_unit(target_unit)
 		return
+	if uses_fireball:
+		_spawn_fireball_at_unit(target_unit)
+		return
 
 	var arrow_scene: PackedScene = preload("res://scenes/combat/arrow.tscn")
 	var arrow: Arrow = arrow_scene.instantiate()
@@ -2149,6 +2155,9 @@ func _spawn_arrow_at_building(target_building: Building) -> void:
 	if _uses_chain_lightning():
 		_spawn_lightning_at_building(target_building)
 		return
+	if uses_fireball:
+		_spawn_fireball_at_building(target_building)
+		return
 
 	var arrow_scene: PackedScene = preload("res://scenes/combat/arrow.tscn")
 	var arrow: Arrow = arrow_scene.instantiate()
@@ -2165,6 +2174,46 @@ func _spawn_arrow_at_building(target_building: Building) -> void:
 	var world := _get_combat_world()
 	world.add_child(arrow)
 	arrow.global_position = origin + dir * _get_projectile_spawn_offset()
+
+
+func _spawn_fireball_at_unit(target_unit: Unit) -> void:
+	if target_unit == null:
+		return
+
+	var fireball: Fireball = FIREBALL_SCENE.instantiate()
+	var origin := get_sprite_center()
+	var target_point := target_unit.get_sprite_center()
+	var dir := origin.direction_to(target_point)
+	if dir == Vector2.ZERO:
+		dir = Vector2.RIGHT
+
+	fireball.shooter = self
+	fireball.target = target_unit
+	fireball.damage = get_attack_damage()
+	fireball.direction = dir
+	var world := _get_combat_world()
+	world.add_child(fireball)
+	fireball.global_position = origin + dir * _get_projectile_spawn_offset()
+
+
+func _spawn_fireball_at_building(target_building: Building) -> void:
+	if target_building == null:
+		return
+
+	var fireball: Fireball = FIREBALL_SCENE.instantiate()
+	var origin := get_sprite_center()
+	var target_point := target_building.get_attack_point()
+	var dir := origin.direction_to(target_point)
+	if dir == Vector2.ZERO:
+		dir = Vector2.RIGHT
+
+	fireball.shooter = self
+	fireball.building_target = target_building
+	fireball.damage = get_attack_damage()
+	fireball.direction = dir
+	var world := _get_combat_world()
+	world.add_child(fireball)
+	fireball.global_position = origin + dir * _get_projectile_spawn_offset()
 
 
 func _uses_chain_lightning() -> bool:

@@ -60,6 +60,10 @@ func configure_kind(kind: String) -> void:
 	wall_damage_bonus = 1.0
 	steals_resources = false
 	hunts_military = false
+	uses_fireball = false
+	combat_style = CombatStyle.MELEE
+	attack_range_min = 90.0
+	attack_range_max = 210.0
 	scale = Vector2.ONE
 	modulate = Color.WHITE
 
@@ -120,12 +124,16 @@ func configure_kind(kind: String) -> void:
 			melee_range = 70.0
 			scale = Vector2(1.4, 1.4)
 		"hexwing":
-			# Floating hex-bat — hunts military units, high damage fragile.
-			max_hp = 55
+			# Flying hex-bat — ranged fireball attacker that hunts military.
+			max_hp = 50
 			hp = max_hp
-			attack_damage = 15
-			move_speed = 110.0
-			attack_cooldown = 1.05
+			attack_damage = 12
+			move_speed = 105.0
+			attack_cooldown = 1.35
+			combat_style = CombatStyle.RANGED
+			uses_fireball = true
+			attack_range_min = 95.0
+			attack_range_max = 230.0
 			melee_range = 58.0
 			hunts_military = true
 			scale = Vector2(1.05, 1.05)
@@ -262,7 +270,8 @@ func _set_player_visible(visible: bool) -> void:
 
 
 func _evaluate_combat_target() -> void:
-	var nearby_player := _find_nearest_player_unit(UNIT_AGGRO_RANGE)
+	var aggro_range := _get_aggro_range()
+	var nearby_player := _find_nearest_player_unit(aggro_range)
 	if nearby_player != null:
 		if attack_target != nearby_player:
 			attack_target_unit(nearby_player)
@@ -272,6 +281,12 @@ func _evaluate_combat_target() -> void:
 		return
 
 	_acquire_target()
+
+
+func _get_aggro_range() -> float:
+	if combat_style == CombatStyle.RANGED:
+		return maxf(UNIT_AGGRO_RANGE, attack_range_max)
+	return UNIT_AGGRO_RANGE
 
 
 func _has_valid_combat_target() -> bool:
@@ -293,13 +308,16 @@ func _has_valid_combat_target() -> bool:
 
 
 func _acquire_target() -> void:
-	var nearby_player := _find_nearest_player_unit(UNIT_AGGRO_RANGE)
+	var nearby_player := _find_nearest_player_unit(_get_aggro_range())
 	if nearby_player != null:
 		attack_target_unit(nearby_player)
 		return
 
 	if hunts_military:
-		var military := _find_nearest_player_unit(420.0, true)
+		var hunt_range := 420.0
+		if combat_style == CombatStyle.RANGED:
+			hunt_range = maxf(hunt_range, attack_range_max * 1.6)
+		var military := _find_nearest_player_unit(hunt_range, true)
 		if military != null:
 			attack_target_unit(military)
 			return
