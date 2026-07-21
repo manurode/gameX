@@ -25,11 +25,6 @@ const UNLOCKS := {
 		"description": "Empiezas con +15 oro.",
 		"cost": 6,
 	},
-	"free_curfew": {
-		"name": "Toque de queda gratis",
-		"description": "Activa el toque de queda gratis en el primer atardecer.",
-		"cost": 8,
-	},
 	"knight_hp": {
 		"name": "Armadura de caballero",
 		"description": "Los caballeros tienen +15 HP.",
@@ -311,7 +306,7 @@ func get_starter_tower_count() -> int:
 	if is_unlocked("bastion_outpost"):
 		count += 1
 	if is_unlocked("grand_bastion"):
-		count += 2
+		count += 6
 	return count
 
 
@@ -320,7 +315,7 @@ func get_starter_wall_segments() -> int:
 	if is_unlocked("starter_walls"):
 		count += 4
 	if is_unlocked("grand_bastion"):
-		count += 8
+		count += 16
 	return count
 
 

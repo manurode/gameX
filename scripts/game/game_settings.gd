@@ -7,7 +7,7 @@ const MAP_SIZE_LARGE := Vector2i(64, 64)
 const MAP_SIZE_MEDIUM := Vector2i(32, 32)
 const MAP_SIZE_SMALL := Vector2i(16, 16)
 
-var map_size_preset: MapSizePreset = MapSizePreset.LARGE
+var map_size_preset: MapSizePreset = MapSizePreset.MEDIUM
 
 
 func get_map_size() -> Vector2i:

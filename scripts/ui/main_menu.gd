@@ -200,7 +200,7 @@ func _play_title_intro() -> void:
 
 
 # ---------------------------------------------------------------------------
-# Setup screen (map / difficulty / upgrades)
+# Setup screen (start / difficulty / upgrades)
 # ---------------------------------------------------------------------------
 
 func _build_setup_screen() -> void:
@@ -257,22 +257,10 @@ func _build_setup_screen() -> void:
 
 	vbox.add_child(_make_gold_rule(0.0))
 
-	var map_title := _make_section_label("Tamaño del mapa")
-	vbox.add_child(map_title)
-
-	var map_row := VBoxContainer.new()
-	map_row.add_theme_constant_override("separation", 8)
-	vbox.add_child(map_row)
-
-	map_row.add_child(_make_map_choice_button(
-		"Grande", "64×64", "Mapa amplio. Más recursos, más peligro.", _on_large_pressed
-	))
-	map_row.add_child(_make_map_choice_button(
-		"Mediano", "32×32", "Equilibrio recomendado.", _on_medium_pressed
-	))
-	map_row.add_child(_make_map_choice_button(
-		"Pequeño", "16×16", "Partidas rápidas y cerradas.", _on_small_pressed
-	))
+	var start_btn := _make_primary_button("Empezar", Vector2(0, 52))
+	start_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	start_btn.pressed.connect(_on_start_pressed)
+	vbox.add_child(start_btn)
 
 	var opts_title := _make_section_label("Opciones")
 	vbox.add_child(opts_title)
@@ -427,20 +415,8 @@ func _on_difficulty_pressed() -> void:
 	_difficulty_hint.text = "Próximamente — la dificultad aún no está disponible."
 
 
-func _on_large_pressed() -> void:
-	_start_game(GameSettings.MapSizePreset.LARGE)
-
-
-func _on_medium_pressed() -> void:
-	_start_game(GameSettings.MapSizePreset.MEDIUM)
-
-
-func _on_small_pressed() -> void:
-	_start_game(GameSettings.MapSizePreset.SMALL)
-
-
-func _start_game(preset: GameSettingsData.MapSizePreset) -> void:
-	GameSettings.map_size_preset = preset
+func _on_start_pressed() -> void:
+	GameSettings.map_size_preset = GameSettings.MapSizePreset.MEDIUM
 	get_tree().change_scene_to_file(GAME_SCENE)
 
 
@@ -621,72 +597,6 @@ func _make_ghost_button(text: String) -> Button:
 	button.add_theme_font_size_override("font_size", 13)
 	button.add_theme_color_override("font_color", COL_MUTED)
 	button.add_theme_color_override("font_hover_color", COL_GOLD_SOFT)
-	return button
-
-
-func _make_map_choice_button(title: String, size_label: String, subtitle: String, on_pressed: Callable) -> Button:
-	var button := Button.new()
-	button.custom_minimum_size = Vector2(0, 58)
-	button.focus_mode = Control.FOCUS_NONE
-	button.clip_contents = true
-	_style_button(button, false, false)
-	button.pressed.connect(on_pressed)
-
-	var margin := MarginContainer.new()
-	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	margin.add_theme_constant_override("margin_left", 14)
-	margin.add_theme_constant_override("margin_right", 14)
-	margin.add_theme_constant_override("margin_top", 8)
-	margin.add_theme_constant_override("margin_bottom", 8)
-	button.add_child(margin)
-
-	var row := HBoxContainer.new()
-	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_theme_constant_override("separation", 12)
-	margin.add_child(row)
-
-	var texts := VBoxContainer.new()
-	texts.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	texts.alignment = BoxContainer.ALIGNMENT_CENTER
-	texts.add_theme_constant_override("separation", 2)
-	row.add_child(texts)
-
-	var title_row := HBoxContainer.new()
-	title_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	title_row.add_theme_constant_override("separation", 8)
-	texts.add_child(title_row)
-
-	var title_lbl := Label.new()
-	title_lbl.text = title
-	title_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	title_lbl.add_theme_font_size_override("font_size", 15)
-	title_lbl.add_theme_color_override("font_color", COL_GOLD_SOFT)
-	title_row.add_child(title_lbl)
-
-	var size_lbl := Label.new()
-	size_lbl.text = size_label
-	size_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	size_lbl.add_theme_font_size_override("font_size", 12)
-	size_lbl.add_theme_color_override("font_color", COL_MUTED)
-	title_row.add_child(size_lbl)
-
-	var sub_lbl := Label.new()
-	sub_lbl.text = subtitle
-	sub_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	sub_lbl.add_theme_font_size_override("font_size", 11)
-	sub_lbl.add_theme_color_override("font_color", Color(0.65, 0.62, 0.52, 1.0))
-	texts.add_child(sub_lbl)
-
-	var play_hint := Label.new()
-	play_hint.text = "▶"
-	play_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	play_hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	play_hint.add_theme_font_size_override("font_size", 14)
-	play_hint.add_theme_color_override("font_color", COL_BORDER)
-	row.add_child(play_hint)
-
 	return button
 
 
