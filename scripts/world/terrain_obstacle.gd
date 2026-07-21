@@ -6,11 +6,16 @@ const ALPHA_THRESHOLD := 0.28
 const POLYGON_EPSILON := 3.5
 ## Turquoise / teal water pixels used for lake collision (shore vegetation stays walkable).
 const WATER_MIN_BLUE := 0.32
+## Skip fully transparent / fringe pixels before the float teal test (a >= ALPHA_THRESHOLD).
+const WATER_ALPHA_BYTE_MIN := 72
 
 @export var blocks_movement: bool = false
 @export var slow_multiplier: float = 1.0
 @export var slow_radius: float = 0.0
 @export var nav_block_half_size := Vector2(40.0, 25.0)
+
+## Texture-centered water polygons keyed by texture RID id (shared across lake instances).
+static var _water_tex_poly_cache: Dictionary = {}
 
 var _sprite: Sprite2D
 var _collision_body: StaticBody2D
@@ -227,13 +232,59 @@ func _build_water_block_outlines(
 	if width <= 0 or height <= 0:
 		return result
 
-	var mask := Image.create(width, height, false, Image.FORMAT_RGBA8)
-	mask.fill(Color(0.0, 0.0, 0.0, 0.0))
-	for y in height:
-		for x in width:
-			if _is_water_color(image.get_pixel(x, y)):
-				mask.set_pixel(x, y, Color.WHITE)
+	# Cache texture-space polys once per lake variant (same mask for every placement).
+	var cache_key := texture.get_rid().get_id()
+	var tex_polys: Array
+	if _water_tex_poly_cache.has(cache_key):
+		tex_polys = _water_tex_poly_cache[cache_key]
+	else:
+		tex_polys = _extract_water_tex_polys(image, width, height)
+		_water_tex_poly_cache[cache_key] = tex_polys
 
+	for tex_local in tex_polys:
+		if tex_local.size() < 3:
+			continue
+		var local_poly := PackedVector2Array()
+		for point in tex_local:
+			local_poly.append((sprite_offset + point) * scale_factor)
+		if local_poly.size() >= 3:
+			result.append(local_poly)
+	return result
+
+
+## Texture-centered water polygons (before sprite offset / scale).
+func _extract_water_tex_polys(
+	image: Image,
+	width: int,
+	height: int
+) -> Array:
+	var result: Array = []
+	var src := image
+	if src.get_format() != Image.FORMAT_RGBA8:
+		src = image.duplicate()
+		src.convert(Image.FORMAT_RGBA8)
+
+	# Raw RGBA scan — get_pixel/set_pixel on ~1M lake texels is the load hitch.
+	var pixels := src.get_data()
+	var mask_data := PackedByteArray()
+	mask_data.resize(width * height * 4)
+	var i := 0
+	var pixel_count := width * height
+	for _p in pixel_count:
+		var a: int = pixels[i + 3]
+		if a >= WATER_ALPHA_BYTE_MIN:
+			var r := float(pixels[i]) / 255.0
+			var g := float(pixels[i + 1]) / 255.0
+			var b := float(pixels[i + 2]) / 255.0
+			# Same teal test as before (shore rocks / vegetation stay walkable).
+			if b > g * 0.7 and g > r and b > WATER_MIN_BLUE:
+				mask_data[i] = 255
+				mask_data[i + 1] = 255
+				mask_data[i + 2] = 255
+				mask_data[i + 3] = 255
+		i += 4
+
+	var mask := Image.create_from_data(width, height, false, Image.FORMAT_RGBA8, mask_data)
 	var bitmap := BitMap.new()
 	bitmap.create_from_image_alpha(mask, 0.5)
 	var raw_polys := bitmap.opaque_to_polygons(
@@ -245,20 +296,12 @@ func _build_water_block_outlines(
 	for raw in raw_polys:
 		if raw.size() < 3:
 			continue
-		var local_poly := PackedVector2Array()
+		var tex_poly := PackedVector2Array()
 		for point in raw:
-			var tex_local := Vector2(point.x, point.y) - half_tex
-			local_poly.append((sprite_offset + tex_local) * scale_factor)
-		if local_poly.size() >= 3:
-			result.append(local_poly)
+			tex_poly.append(Vector2(point.x, point.y) - half_tex)
+		if tex_poly.size() >= 3:
+			result.append(tex_poly)
 	return result
-
-
-func _is_water_color(color: Color) -> bool:
-	if color.a < ALPHA_THRESHOLD:
-		return false
-	# Turquoise / teal body of water — excludes shore rocks and green vegetation.
-	return color.b > color.g * 0.7 and color.g > color.r and color.b > WATER_MIN_BLUE
 
 
 func _block_center_local() -> Vector2:
