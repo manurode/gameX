@@ -302,10 +302,25 @@ func _apply_sprite_transform() -> void:
 	sprite.scale = Vector2(_visual_scale, _visual_scale)
 	# Selection / combat helpers use world-space offset after scale.
 	sprite_offset = sprite.offset * sprite.scale
+	_sync_pick_half_size_from_sprite()
 	if damage_overlay != null:
 		damage_overlay.offset = sprite.offset
 		damage_overlay.scale = sprite.scale
 	_refresh_ground_shadow()
+
+
+## Click / select / command hitbox matches the scaled sprite AABB (visual footprint).
+func _sync_pick_half_size_from_sprite() -> void:
+	if sprite == null or sprite.texture == null:
+		return
+	var scaled_half := sprite.texture.get_size() * absf(_visual_scale) * 0.5
+	if building_type_id == "wall":
+		# Diagonal segment sits on a square canvas with lots of empty corners.
+		pick_half_size = Vector2(scaled_half.x * 0.72, scaled_half.y * 0.58)
+	else:
+		pick_half_size = scaled_half
+	if selection_indicator != null:
+		_setup_selection_indicator()
 
 
 func _apply_definition() -> void:

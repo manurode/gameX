@@ -116,7 +116,8 @@ static func footprint(_vertical: bool) -> Vector2:
 
 
 static func pick_half_size(_vertical: bool) -> Vector2:
-	return Vector2(42.0, 34.0)
+	# Covers the painted diagonal segment; runtime still syncs from sprite AABB.
+	return Vector2(88.0, 70.0)
 
 
 static func get_block_half_length() -> float:

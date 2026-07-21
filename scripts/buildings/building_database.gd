@@ -61,7 +61,7 @@ const DEFINITIONS: Dictionary = {
 		"blocks_nav": true,
 		"visual_scale": 1.35,
 		"footprint": Vector2(210.0, 130.0),
-		"pick_half_size": Vector2(150.0, 135.0),
+		"pick_half_size": Vector2(259.0, 259.0),
 		"is_core": true,
 		"buildable": false,
 		"produces": ["villager"],
@@ -81,7 +81,7 @@ const DEFINITIONS: Dictionary = {
 		"blocks_nav": true,
 		"visual_scale": 0.70,
 		"footprint": Vector2(54.0, 35.0),
-		"pick_half_size": Vector2(42.0, 40.0),
+		"pick_half_size": Vector2(90.0, 90.0),
 		"housing": 5,
 	},
 	"house_big": {
@@ -99,7 +99,7 @@ const DEFINITIONS: Dictionary = {
 		"blocks_nav": true,
 		"visual_scale": 0.95,
 		"footprint": Vector2(92.0, 58.0),
-		"pick_half_size": Vector2(72.0, 62.0),
+		"pick_half_size": Vector2(122.0, 122.0),
 		"housing": 8,
 	},
 	"lumber_camp": {
@@ -117,7 +117,7 @@ const DEFINITIONS: Dictionary = {
 		"blocks_nav": true,
 		"visual_scale": 0.82,
 		"footprint": Vector2(68.0, 42.0),
-		"pick_half_size": Vector2(54.0, 48.0),
+		"pick_half_size": Vector2(105.0, 105.0),
 		"gather_type": "wood",
 		"gather_radius_cells": 3,
 		"gather_rate": BalanceConfig.WOOD_PER_SECOND,
@@ -138,7 +138,7 @@ const DEFINITIONS: Dictionary = {
 		"blocks_nav": true,
 		"visual_scale": 0.95,
 		"footprint": Vector2(92.0, 70.0),
-		"pick_half_size": Vector2(70.0, 68.0),
+		"pick_half_size": Vector2(122.0, 152.0),
 		"gather_type": "food",
 		"spawns_gather_source": true,
 		"gather_radius_cells": 0,
@@ -162,7 +162,7 @@ const DEFINITIONS: Dictionary = {
 		"blocks_nav": true,
 		"visual_scale": 0.85,
 		"footprint": Vector2(64.0, 48.0),
-		"pick_half_size": Vector2(52.0, 52.0),
+		"pick_half_size": Vector2(109.0, 109.0),
 		"gather_type": "gold",
 		"gather_radius_cells": 3,
 		"gather_rate": BalanceConfig.GOLD_PER_SECOND,
@@ -183,7 +183,7 @@ const DEFINITIONS: Dictionary = {
 		"blocks_nav": true,
 		"visual_scale": 1.00,
 		"footprint": Vector2(105.0, 62.0),
-		"pick_half_size": Vector2(78.0, 68.0),
+		"pick_half_size": Vector2(128.0, 128.0),
 		"produces": ["knight_squad"],
 	},
 	"barracks": {
@@ -201,7 +201,7 @@ const DEFINITIONS: Dictionary = {
 		"blocks_nav": true,
 		"visual_scale": 1.00,
 		"footprint": Vector2(105.0, 62.0),
-		"pick_half_size": Vector2(78.0, 68.0),
+		"pick_half_size": Vector2(128.0, 128.0),
 		"produces": ["archer_squad"],
 	},
 	"arcanum": {
@@ -219,7 +219,7 @@ const DEFINITIONS: Dictionary = {
 		"blocks_nav": true,
 		"visual_scale": 1.05,
 		"footprint": Vector2(110.0, 68.0),
-		"pick_half_size": Vector2(82.0, 72.0),
+		"pick_half_size": Vector2(134.0, 134.0),
 		"produces": ["mage_squad"],
 	},
 	"tower": {
@@ -237,7 +237,7 @@ const DEFINITIONS: Dictionary = {
 		"blocks_nav": true,
 		"visual_scale": 1.00,
 		"footprint": Vector2(72.0, 48.0),
-		"pick_half_size": Vector2(56.0, 70.0),
+		"pick_half_size": Vector2(128.0, 128.0),
 		"automatic_defense": true,
 	},
 	"wall": {
@@ -256,7 +256,7 @@ const DEFINITIONS: Dictionary = {
 		"blocks_nav": true,
 		"visual_scale": 0.95,
 		"footprint": Vector2(86.0, 42.0),
-		"pick_half_size": Vector2(56.0, 34.0),
+		"pick_half_size": Vector2(88.0, 70.0),
 	},
 	"castle_small": {
 		"name": "Castillo",
@@ -273,7 +273,7 @@ const DEFINITIONS: Dictionary = {
 		"blocks_nav": true,
 		"visual_scale": 1.42,
 		"footprint": Vector2(155.0, 98.0),
-		"pick_half_size": Vector2(115.0, 105.0),
+		"pick_half_size": Vector2(182.0, 182.0),
 	},
 	"castle_big": {
 		"name": "Castillo grande",
@@ -290,7 +290,7 @@ const DEFINITIONS: Dictionary = {
 		"blocks_nav": true,
 		"visual_scale": 1.62,
 		"footprint": Vector2(195.0, 120.0),
-		"pick_half_size": Vector2(145.0, 125.0),
+		"pick_half_size": Vector2(207.0, 207.0),
 	},
 }
 
