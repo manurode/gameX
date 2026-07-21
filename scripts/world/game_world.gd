@@ -356,6 +356,8 @@ func _spawn_starter_military(
 		UnitDatabase.apply_definition_to_unit(unit, type_id)
 		unit.set_ground_layer(ground_layer)
 		unit.reset_navigation()
+		# Meta shop army: reduced night upkeep + starter food pantry (not run boons).
+		unit.set_meta("meta_supplied", true)
 		population_manager.register_unit(unit)
 		register_player_unit(unit)
 		if day_night_manager.should_apply_night_visuals():

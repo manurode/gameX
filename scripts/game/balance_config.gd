@@ -30,6 +30,10 @@ const MILL_MAX_WORKERS := 3
 
 const VILLAGER_FOOD_PER_SECOND := 1.0 / 30.0
 const SQUAD_FOOD_PER_SECOND_AT_NIGHT := 1.0 / 10.0
+## Meta shop armies: still eat at night, but cheaper than trained troops.
+const META_MILITARY_NIGHT_UPKEEP_MULT := 0.35
+## Pantry brought with meta starter military (per unit).
+const META_ARMY_START_FOOD_PER_UNIT := 4
 const STARVATION_WORK_MULTIPLIER := 0.5
 const STARVATION_DAMAGE_PER_SECOND := 2.0
 

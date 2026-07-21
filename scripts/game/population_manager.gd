@@ -148,11 +148,15 @@ func _recalculate_upkeep() -> void:
 	var civilian_count := 0
 	var squad_ids: Dictionary = {}
 	var military_without_squad := 0
+	var meta_military_count := 0
 	for unit in _registered_units.keys():
 		if not is_instance_valid(unit) or unit.hp <= 0:
 			continue
 		if unit.is_civilian:
 			civilian_count += 1
+		elif unit.get_meta("meta_supplied", false):
+			# Meta shop starters only — run boons keep full night upkeep.
+			meta_military_count += 1
 		else:
 			var squad_id: String = unit.get_meta("squad_id", "")
 			if squad_id.is_empty():
@@ -162,7 +166,13 @@ func _recalculate_upkeep() -> void:
 	var upkeep := float(civilian_count) * BalanceConfig.VILLAGER_FOOD_PER_SECOND
 	var is_night := _is_night()
 	if is_night:
-		upkeep += float(squad_ids.size() + military_without_squad) * BalanceConfig.SQUAD_FOOD_PER_SECOND_AT_NIGHT
+		var full_rate := BalanceConfig.SQUAD_FOOD_PER_SECOND_AT_NIGHT
+		upkeep += float(squad_ids.size() + military_without_squad) * full_rate
+		upkeep += (
+			float(meta_military_count)
+			* full_rate
+			* BalanceConfig.META_MILITARY_NIGHT_UPKEEP_MULT
+		)
 	upkeep *= _get_food_upkeep_multiplier()
 	if not is_equal_approx(upkeep, _cached_upkeep) or is_night != _cached_is_night:
 		_cached_upkeep = upkeep

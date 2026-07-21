@@ -214,7 +214,17 @@ func get_start_food_bonus() -> int:
 	var bonus := 25 if is_unlocked("start_food") else 0
 	if is_unlocked("war_chest"):
 		bonus += 80
+	# Pantry that arrives with meta armies (not run-boon troops).
+	bonus += get_starter_military_count() * BalanceConfig.META_ARMY_START_FOOD_PER_UNIT
 	return bonus
+
+
+func get_starter_military_count() -> int:
+	return (
+		get_starter_knight_count()
+		+ get_starter_archer_count()
+		+ get_starter_mage_count()
+	)
 
 
 func get_start_gold_bonus() -> int:
