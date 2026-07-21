@@ -25,6 +25,7 @@ var _end_title: Label
 var _end_body: Label
 var _foresight_panel: PanelContainer
 var _foresight_label: Label
+var _foresight_hint: Label
 var _last_cycle_ui_seconds := -1
 
 
@@ -160,11 +161,16 @@ func _create_foresight_label() -> void:
 	_foresight_panel = PanelContainer.new()
 	_foresight_panel.visible = false
 	_foresight_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_foresight_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	_foresight_panel.offset_left = -210.0
-	_foresight_panel.offset_right = -12.0
+	_foresight_panel.anchor_left = 1.0
+	_foresight_panel.anchor_top = 0.0
+	_foresight_panel.anchor_right = 1.0
+	_foresight_panel.anchor_bottom = 0.0
+	_foresight_panel.offset_left = -12.0
 	_foresight_panel.offset_top = 10.0
-	_foresight_panel.offset_bottom = 58.0
+	_foresight_panel.offset_right = -12.0
+	_foresight_panel.offset_bottom = 10.0
+	_foresight_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_foresight_panel.grow_vertical = Control.GROW_DIRECTION_END
 
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.09, 0.07, 0.055, 0.94)
@@ -177,13 +183,27 @@ func _create_foresight_label() -> void:
 	style.set_content_margin_all(8)
 	_foresight_panel.add_theme_stylebox_override("panel", style)
 
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 2)
+	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.size_flags_horizontal = Control.SIZE_SHRINK_END
+	_foresight_panel.add_child(vbox)
+
 	_foresight_label = Label.new()
-	_foresight_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_foresight_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_foresight_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_foresight_label.add_theme_font_size_override("font_size", 12)
 	_foresight_label.add_theme_color_override("font_color", Color(0.9, 0.86, 0.74))
 	_foresight_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_foresight_panel.add_child(_foresight_label)
+	_foresight_label.size_flags_horizontal = Control.SIZE_SHRINK_END
+	vbox.add_child(_foresight_label)
+
+	_foresight_hint = Label.new()
+	_foresight_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_foresight_hint.add_theme_font_size_override("font_size", 11)
+	_foresight_hint.add_theme_color_override("font_color", Color(0.78, 0.74, 0.64))
+	_foresight_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_foresight_hint.size_flags_horizontal = Control.SIZE_SHRINK_END
+	vbox.add_child(_foresight_hint)
 
 	add_child(_foresight_panel)
 
@@ -549,10 +569,15 @@ func _on_foresight_ready(
 	if _foresight_panel == null or _foresight_label == null:
 		return
 	var direction_text := direction_name if not direction_name.is_empty() else "?"
-	var count_text := str(enemy_count) if enemy_count > 0 else "?"
+	var count_text := ("%d enemigos" % enemy_count) if enemy_count > 0 else "? enemigos"
+	var description := NightModifier.get_description(modifier_id as NightModifier.Id)
 	_foresight_label.text = "Presagio · %s\n%s · %s" % [modifier_name, direction_text, count_text]
-	_foresight_panel.tooltip_text = NightModifier.get_description(modifier_id as NightModifier.Id)
+	if _foresight_hint != null:
+		_foresight_hint.text = description
+		_foresight_hint.visible = not description.is_empty()
+	_foresight_panel.tooltip_text = description
 	_foresight_panel.visible = true
+	_foresight_panel.reset_size()
 
 
 func _on_boon_choices_ready(choices: Array) -> void:
