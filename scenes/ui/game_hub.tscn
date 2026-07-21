@@ -11,12 +11,12 @@ border_width_right = 0
 border_width_bottom = 0
 border_color = Color(0.72, 0.58, 0.32, 1)
 content_margin_left = 10.0
-content_margin_top = 6.0
+content_margin_top = 10.0
 content_margin_right = 10.0
-content_margin_bottom = 6.0
+content_margin_bottom = 10.0
 
 [node name="GameHub" type="PanelContainer"]
-custom_minimum_size = Vector2(0, 118)
+custom_minimum_size = Vector2(0, 166)
 mouse_filter = 0
 theme_override_styles/panel = SubResource("StyleBoxFlat_hub")
 script = ExtResource("1_hub")
