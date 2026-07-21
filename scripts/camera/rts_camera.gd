@@ -4,12 +4,9 @@ const MIN_ZOOM := 0.35
 const MAX_ZOOM := 1.5
 const PAN_SPEED := 650.0
 const ZOOM_STEP := 0.08
-const EDGE_PAN_MARGIN := 24
-const EDGE_PAN_SPEED := 550.0
 const START_ZOOM := 0.85
 
 var map_bounds := Rect2(0.0, 0.0, 1800.0, 900.0)
-var _mouse_in_window := false
 
 
 func _ready() -> void:
@@ -22,17 +19,8 @@ func set_map_bounds(bounds: Rect2) -> void:
 	position = bounds.get_center()
 
 
-func _notification(what: int) -> void:
-	match what:
-		NOTIFICATION_WM_MOUSE_ENTER:
-			_mouse_in_window = true
-		NOTIFICATION_WM_MOUSE_EXIT:
-			_mouse_in_window = false
-
-
 func _process(delta: float) -> void:
 	_handle_keyboard_pan(delta)
-	_handle_edge_pan(delta)
 	_clamp_to_map()
 
 
@@ -42,38 +30,6 @@ func _handle_keyboard_pan(delta: float) -> void:
 		return
 
 	position += direction.normalized() * PAN_SPEED * delta / zoom.x
-
-
-func _handle_edge_pan(delta: float) -> void:
-	if not _mouse_in_window or not get_viewport().get_window().has_focus():
-		return
-	if _is_pointer_over_hub():
-		return
-
-	var viewport_size := get_viewport().get_visible_rect().size
-	var mouse_pos := get_viewport().get_mouse_position()
-	var direction := Vector2.ZERO
-
-	if mouse_pos.x <= EDGE_PAN_MARGIN:
-		direction.x -= 1.0
-	elif mouse_pos.x >= viewport_size.x - EDGE_PAN_MARGIN:
-		direction.x += 1.0
-
-	if mouse_pos.y <= EDGE_PAN_MARGIN:
-		direction.y -= 1.0
-	elif mouse_pos.y >= viewport_size.y - EDGE_PAN_MARGIN:
-		direction.y += 1.0
-
-	if direction != Vector2.ZERO:
-		position += direction.normalized() * EDGE_PAN_SPEED * delta / zoom.x
-
-
-func _is_pointer_over_hub() -> bool:
-	var hub := get_node_or_null("/root/Main/Layout/GameHub")
-	if hub is Control:
-		var root_mouse := get_tree().root.get_mouse_position()
-		return (hub as Control).get_global_rect().has_point(root_mouse)
-	return false
 
 
 func _clamp_to_map() -> void:

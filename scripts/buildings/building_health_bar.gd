@@ -96,5 +96,23 @@ func _draw() -> void:
 		var garrison_text := "%d/%d" % [_building.get_garrison_count(), _building.garrison_capacity]
 		var font := ThemeDB.fallback_font
 		var text_width := font.get_string_size(garrison_text, HORIZONTAL_ALIGNMENT_CENTER, -1, GARRISON_FONT_SIZE).x
-		var text_pos := Vector2(-text_width * 0.5, BAR_HEIGHT + 2.0)
-		draw_string(font, text_pos, garrison_text, HORIZONTAL_ALIGNMENT_LEFT, -1, GARRISON_FONT_SIZE, Color(0.92, 0.95, 0.88, 0.95))
+		var ascent := font.get_ascent(GARRISON_FONT_SIZE)
+		var text_height := font.get_height(GARRISON_FONT_SIZE)
+		var pad_x := 3.0
+		var pad_y := 1.5
+		var chip_w := text_width + pad_x * 2.0
+		var chip_h := text_height + pad_y * 2.0
+		var chip_y := -2.0 - chip_h
+		var chip_rect := Rect2(-chip_w * 0.5, chip_y, chip_w, chip_h)
+		draw_rect(chip_rect, Color(0.10, 0.08, 0.06, 0.90))
+		draw_rect(chip_rect, Color(0.0, 0.0, 0.0, 0.55), false, 1.0)
+		var text_pos := Vector2(-text_width * 0.5, chip_y + pad_y + ascent)
+		draw_string(
+			font,
+			text_pos,
+			garrison_text,
+			HORIZONTAL_ALIGNMENT_LEFT,
+			-1,
+			GARRISON_FONT_SIZE,
+			Color(0.95, 0.94, 0.88, 1.0)
+		)
