@@ -43,6 +43,8 @@ var _last_ghost_cell := Vector2i(1 << 30, 1 << 30)
 var _last_ghost_type := ""
 ## Free placements granted by boons (type_id -> remaining count).
 var _free_placements: Dictionary = {}
+## When true, only free placements are allowed (no paid extras) until they run out.
+var _free_only_build: bool = false
 
 
 func setup(
@@ -186,11 +188,13 @@ func start_build_mode(type_id: String) -> void:
 
 
 ## Grants free placements and enters build mode (same ghost/cursor flow as buying).
+## Free-only: cannot spend resources for extra pieces; exits when the grant is used up.
 func grant_free_placements(type_id: String, count: int) -> void:
 	if not BuildingDatabase.is_buildable(type_id) or count <= 0:
 		return
 	_free_placements[type_id] = int(_free_placements.get(type_id, 0)) + count
 	_start_build_mode(type_id)
+	_free_only_build = true
 
 
 func get_free_placements(type_id: String) -> int:
@@ -203,6 +207,8 @@ func _start_build_mode(type_id: String) -> void:
 	if not _is_construction_allowed():
 		return
 	_stop_wall_drag()
+	# Manual build (hotkeys/UI) leaves free-only mode so paid construction works normally.
+	_free_only_build = false
 	selected_building_type = type_id
 	build_mode_active = true
 	_update_ghost_texture()
@@ -215,9 +221,15 @@ func cancel_build_mode() -> void:
 
 func _cancel_build_mode() -> void:
 	_stop_wall_drag()
+	_free_only_build = false
 	build_mode_active = false
 	_ghost_sprite.visible = false
 	build_mode_changed.emit(false, "")
+
+
+func _finish_free_only_if_spent(type_id: String) -> void:
+	if _free_only_build and get_free_placements(type_id) <= 0:
+		_cancel_build_mode()
 
 
 func _update_ghost_texture() -> void:
@@ -256,6 +268,8 @@ func _place_single_building(world_pos: Vector2, vertical: bool, charge_resources
 		if get_free_placements(selected_building_type) > 0:
 			charge_resources = false
 			consume_free = true
+		elif _free_only_build:
+			return null
 		else:
 			var cost := BuildingDatabase.get_cost(selected_building_type)
 			if _resource_manager == null or not _resource_manager.spend(cost):
@@ -271,6 +285,7 @@ func _place_single_building(world_pos: Vector2, vertical: bool, charge_resources
 		building.notify_world_placed()
 	if consume_free:
 		_consume_free_placements(selected_building_type, 1)
+		_finish_free_only_if_spent(selected_building_type)
 	if _job_manager != null:
 		_job_manager.alert_nearby_builders(building)
 	return building
@@ -304,6 +319,13 @@ func _place_wall_polyline(end_pos: Vector2) -> void:
 
 	var free_to_use := mini(valid_segments.size(), get_free_placements("wall"))
 	var paid_count := valid_segments.size() - free_to_use
+	if _free_only_build and paid_count > 0:
+		# Cap to remaining free segments; never mix paid pieces into a boon grant.
+		valid_segments = valid_segments.slice(0, free_to_use)
+		paid_count = 0
+		free_to_use = valid_segments.size()
+		if free_to_use <= 0:
+			return
 	if paid_count > 0:
 		var unit_cost := BuildingDatabase.get_cost("wall")
 		var total_cost := _multiply_cost(unit_cost, paid_count)
@@ -314,6 +336,8 @@ func _place_wall_polyline(end_pos: Vector2) -> void:
 
 	for segment in valid_segments:
 		_place_single_building(segment["pos"], segment["vertical"], false)
+
+	_finish_free_only_if_spent("wall")
 
 
 func _sync_wall_corners_to_mouse(mouse_pos: Vector2) -> void:
@@ -639,6 +663,8 @@ func _is_valid_wall_segment(
 			return false
 
 	if get_free_placements("wall") <= 0:
+		if _free_only_build:
+			return false
 		var cost := BuildingDatabase.get_cost("wall")
 		if _resource_manager != null and not _resource_manager.can_afford(cost):
 			return false
@@ -730,6 +756,8 @@ func _is_valid_placement_at(world_pos: Vector2, type_id: String, vertical: bool)
 			return false
 
 	if get_free_placements(type_id) <= 0:
+		if _free_only_build:
+			return false
 		var cost := BuildingDatabase.get_cost(type_id)
 		if _resource_manager != null and not _resource_manager.can_afford(cost):
 			return false
@@ -761,6 +789,8 @@ func _max_affordable_wall_segments(desired: int) -> int:
 	if desired <= 0:
 		return 0
 	var free_left := get_free_placements("wall") if selected_building_type == "wall" else 0
+	if _free_only_build:
+		return mini(desired, free_left)
 	var paid_desired := maxi(0, desired - free_left)
 	var paid_affordable := _max_resource_wall_segments(paid_desired)
 	return mini(desired, free_left + paid_affordable)

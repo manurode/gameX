@@ -3,7 +3,9 @@ extends RefCounted
 
 const DEFAULT_MAP_SIZE := Vector2i(64, 64)
 const BASE_MAP_AREA := 64 * 64
-const BASE_TOWN_CLEAR_RADIUS := 7.5
+## Land disk around the Centro Urbano where water is forbidden (scaled for 64×64).
+## Slightly larger than the settlement so starter units do not spawn into lakes.
+const BASE_TOWN_CLEAR_RADIUS := 9.5
 const BASE_CONTENT_CLEAR_RADIUS := 9.0
 const BASE_TERRAIN_FREQUENCY := 0.055
 ## One forest = one large sprite covering many cells (same pattern as mountains).
@@ -111,6 +113,8 @@ func generate(requested_seed: int = 0) -> Dictionary:
 	_prune_tiny_water_clusters(ground_tiles, water_cells, water_set)
 	# Keep large lake sprites from hanging off the map edge.
 	_clear_edge_water(ground_tiles, water_cells, water_set)
+	# Keep the settlement spawn yard clear even if connectivity fill added water.
+	_clear_water_near_town(town_center_cell, ground_tiles, water_cells, water_set)
 	_prune_tiny_water_clusters(ground_tiles, water_cells, water_set)
 	var lake_placements := _generate_lake_placements(
 		ground_tiles, water_cells, water_set, rng
@@ -244,6 +248,23 @@ func _generate_lake_placements(
 			_cover_cluster_with_lakes(cluster, ground_tiles, water_cells, water_set, rng)
 		)
 	return placements
+
+
+func _clear_water_near_town(
+	town_center: Vector2i,
+	ground_tiles: Array[int],
+	water_cells: Array[Vector2i],
+	water_set: Dictionary
+) -> void:
+	## Guarantee a walkable land disk around the settlement after topology passes.
+	var clear_radius := _get_town_clear_radius()
+	var to_clear: Array[Vector2i] = []
+	for cell_variant in water_set.keys():
+		var cell: Vector2i = cell_variant
+		if Vector2(cell - town_center).length() <= clear_radius:
+			to_clear.append(cell)
+	for cell in to_clear:
+		_set_cell_as_ground(cell, ground_tiles, water_cells, water_set)
 
 
 func _prune_tiny_water_clusters(
