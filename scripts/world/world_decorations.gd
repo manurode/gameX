@@ -140,11 +140,25 @@ func _spawn_resources(placements: Array[Dictionary]) -> void:
 			node.pick_radius = FOREST_PICK_RADIUS
 		elif kind == "gold_mountain":
 			node.pick_radius = MOUNTAIN_PICK_RADIUS
+		node.set_footprint_cells(cell, _footprint_for_kind(kind))
 		_entity_parent.add_child(node)
 		_resource_nodes.append(node)
 		var obstacle := _spawn_resource_terrain(kind, texture, world_pos, offset, visual_scale)
 		if obstacle != null:
 			node.set_terrain_obstacle(obstacle)
+
+
+func _footprint_for_kind(kind: String) -> Array[Vector2i]:
+	match kind:
+		"wood":
+			return ProceduralMapGenerator.FOREST_FOOTPRINT
+		"gold_mountain":
+			return ProceduralMapGenerator.MOUNTAIN_FOOTPRINT
+		"gold":
+			return ProceduralMapGenerator.GOLD_FOOTPRINT
+		_:
+			var single: Array[Vector2i] = [Vector2i.ZERO]
+			return single
 
 
 func _paths_for_kind(kind: String) -> Array[String]:

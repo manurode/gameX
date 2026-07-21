@@ -481,13 +481,15 @@ func _building_covers_resource(building: Building, resource_node: ResourceNode) 
 	# Mills only cover their own integrated farm plot.
 	if BuildingDatabase.spawns_gather_source(building.building_type_id):
 		return _get_mill_farm_node(building) == resource_node
-	if _ground_layer == null:
-		return false
 	var def := BuildingDatabase.get_definition(building.building_type_id)
 	var radius_cells: int = def.get("gather_radius_cells", 3)
-	var cell := _ground_layer.local_to_map(building.get_anchor_position())
-	var node_cell := _ground_layer.local_to_map(resource_node.global_position)
-	return Vector2(cell - node_cell).length() <= float(radius_cells)
+	var building_pos := building.get_anchor_position()
+	if _ground_layer != null:
+		var cell := _ground_layer.local_to_map(building_pos)
+		if resource_node.is_near_cell_for_building(cell, radius_cells):
+			return true
+	var max_dist := float(radius_cells) * DepthSort.ISO_HALF_TILE * 2.0
+	return resource_node.is_near_for_building(building_pos, max_dist)
 
 
 func _get_mill_farm_node(building: Building) -> ResourceNode:
@@ -511,12 +513,13 @@ func _find_nearest_resource_node(building: Building) -> ResourceNode:
 			return farm
 		return null
 
-	if _ground_layer == null:
-		return null
-
 	var def := BuildingDatabase.get_definition(building.building_type_id)
 	var radius_cells: int = def.get("gather_radius_cells", 3)
-	var cell := _ground_layer.local_to_map(building.get_anchor_position())
+	var max_dist := float(radius_cells) * DepthSort.ISO_HALF_TILE * 2.0
+	var building_pos := building.get_anchor_position()
+	var building_cell := (
+		_ground_layer.local_to_map(building_pos) if _ground_layer != null else Vector2i.ZERO
+	)
 	var best_node: ResourceNode = null
 	var best_dist := INF
 
@@ -528,11 +531,13 @@ func _find_nearest_resource_node(building: Building) -> ResourceNode:
 			continue
 		if resource_node.get_resource_key() != gather_type:
 			continue
-
-		var node_cell := _ground_layer.local_to_map(resource_node.global_position)
-		var dist := Vector2(cell - node_cell).length()
-		if dist > float(radius_cells):
+		var near := resource_node.is_near_cell_for_building(building_cell, radius_cells)
+		if not near:
+			near = resource_node.is_near_for_building(building_pos, max_dist)
+		if not near:
 			continue
+
+		var dist := building_pos.distance_to(resource_node.get_interaction_center())
 		if dist < best_dist:
 			best_dist = dist
 			best_node = resource_node

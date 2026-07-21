@@ -30,6 +30,8 @@ var _amount_bar: Node2D = null
 var _selection_indicator: Line2D = null
 ## Cell-center placement; may differ from global_position when Y-sort is biased.
 var _anchor_position := Vector2.ZERO
+## Map cells occupied by this mass (forest/mountain footprint). Used for build adjacency.
+var _footprint_cells: Array[Vector2i] = []
 
 
 func _ready() -> void:
@@ -236,6 +238,28 @@ func set_terrain_obstacle(obstacle: TerrainObstacle) -> void:
 	_terrain_obstacle = obstacle
 
 
+## Registers the map cells this resource mass occupies (origin + relative footprint).
+func set_footprint_cells(origin: Vector2i, footprint: Array) -> void:
+	_footprint_cells.clear()
+	if footprint.is_empty():
+		_footprint_cells.append(origin)
+		return
+	for offset_variant in footprint:
+		var offset: Vector2i = offset_variant
+		_footprint_cells.append(origin + offset)
+
+
+## True when a gather building on this map cell is adjacent/near any footprint cell.
+func is_near_cell_for_building(cell: Vector2i, radius_cells: int) -> bool:
+	if _footprint_cells.is_empty():
+		return false
+	var limit := float(maxi(radius_cells, 1))
+	for occupied in _footprint_cells:
+		if Vector2(cell - occupied).length() <= limit:
+			return true
+	return false
+
+
 ## Work at the nearest reachable edge of the resource (any side of mountain/forest).
 func get_work_position(from_position: Vector2) -> Vector2:
 	if not _work_anchors.is_empty():
@@ -313,6 +337,32 @@ func is_within_gather_range(world_pos: Vector2, gather_range: float) -> bool:
 		if nx * nx + ny * ny <= 1.0:
 			return true
 	return false
+
+
+## True when a gather building can be placed near this node (any side of forest/mountain).
+## Prefers map footprint cells; falls back to visual sprite bounds.
+func is_near_for_building(world_pos: Vector2, margin: float) -> bool:
+	var bounds := _get_visual_world_bounds()
+	if bounds.size.x > 1.0 and bounds.size.y > 1.0:
+		return bounds.grow(margin).has_point(world_pos)
+
+	# Fallback when sprites are missing (e.g. depleted / crop fields).
+	var center := _anchor_position
+	if center == Vector2.ZERO:
+		center = get_interaction_center()
+	return world_pos.distance_to(center) <= maxf(pick_radius, 40.0) + margin
+
+
+func _get_visual_world_bounds() -> Rect2:
+	var sprites := get_occlusion_sprites()
+	if sprites.is_empty():
+		return Rect2()
+	var bounds := OcclusionUtils.sprite_global_rect(sprites[0])
+	for i in range(1, sprites.size()):
+		var rect := OcclusionUtils.sprite_global_rect(sprites[i])
+		if rect.size.x > 0.0 and rect.size.y > 0.0:
+			bounds = bounds.merge(rect)
+	return bounds
 
 
 func get_amount_bar_offset() -> Vector2:

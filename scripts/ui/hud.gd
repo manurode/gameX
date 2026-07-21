@@ -23,6 +23,7 @@ var _debug_boon_list: VBoxContainer
 var _end_overlay: Control
 var _end_title: Label
 var _end_body: Label
+var _foresight_panel: PanelContainer
 var _foresight_label: Label
 var _last_cycle_ui_seconds := -1
 
@@ -117,6 +118,8 @@ func setup(
 		_night_wave_manager.wave_started.connect(_on_wave_started)
 		if _night_wave_manager.has_signal("foresight_ready"):
 			_night_wave_manager.foresight_ready.connect(_on_foresight_ready)
+		if _night_wave_manager.has_method("refresh_foresight"):
+			_night_wave_manager.refresh_foresight()
 
 	if _run_boon_manager != null:
 		_run_boon_manager.boon_choices_ready.connect(_on_boon_choices_ready)
@@ -154,18 +157,35 @@ func _create_event_banner() -> void:
 
 
 func _create_foresight_label() -> void:
+	_foresight_panel = PanelContainer.new()
+	_foresight_panel.visible = false
+	_foresight_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_foresight_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_foresight_panel.offset_left = -210.0
+	_foresight_panel.offset_right = -12.0
+	_foresight_panel.offset_top = 10.0
+	_foresight_panel.offset_bottom = 58.0
+
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.09, 0.07, 0.055, 0.94)
+	style.border_color = Color(0.72, 0.58, 0.32, 1.0)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(8)
+	style.shadow_color = Color(0, 0, 0, 0.4)
+	style.shadow_size = 8
+	style.shadow_offset = Vector2(0, 3)
+	style.set_content_margin_all(8)
+	_foresight_panel.add_theme_stylebox_override("panel", style)
+
 	_foresight_label = Label.new()
-	_foresight_label.visible = false
-	_foresight_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_foresight_label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	_foresight_label.offset_left = -320.0
-	_foresight_label.offset_right = -16.0
-	_foresight_label.offset_top = 12.0
-	_foresight_label.offset_bottom = 48.0
 	_foresight_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_foresight_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_foresight_label.add_theme_font_size_override("font_size", 12)
-	_foresight_label.add_theme_color_override("font_color", Color(0.75, 0.85, 1.0, 0.9))
-	add_child(_foresight_label)
+	_foresight_label.add_theme_color_override("font_color", Color(0.9, 0.86, 0.74))
+	_foresight_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_foresight_panel.add_child(_foresight_label)
+
+	add_child(_foresight_panel)
 
 
 func _create_boon_overlay() -> void:
@@ -457,6 +477,8 @@ func _on_build_mode_changed(active: bool, type_id: String) -> void:
 
 func _on_cycle_changed(phase: DayNightManager.CyclePhase) -> void:
 	_update_cycle_ui(phase, true)
+	if phase != DayNightManager.CyclePhase.DAY and _foresight_panel != null:
+		_foresight_panel.visible = false
 	if (
 		phase == DayNightManager.CyclePhase.DUSK
 		and _run_boon_manager != null
@@ -518,12 +540,19 @@ func _on_wave_started(enemy_count: int, _modifier_id: int = 0) -> void:
 		)
 
 
-func _on_foresight_ready(modifier_id: int, modifier_name: String) -> void:
-	if _foresight_label == null:
+func _on_foresight_ready(
+	modifier_id: int,
+	modifier_name: String,
+	direction_name: String = "",
+	enemy_count: int = 0
+) -> void:
+	if _foresight_panel == null or _foresight_label == null:
 		return
-	_foresight_label.visible = true
-	_foresight_label.text = "Presagio: próxima noche → %s" % modifier_name
-	_foresight_label.tooltip_text = NightModifier.get_description(modifier_id as NightModifier.Id)
+	var direction_text := direction_name if not direction_name.is_empty() else "?"
+	var count_text := str(enemy_count) if enemy_count > 0 else "?"
+	_foresight_label.text = "Presagio · %s\n%s · %s" % [modifier_name, direction_text, count_text]
+	_foresight_panel.tooltip_text = NightModifier.get_description(modifier_id as NightModifier.Id)
+	_foresight_panel.visible = true
 
 
 func _on_boon_choices_ready(choices: Array) -> void:

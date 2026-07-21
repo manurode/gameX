@@ -4,12 +4,18 @@ class_name NightWaveManager
 
 signal wave_warning(direction_name: String, modifier_id: int, modifier_name: String)
 signal wave_started(enemy_count: int, modifier_id: int)
-signal foresight_ready(modifier_id: int, modifier_name: String)
+signal foresight_ready(
+	modifier_id: int,
+	modifier_name: String,
+	direction_name: String,
+	enemy_count: int
+)
 
 const ENEMY_SCENE: PackedScene = preload("res://scenes/units/unit_enemy.tscn")
 const EDGE_MARGIN := 48.0
 const FOG_EDGE_MARGIN := 140.0
 const CONTINUOUS_SPAWN_INTERVAL := 4.5
+const CARDINAL_DIRECTIONS := ["Norte", "Este", "Sur", "Oeste"]
 
 var _day_night: DayNightManager
 var _units_container: Node2D
@@ -17,6 +23,10 @@ var _ground: TinyTilesMap
 var _spawned: Array[EnemyUnit] = []
 var _attack_direction: String = "Oeste"
 var _secondary_direction: String = ""
+var _next_attack_direction: String = "Oeste"
+var _next_secondary_direction: String = ""
+var _next_enemy_count: int = 0
+var _planned_enemy_count: int = 0
 var _current_modifier: NightModifier.Id = NightModifier.Id.SWARM
 var _next_modifier: NightModifier.Id = NightModifier.Id.SWARM
 var _modifier_ready: bool = false
@@ -52,6 +62,10 @@ func get_attack_direction() -> String:
 	return _attack_direction
 
 
+func refresh_foresight() -> void:
+	_try_emit_foresight()
+
+
 func _process(delta: float) -> void:
 	if _continuous_remaining <= 0 or _day_night == null or not _day_night.is_night():
 		return
@@ -76,16 +90,12 @@ func _on_cycle_changed(phase: DayNightManager.CyclePhase) -> void:
 				_continuous_remaining = 0
 				return
 			_activate_modifier_for_night()
-			_attack_direction = ["Norte", "Este", "Sur", "Oeste"].pick_random()
-			_secondary_direction = ""
-			var def := NightModifier.get_definition(_current_modifier)
-			if def.get("dual_direction", false):
-				var dirs := ["Norte", "Este", "Sur", "Oeste"]
-				dirs.erase(_attack_direction)
-				_secondary_direction = dirs.pick_random()
+			_attack_direction = _next_attack_direction
+			_secondary_direction = _next_secondary_direction
+			_planned_enemy_count = _next_enemy_count
 			_try_free_curfew()
 			wave_warning.emit(
-				_attack_direction,
+				_format_direction_text(_attack_direction, _secondary_direction),
 				int(_current_modifier),
 				NightModifier.get_display_name(_current_modifier)
 			)
@@ -118,6 +128,33 @@ func _activate_modifier_for_night() -> void:
 
 func _pick_next_modifier() -> void:
 	_next_modifier = NightModifier.pick_random([_current_modifier] if _modifier_ready else [])
+	_pick_next_directions()
+	_next_enemy_count = _compute_enemy_count(_next_modifier)
+
+
+func _pick_next_directions() -> void:
+	_next_attack_direction = CARDINAL_DIRECTIONS.pick_random()
+	_next_secondary_direction = ""
+	var def := NightModifier.get_definition(_next_modifier)
+	if def.get("dual_direction", false):
+		var dirs := CARDINAL_DIRECTIONS.duplicate()
+		dirs.erase(_next_attack_direction)
+		_next_secondary_direction = dirs.pick_random()
+
+
+func _format_direction_text(primary: String, secondary: String) -> String:
+	if secondary.is_empty():
+		return primary
+	return "%s y %s" % [primary, secondary]
+
+
+func _compute_enemy_count(modifier: NightModifier.Id) -> int:
+	var def := NightModifier.get_definition(modifier)
+	var base_count := _get_wave_size()
+	var count := maxi(4, int(round(float(base_count) * float(def.get("count_mult", 1.0)))))
+	if modifier == NightModifier.Id.ELITE:
+		count += maxi(1, mini(6, 1 + _day_night.cycle_number / 3))
+	return count
 
 
 func _try_emit_foresight() -> void:
@@ -126,7 +163,9 @@ func _try_emit_foresight() -> void:
 	if MetaProgression.has_foresight():
 		foresight_ready.emit(
 			int(_next_modifier),
-			NightModifier.get_display_name(_next_modifier)
+			NightModifier.get_display_name(_next_modifier),
+			_format_direction_text(_next_attack_direction, _next_secondary_direction),
+			_next_enemy_count
 		)
 
 
@@ -145,8 +184,15 @@ func _spawn_wave() -> void:
 		return
 
 	var def := NightModifier.get_definition(_current_modifier)
-	var base_count := _get_wave_size()
-	var count := maxi(4, int(round(float(base_count) * float(def.get("count_mult", 1.0)))))
+	var count := _planned_enemy_count
+	if count <= 0:
+		count = _compute_enemy_count(_current_modifier)
+
+	# Elite nights bake bonus elites into the planned total; peel them off to spawn separately.
+	var elite_extras := 0
+	if _current_modifier == NightModifier.Id.ELITE:
+		elite_extras = maxi(1, mini(6, 1 + _day_night.cycle_number / 3))
+		count = maxi(4, count - elite_extras)
 
 	if def.get("continuous_spawn", false):
 		var initial := maxi(4, int(count * 0.45))
@@ -158,15 +204,13 @@ func _spawn_wave() -> void:
 		_continuous_remaining = 0
 		_spawn_enemies(count, def)
 
-	# Ensure elites on elite nights; more of them in the late climb.
-	if _current_modifier == NightModifier.Id.ELITE:
-		var elite_count := maxi(1, mini(6, 1 + _day_night.cycle_number / 3))
-		_spawn_enemies(elite_count, {
+	if elite_extras > 0:
+		_spawn_enemies(elite_extras, {
 			"composition": [{"kind": "elite", "weight": 1.0}],
 			"fog": def.get("fog", false),
 		})
 
-	wave_started.emit(_spawned.size(), int(_current_modifier))
+	wave_started.emit(_spawned.size() + _continuous_remaining, int(_current_modifier))
 
 
 func _spawn_enemies(count: int, def: Dictionary) -> void:

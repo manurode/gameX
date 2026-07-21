@@ -48,7 +48,7 @@ const UNLOCKS := {
 	},
 	"foresight": {
 		"name": "Presagio",
-		"description": "Ves el modificador de la próxima noche con antelación.",
+		"description": "Ves modificador, dirección y número de enemigos de la próxima noche.",
 		"cost": 35,
 	},
 	"starter_walls": {

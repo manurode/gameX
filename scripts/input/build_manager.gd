@@ -805,7 +805,11 @@ func _has_gather_node_nearby(world_pos: Vector2, type_id: String) -> bool:
 
 	var def := BuildingDatabase.get_definition(type_id)
 	var radius_cells: int = def.get("gather_radius_cells", 3)
-	var cell := _ground_layer.local_to_map(world_pos)
+	# ~1 full iso tile per radius cell from the visual edge (fallback path).
+	var max_dist := float(radius_cells) * DepthSort.ISO_HALF_TILE * 2.0
+	var place_cell := (
+		_ground_layer.local_to_map(world_pos) if _ground_layer != null else Vector2i.ZERO
+	)
 
 	for node in get_tree().get_nodes_in_group("resource_nodes"):
 		if not node is ResourceNode:
@@ -815,8 +819,11 @@ func _has_gather_node_nearby(world_pos: Vector2, type_id: String) -> bool:
 			continue
 		if resource_node.get_resource_key() != gather_type:
 			continue
-		var node_cell := _ground_layer.local_to_map(resource_node.global_position)
-		if Vector2(cell - node_cell).length() <= float(radius_cells):
+		# Primary: adjacent to any footprint cell (works on all sides of large masses).
+		if resource_node.is_near_cell_for_building(place_cell, radius_cells):
+			return true
+		# Fallback: visual sprite bounds (nodes without a map footprint).
+		if resource_node.is_near_for_building(world_pos, max_dist):
 			return true
 	return false
 
