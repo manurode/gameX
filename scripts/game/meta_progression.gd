@@ -125,17 +125,17 @@ const UNLOCKS := {
 	},
 	"knight_legion": {
 		"name": "Legión de caballeros",
-		"description": "Empiezas con 20 caballeros. Imprescindible en las noches finales.",
+		"description": "Empiezas con 20 caballeros.",
 		"cost": 350,
 	},
 	"mage_academy": {
 		"name": "Academia arcana",
-		"description": "Empiezas con 15 magos. Imprescindible en las noches finales.",
+		"description": "Empiezas con 15 magos.",
 		"cost": 380,
 	},
 	"grand_bastion": {
 		"name": "Gran bastión",
-		"description": "Empiezas con 2 torres extra y 8 segmentos de muro.",
+		"description": "Empiezas con 6 torres extra y 16 segmentos de muro.",
 		"cost": 400,
 	},
 }
