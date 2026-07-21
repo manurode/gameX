@@ -3,8 +3,8 @@ extends Control
 const MAP_PADDING := 3.0
 const MINIMAP_SIZE := Vector2(112, 88)
 
-const FRAME_BG := Color(0.1, 0.08, 0.06, 0.94)
-const FRAME_BORDER := Color(0.42, 0.35, 0.24, 1.0)
+const FRAME_BG := Color(0.12, 0.1, 0.075, 0.9)
+const FRAME_BORDER := Color(0.72, 0.58, 0.32, 1.0)
 const MAP_BG := Color(0.04, 0.03, 0.03, 1.0)
 const GRASS_COLOR := Color(0.36, 0.47, 0.20)
 const GRASS_VARIANT := Color(0.32, 0.42, 0.18)

@@ -14,16 +14,38 @@ const ICON_VARIANT_SIZE := 128
 const SLOT_SIZE := Vector2(66, 80)
 const ICON_SIZE := Vector2(36, 30)
 const RESOURCE_ICON_SIZE := Vector2(28, 28)
+const ACTION_SLOT_SIZE := Vector2(72, 76)
+
+# Palette aligned with menu / dialog panels
+const COL_PANEL_INNER := Color(0.12, 0.1, 0.075, 0.9)
+const COL_BORDER := Color(0.72, 0.58, 0.32, 1.0)
+const COL_BORDER_DIM := Color(0.42, 0.35, 0.24, 1.0)
+const COL_GOLD := Color(1.0, 0.9, 0.55, 1.0)
+const COL_GOLD_SOFT := Color(0.92, 0.82, 0.52, 1.0)
+const COL_CREAM := Color(0.9, 0.86, 0.74, 1.0)
+const COL_MUTED := Color(0.78, 0.74, 0.64, 1.0)
+const COL_BTN := Color(0.14, 0.11, 0.08, 0.95)
+const COL_BTN_HOVER := Color(0.22, 0.17, 0.1, 0.98)
+const COL_BTN_PRESSED := Color(0.1, 0.08, 0.05, 1.0)
+const COL_BTN_DISABLED := Color(0.08, 0.07, 0.06, 0.85)
 
 @onready var _resources_box: VBoxContainer = $MarginContainer/HBoxContainer/ResourcesBox
-@onready var _build_tab_icon: TextureRect = $MarginContainer/HBoxContainer/CommandArea/TabColumn/BuildTabIcon
-@onready var _build_grid: GridContainer = $MarginContainer/HBoxContainer/CommandArea/BuildGrid
-@onready var _status_column: VBoxContainer = $MarginContainer/HBoxContainer/CommandArea/StatusColumn
+@onready var _build_mode: HBoxContainer = $MarginContainer/HBoxContainer/CommandArea/BuildMode
+@onready var _selection_mode: HBoxContainer = $MarginContainer/HBoxContainer/CommandArea/SelectionMode
+@onready var _build_tab_icon: TextureRect = $MarginContainer/HBoxContainer/CommandArea/BuildMode/TabColumn/BuildTabIcon
+@onready var _build_grid: GridContainer = $MarginContainer/HBoxContainer/CommandArea/BuildMode/BuildGrid
+@onready var _status_column: VBoxContainer = $MarginContainer/HBoxContainer/CommandArea/RightColumn/StatusColumn
 
+var _selection_info: VBoxContainer
+var _selection_icon: TextureRect
+var _selection_title: Label
+var _selection_meta: Label
+var _selection_actions: HBoxContainer
 var _production_box: VBoxContainer
 var _production_title: Label
 var _production_items_box: BoxContainer
 var _production_item_buttons: Dictionary = {}
+var _market_box: VBoxContainer
 var _market_title: Label
 var _market_items_box: GridContainer
 var _market_limit_label: Label
@@ -57,7 +79,8 @@ var _selected_building: Building = null
 func _ready() -> void:
 	if _build_tab_icon != null:
 		_build_tab_icon.texture = _make_icon_atlas(TEX_HAMMER)
-	_show_build_panel()
+	_ensure_selection_ui()
+	_show_build_mode()
 
 
 func setup(
@@ -81,7 +104,7 @@ func setup(
 	_build_resource_rows()
 	_build_command_grid()
 	_build_curfew_button()
-	_ensure_production_box()
+	_ensure_selection_ui()
 	if _resource_manager != null:
 		_resource_manager.resources_changed.connect(_on_resources_changed)
 		_on_resources_changed(_resource_manager.wood, _resource_manager.gold, _resource_manager.food)
@@ -116,10 +139,26 @@ func _build_resource_rows() -> void:
 		{"key": "wood", "texture": TEX_WOOD, "label": "Madera"},
 		{"key": "food", "texture": TEX_FOOD, "label": "Comida"},
 	]
+
+	var resources_panel := PanelContainer.new()
+	resources_panel.add_theme_stylebox_override("panel", _make_inner_panel_style())
+	_resources_box.add_child(resources_panel)
+
+	var panel_margin := MarginContainer.new()
+	panel_margin.add_theme_constant_override("margin_left", 8)
+	panel_margin.add_theme_constant_override("margin_right", 8)
+	panel_margin.add_theme_constant_override("margin_top", 6)
+	panel_margin.add_theme_constant_override("margin_bottom", 6)
+	resources_panel.add_child(panel_margin)
+
+	var panel_vbox := VBoxContainer.new()
+	panel_vbox.add_theme_constant_override("separation", 4)
+	panel_margin.add_child(panel_vbox)
+
 	var resources_row := HBoxContainer.new()
-	resources_row.add_theme_constant_override("separation", 8)
+	resources_row.add_theme_constant_override("separation", 10)
 	resources_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	_resources_box.add_child(resources_row)
+	panel_vbox.add_child(resources_row)
 
 	for entry in entries:
 		var cell := HBoxContainer.new()
@@ -136,7 +175,7 @@ func _build_resource_rows() -> void:
 		var amount := Label.new()
 		amount.text = "0"
 		amount.add_theme_font_size_override("font_size", 14)
-		amount.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
+		amount.add_theme_color_override("font_color", COL_GOLD)
 		amount.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
 		amount.add_theme_constant_override("shadow_offset_x", 1)
 		amount.add_theme_constant_override("shadow_offset_y", 1)
@@ -148,7 +187,7 @@ func _build_resource_rows() -> void:
 	var stats_row := HBoxContainer.new()
 	stats_row.add_theme_constant_override("separation", 10)
 	stats_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	_resources_box.add_child(stats_row)
+	panel_vbox.add_child(stats_row)
 
 	_population_label = Label.new()
 	_population_label.text = "Pob: 0/5"
@@ -177,35 +216,119 @@ func _build_resource_rows() -> void:
 	stats_row.add_child(_production_double_label)
 
 
-func _ensure_production_box() -> void:
-	if _production_box != null:
+func _ensure_selection_ui() -> void:
+	if _selection_mode == null or _selection_info != null:
 		return
-	var hbox := $MarginContainer/HBoxContainer
+
+	var info_panel := PanelContainer.new()
+	info_panel.name = "InfoPanel"
+	info_panel.custom_minimum_size = Vector2(168, 0)
+	info_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	info_panel.add_theme_stylebox_override("panel", _make_inner_panel_style())
+	_selection_mode.add_child(info_panel)
+
+	var info_margin := MarginContainer.new()
+	info_margin.add_theme_constant_override("margin_left", 8)
+	info_margin.add_theme_constant_override("margin_right", 8)
+	info_margin.add_theme_constant_override("margin_top", 6)
+	info_margin.add_theme_constant_override("margin_bottom", 6)
+	info_panel.add_child(info_margin)
+
+	_selection_info = VBoxContainer.new()
+	_selection_info.add_theme_constant_override("separation", 4)
+	info_margin.add_child(_selection_info)
+
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation", 8)
+	_selection_info.add_child(header)
+
+	_selection_icon = TextureRect.new()
+	_selection_icon.custom_minimum_size = Vector2(44, 40)
+	_selection_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_selection_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	header.add_child(_selection_icon)
+
+	var titles := VBoxContainer.new()
+	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	titles.add_theme_constant_override("separation", 1)
+	header.add_child(titles)
+
+	_selection_title = Label.new()
+	_selection_title.add_theme_font_size_override("font_size", 14)
+	_selection_title.add_theme_color_override("font_color", COL_GOLD_SOFT)
+	_selection_title.clip_text = true
+	titles.add_child(_selection_title)
+
+	_selection_meta = Label.new()
+	_selection_meta.add_theme_font_size_override("font_size", 11)
+	_selection_meta.add_theme_color_override("font_color", COL_MUTED)
+	_selection_meta.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	titles.add_child(_selection_meta)
+
+	var actions_panel := PanelContainer.new()
+	actions_panel.name = "ActionsPanel"
+	actions_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	actions_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	actions_panel.add_theme_stylebox_override("panel", _make_inner_panel_style())
+	_selection_mode.add_child(actions_panel)
+
+	var actions_margin := MarginContainer.new()
+	actions_margin.add_theme_constant_override("margin_left", 8)
+	actions_margin.add_theme_constant_override("margin_right", 8)
+	actions_margin.add_theme_constant_override("margin_top", 6)
+	actions_margin.add_theme_constant_override("margin_bottom", 6)
+	actions_panel.add_child(actions_margin)
+
 	_production_box = VBoxContainer.new()
 	_production_box.name = "ProductionBox"
-	_production_box.custom_minimum_size = Vector2(220, 0)
-	_production_box.visible = false
-	_production_box.add_theme_constant_override("separation", 2)
-	hbox.add_child(_production_box)
-	hbox.move_child(_production_box, 2)
+	_production_box.add_theme_constant_override("separation", 4)
+	actions_margin.add_child(_production_box)
 
 	_production_title = Label.new()
 	_production_title.add_theme_font_size_override("font_size", 11)
-	_production_title.add_theme_color_override("font_color", Color(0.85, 0.78, 0.55))
+	_production_title.add_theme_color_override("font_color", COL_GOLD_SOFT)
 	_production_box.add_child(_production_title)
+
+	_selection_actions = HBoxContainer.new()
+	_selection_actions.add_theme_constant_override("separation", 8)
+	_production_box.add_child(_selection_actions)
 
 	_production_items_box = HBoxContainer.new()
 	_production_items_box.add_theme_constant_override("separation", 4)
-	_production_box.add_child(_production_items_box)
+	_selection_actions.add_child(_production_items_box)
+
+	_market_box = VBoxContainer.new()
+	_market_box.visible = false
+	_market_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_market_box.add_theme_constant_override("separation", 3)
+	_selection_actions.add_child(_market_box)
+
+	_market_title = Label.new()
+	_market_title.text = "MERCADO"
+	_market_title.add_theme_font_size_override("font_size", 11)
+	_market_title.add_theme_color_override("font_color", COL_GOLD_SOFT)
+	_market_box.add_child(_market_title)
+
+	_market_items_box = GridContainer.new()
+	_market_items_box.columns = 2
+	_market_items_box.add_theme_constant_override("h_separation", 4)
+	_market_items_box.add_theme_constant_override("v_separation", 3)
+	_market_box.add_child(_market_items_box)
+
+	_market_limit_label = Label.new()
+	_market_limit_label.add_theme_font_size_override("font_size", 10)
+	_market_limit_label.add_theme_color_override("font_color", Color(0.65, 0.74, 0.82))
+	_market_box.add_child(_market_limit_label)
 
 	_production_queue_label = Label.new()
 	_production_queue_label.add_theme_font_size_override("font_size", 10)
-	_production_queue_label.add_theme_color_override("font_color", Color(0.75, 0.72, 0.55))
+	_production_queue_label.add_theme_color_override("font_color", COL_MUTED)
 	_production_queue_label.visible = false
 	_production_box.add_child(_production_queue_label)
 
 	_production_progress_label = Label.new()
 	_production_progress_label.add_theme_font_size_override("font_size", 10)
+	_production_progress_label.add_theme_color_override("font_color", COL_CREAM)
 	_production_progress_label.visible = false
 	_production_box.add_child(_production_progress_label)
 
@@ -214,26 +337,6 @@ func _ensure_production_box() -> void:
 	_production_pending_label.add_theme_color_override("font_color", Color(1.0, 0.7, 0.5))
 	_production_pending_label.visible = false
 	_production_box.add_child(_production_pending_label)
-
-	_market_title = Label.new()
-	_market_title.text = "Mercado"
-	_market_title.add_theme_font_size_override("font_size", 11)
-	_market_title.add_theme_color_override("font_color", Color(0.72, 0.82, 0.9))
-	_market_title.visible = false
-	_production_box.add_child(_market_title)
-
-	_market_items_box = GridContainer.new()
-	_market_items_box.columns = 2
-	_market_items_box.add_theme_constant_override("h_separation", 4)
-	_market_items_box.add_theme_constant_override("v_separation", 2)
-	_market_items_box.visible = false
-	_production_box.add_child(_market_items_box)
-
-	_market_limit_label = Label.new()
-	_market_limit_label.add_theme_font_size_override("font_size", 10)
-	_market_limit_label.add_theme_color_override("font_color", Color(0.65, 0.74, 0.82))
-	_market_limit_label.visible = false
-	_production_box.add_child(_market_limit_label)
 
 
 func _build_command_grid() -> void:
@@ -259,8 +362,9 @@ func _build_curfew_button() -> void:
 	)
 	_curfew_button.focus_mode = Control.FOCUS_NONE
 	_curfew_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	_curfew_button.custom_minimum_size = Vector2(110, 28)
+	_curfew_button.custom_minimum_size = Vector2(118, 30)
 	_curfew_button.add_theme_font_size_override("font_size", 11)
+	_style_dialog_button(_curfew_button)
 	_curfew_button.pressed.connect(_on_curfew_button_pressed)
 	_status_column.add_child(_curfew_button)
 	_status_column.move_child(_curfew_button, 0)
@@ -281,9 +385,9 @@ func _refresh_curfew_button() -> void:
 	var active := _curfew_manager.is_active
 	_curfew_button.text = "Toque de queda: ON" if active else "Toque de queda"
 	if active:
-		_curfew_button.add_theme_color_override("font_color", Color(1.0, 0.82, 0.45))
+		_curfew_button.add_theme_color_override("font_color", COL_GOLD)
 	else:
-		_curfew_button.add_theme_color_override("font_color", Color(0.85, 0.82, 0.72))
+		_curfew_button.add_theme_color_override("font_color", COL_CREAM)
 
 
 func _create_build_slot(type_id: String, hotkey: int) -> Button:
@@ -330,7 +434,7 @@ func _create_build_slot(type_id: String, hotkey: int) -> Button:
 	name_label.text = def.get("name", type_id)
 	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	name_label.add_theme_font_size_override("font_size", 9)
-	name_label.add_theme_color_override("font_color", Color(0.85, 0.82, 0.72))
+	name_label.add_theme_color_override("font_color", COL_CREAM)
 	name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	name_label.clip_text = true
 	vbox.add_child(name_label)
@@ -338,7 +442,7 @@ func _create_build_slot(type_id: String, hotkey: int) -> Button:
 	var hotkey_label := Label.new()
 	hotkey_label.text = str(hotkey)
 	hotkey_label.add_theme_font_size_override("font_size", 10)
-	hotkey_label.add_theme_color_override("font_color", Color(0.7, 0.65, 0.5))
+	hotkey_label.add_theme_color_override("font_color", COL_MUTED)
 	hotkey_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
 	hotkey_label.position = Vector2(3, 1)
 	hotkey_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -357,12 +461,50 @@ func _create_build_slot(type_id: String, hotkey: int) -> Button:
 
 func _create_slot_style() -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.08, 0.07, 0.06, 0.85)
-	style.border_color = Color(0.35, 0.3, 0.22, 1.0)
+	style.bg_color = COL_BTN
+	style.border_color = COL_BORDER_DIM
 	style.set_border_width_all(1)
-	style.set_corner_radius_all(3)
+	style.set_corner_radius_all(6)
 	style.set_content_margin_all(2)
 	return style
+
+
+func _make_inner_panel_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = COL_PANEL_INNER
+	style.border_color = COL_BORDER_DIM
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(6)
+	return style
+
+
+func _style_dialog_button(button: Button, compact: bool = false) -> void:
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = COL_BTN
+	normal.border_color = COL_BORDER_DIM
+	normal.set_border_width_all(1)
+	normal.set_corner_radius_all(6)
+	normal.set_content_margin_all(6 if compact else 8)
+
+	var hover := normal.duplicate() as StyleBoxFlat
+	hover.bg_color = COL_BTN_HOVER
+	hover.border_color = COL_BORDER
+
+	var pressed := normal.duplicate() as StyleBoxFlat
+	pressed.bg_color = COL_BTN_PRESSED
+
+	var disabled := normal.duplicate() as StyleBoxFlat
+	disabled.bg_color = COL_BTN_DISABLED
+	disabled.border_color = Color(0.28, 0.24, 0.18, 1.0)
+
+	button.add_theme_stylebox_override("normal", normal)
+	button.add_theme_stylebox_override("hover", hover)
+	button.add_theme_stylebox_override("pressed", pressed)
+	button.add_theme_stylebox_override("disabled", disabled)
+	button.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	button.add_theme_color_override("font_color", COL_CREAM)
+	button.add_theme_color_override("font_hover_color", COL_GOLD)
+	button.add_theme_color_override("font_disabled_color", Color(0.55, 0.52, 0.45, 1.0))
 
 
 func _get_building_icon(type_id: String) -> Texture2D:
@@ -411,7 +553,7 @@ func _on_resources_changed(wood: int, gold: int, food: int) -> void:
 	if _resource_labels.has("food"):
 		_resource_labels.food.text = str(food)
 	_refresh_affordability()
-	_refresh_production_panel()
+	_refresh_selection_panel()
 
 
 func _on_population_changed(pop: int, cap: int) -> void:
@@ -453,10 +595,10 @@ func _on_gather_multiplier_changed(multiplier: float) -> void:
 func _on_production_double_changed(active: bool) -> void:
 	if _production_double_label != null:
 		_production_double_label.visible = active
-	_refresh_production_panel()
+	_refresh_selection_panel()
 
 
-func _on_food_shortage(active: bool) -> void:
+func _on_food_shortage(_active: bool) -> void:
 	if _food_upkeep_label != null and _population_manager != null:
 		_on_food_upkeep_changed(_population_manager.get_food_upkeep_per_second())
 
@@ -465,12 +607,13 @@ func _on_building_selection_changed(building: Building) -> void:
 	_selected_building = building
 	_production_feedback_text = ""
 	_production_feedback_timer = 0.0
-	_refresh_production_panel()
+	_refresh_selection_panel()
 
 
 func _on_production_queue_changed(building: Building) -> void:
 	if building == _selected_building:
 		_update_production_status_labels()
+		_update_selection_meta()
 
 
 func _process(delta: float) -> void:
@@ -482,43 +625,59 @@ func _process(delta: float) -> void:
 		_production_feedback_timer -= delta
 		if _production_feedback_timer <= 0.0:
 			_production_feedback_text = ""
-			if _production_box != null and _production_box.visible:
+			if _selection_mode != null and _selection_mode.visible:
 				_update_production_status_labels()
-	if _production_box == null or not _production_box.visible:
+	if _selected_building != null and is_instance_valid(_selected_building):
+		_update_selection_meta()
+	if _selection_mode == null or not _selection_mode.visible:
 		return
 	_update_production_progress_label()
 
 
-func _refresh_production_panel() -> void:
-	if _production_box == null:
+func _refresh_selection_panel() -> void:
+	_ensure_selection_ui()
+	if _selection_mode == null:
 		return
 
-	if _selected_building == null or _production_manager == null:
-		_production_box.visible = false
+	if _selected_building == null or not is_instance_valid(_selected_building):
+		_show_build_mode()
 		_production_panel_key = ""
 		return
 
-	var items := _get_production_items_for_building(_selected_building)
-	var show_market := _should_show_market(_selected_building)
-	if items.is_empty() and not show_market:
-		_production_box.visible = false
-		_production_panel_key = ""
-		return
+	_show_selection_mode()
 
-	_production_box.visible = true
-	var building_name := _selected_building.get_display_name()
-	if _has_production_double():
-		_production_title.text = "%s · x2" % building_name
+	var building := _selected_building
+	var building_name := building.get_display_name()
+	_selection_title.text = building_name
+	_selection_icon.texture = _get_building_icon(building.building_type_id)
+	_update_selection_meta()
+
+	var items := _get_production_items_for_building(building)
+	var show_market := _should_show_market(building)
+	var has_actions := not items.is_empty() or show_market
+
+	if _has_production_double() and not items.is_empty():
+		_production_title.text = "PRODUCCIÓN · x2"
 		_production_title.add_theme_color_override("font_color", Color(0.95, 0.82, 0.35))
+	elif not items.is_empty():
+		_production_title.text = "PRODUCCIÓN"
+		_production_title.add_theme_color_override("font_color", COL_GOLD_SOFT)
+	elif show_market:
+		_production_title.text = "ACCIONES"
+		_production_title.add_theme_color_override("font_color", COL_GOLD_SOFT)
 	else:
-		_production_title.text = building_name
-		_production_title.add_theme_color_override("font_color", Color(0.85, 0.78, 0.55))
+		_production_title.text = "SIN ACCIONES"
+		_production_title.add_theme_color_override("font_color", COL_MUTED)
+
+	_production_items_box.visible = not items.is_empty()
+	_market_box.visible = show_market
+	_selection_actions.visible = has_actions
 
 	var trades_left := 0
 	if _market_manager != null:
 		trades_left = _market_manager.get_trades_remaining()
 	var panel_key := "%d:%s:%s:m%d" % [
-		_selected_building.get_instance_id(),
+		building.get_instance_id(),
 		",".join(items),
 		"x2" if _has_production_double() else "x1",
 		trades_left if show_market else -1,
@@ -530,6 +689,18 @@ func _refresh_production_panel() -> void:
 
 	_update_production_status_labels()
 	_update_market_status()
+
+
+func _update_selection_meta() -> void:
+	if _selection_meta == null or _selected_building == null or not is_instance_valid(_selected_building):
+		return
+	var building := _selected_building
+	var parts: PackedStringArray = ["PV %d/%d" % [building.hp, building.max_hp]]
+	if building.can_garrison:
+		parts.append("Guarnición %d/%d" % [building.get_garrison_count(), building.garrison_capacity])
+	if building.upgrade_level > 0:
+		parts.append("Nv.%d" % (building.upgrade_level + 1))
+	_selection_meta.text = " · ".join(parts)
 
 
 func _should_show_market(building: Building) -> bool:
@@ -570,9 +741,15 @@ func _rebuild_production_item_buttons(items: Array[String]) -> void:
 		var cost_text := ", ".join(cost_parts) if not cost_parts.is_empty() else "Gratis"
 
 		var button := Button.new()
+		button.custom_minimum_size = ACTION_SLOT_SIZE
+		button.focus_mode = Control.FOCUS_NONE
+		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		_style_dialog_button(button, true)
+		button.add_theme_font_size_override("font_size", 11)
+
 		var unit_name: String = def.get("name", item_id)
 		if _has_production_double():
-			button.text = "%s x2" % unit_name
+			button.text = "%s\nx2" % unit_name
 			button.add_theme_color_override("font_color", Color(0.95, 0.82, 0.35))
 		else:
 			button.text = unit_name
@@ -581,8 +758,6 @@ func _rebuild_production_item_buttons(items: Array[String]) -> void:
 			def.get("train_time", 0.0),
 			" · genera 2 unidades" if _has_production_double() else "",
 		]
-		button.focus_mode = Control.FOCUS_NONE
-		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 		button.pressed.connect(_on_production_pressed.bind(item_id))
 		_production_items_box.add_child(button)
 		_production_item_buttons[item_id] = button
@@ -594,14 +769,10 @@ func _rebuild_market_buttons(show_market: bool) -> void:
 	_market_buttons.clear()
 
 	if not show_market or _market_manager == null:
-		_market_title.visible = false
-		_market_items_box.visible = false
-		_market_limit_label.visible = false
+		_market_box.visible = false
 		return
 
-	_market_title.visible = true
-	_market_items_box.visible = true
-	_market_limit_label.visible = true
+	_market_box.visible = true
 
 	for offer in _market_manager.get_offers():
 		var from_key: String = offer.from
@@ -617,8 +788,9 @@ func _rebuild_market_buttons(show_market: bool) -> void:
 		]
 		button.focus_mode = Control.FOCUS_NONE
 		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-		button.custom_minimum_size = Vector2(0, 22)
+		button.custom_minimum_size = Vector2(148, 26)
 		button.add_theme_font_size_override("font_size", 10)
+		_style_dialog_button(button, true)
 		button.pressed.connect(_on_market_exchange_pressed.bind(from_key, to_key))
 		_market_items_box.add_child(button)
 		_market_buttons["%s>%s" % [from_key, to_key]] = button
@@ -678,9 +850,9 @@ func _on_market_exchange_pressed(from_key: String, to_key: String) -> void:
 
 
 func _on_market_trades_changed(_trades_remaining: int) -> void:
-	if _production_box != null and _production_box.visible:
+	if _selection_mode != null and _selection_mode.visible:
 		_production_panel_key = ""
-		_refresh_production_panel()
+		_refresh_selection_panel()
 
 
 func _update_production_status_labels() -> void:
@@ -698,13 +870,13 @@ func _update_production_status_labels() -> void:
 		var queued_count: int = queue_counts.get(item_id, 0)
 		var unit_name: String = def.get("name", item_id)
 		if double_active:
-			button.text = "%s x2" % unit_name
+			button.text = "%s\nx2" % unit_name
 			button.add_theme_color_override("font_color", Color(0.95, 0.82, 0.35))
 		else:
 			button.text = unit_name
-			button.remove_theme_color_override("font_color")
+			button.add_theme_color_override("font_color", COL_CREAM)
 		if queued_count > 0:
-			button.text += " (x%d)" % queued_count
+			button.text += "\n(x%d)" % queued_count
 
 	var queue := _production_manager.get_queue(_selected_building)
 	if queue.size() > 0:
@@ -777,11 +949,24 @@ func _on_production_pressed(item_id: String) -> void:
 	_update_production_status_labels()
 
 
-func _show_build_panel() -> void:
-	if _build_grid != null:
-		_build_grid.visible = true
+func _show_build_mode() -> void:
+	if _build_mode != null:
+		_build_mode.visible = true
+	if _selection_mode != null:
+		_selection_mode.visible = false
 	if _build_tab_icon != null:
 		_build_tab_icon.texture = _make_icon_atlas(TEX_HAMMER)
+
+
+func _show_selection_mode() -> void:
+	if _build_mode != null:
+		_build_mode.visible = false
+	if _selection_mode != null:
+		_selection_mode.visible = true
+
+
+func _show_build_panel() -> void:
+	_show_build_mode()
 
 
 func _refresh_affordability() -> void:
@@ -795,18 +980,18 @@ func _refresh_affordability() -> void:
 		button.disabled = not can_afford
 		icon.modulate = Color.WHITE if can_afford else Color(0.45, 0.45, 0.45, 0.8)
 		if type_id == _active_build_type:
-			style.border_color = Color(0.85, 0.72, 0.25, 1.0)
+			style.border_color = COL_BORDER
 			style.bg_color = Color(0.18, 0.14, 0.08, 0.95)
 		elif can_afford:
-			style.border_color = Color(0.35, 0.3, 0.22, 1.0)
-			style.bg_color = Color(0.08, 0.07, 0.06, 0.85)
+			style.border_color = COL_BORDER_DIM
+			style.bg_color = COL_BTN
 		else:
 			style.border_color = Color(0.25, 0.22, 0.18, 1.0)
-			style.bg_color = Color(0.06, 0.05, 0.04, 0.9)
+			style.bg_color = COL_BTN_DISABLED
 		_apply_slot_style(button, style)
 
 
-func _apply_slot_style(button: Button, style: StyleBoxFlat, border_width: int = 2) -> void:
+func _apply_slot_style(button: Button, style: StyleBoxFlat, border_width: int = 1) -> void:
 	for state in ["normal", "hover", "pressed", "disabled"]:
 		var state_style: StyleBoxFlat = button.get_theme_stylebox(state)
 		if state_style != null:

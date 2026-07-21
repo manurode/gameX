@@ -632,7 +632,9 @@ func _is_pointer_over_ui(screen_pos: Vector2) -> bool:
 	if top_left is Control and (top_left as Control).get_global_rect().has_point(screen_pos):
 		return true
 
-	var hub := get_node_or_null("/root/Main/Layout/GameHub")
+	var hub := get_node_or_null("/root/Main/Layout/HubMargin/GameHub")
+	if hub == null:
+		hub = get_node_or_null("/root/Main/Layout/GameHub")
 	if hub is Control:
 		var root_mouse := get_tree().root.get_mouse_position()
 		if (hub as Control).get_global_rect().has_point(root_mouse):

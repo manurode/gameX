@@ -65,9 +65,13 @@ func _resolve_hub_nodes() -> void:
 	var main := get_tree().root.get_node_or_null("Main")
 	if main == null:
 		return
-	game_hub = main.get_node_or_null("Layout/GameHub") as PanelContainer
+	game_hub = main.get_node_or_null("Layout/HubMargin/GameHub") as PanelContainer
+	if game_hub == null:
+		game_hub = main.get_node_or_null("Layout/GameHub") as PanelContainer
 	if game_hub != null:
-		minimap = game_hub.get_node_or_null("MarginContainer/HBoxContainer/CommandArea/Minimap")
+		minimap = game_hub.get_node_or_null("MarginContainer/HBoxContainer/CommandArea/RightColumn/Minimap")
+		if minimap == null:
+			minimap = game_hub.get_node_or_null("MarginContainer/HBoxContainer/CommandArea/Minimap")
 
 
 func setup(
