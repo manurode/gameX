@@ -133,7 +133,8 @@ func _should_keep_daylight() -> bool:
 
 
 func is_construction_allowed() -> bool:
-	return current_phase != CyclePhase.NIGHT
+	# Equinox keeps true daylight through the night phase — building stays open.
+	return current_phase != CyclePhase.NIGHT or _should_keep_daylight()
 
 
 func is_run_finished() -> bool:

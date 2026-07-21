@@ -169,8 +169,9 @@ func get_all_boon_ids() -> Array[String]:
 func _on_cycle_changed(phase: DayNightManager.CyclePhase) -> void:
 	match phase:
 		DayNightManager.CyclePhase.DAY:
+			# Only clear the night that just ended. Keep pending so a boon
+			# chosen at dawn still applies to the upcoming dusk/night.
 			_summer_equinox_active = false
-			_summer_equinox_pending = false
 		DayNightManager.CyclePhase.DAWN:
 			_enemy_night_vision_active = false
 			_used_this_dawn = false

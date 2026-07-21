@@ -617,9 +617,21 @@ func _update_help_for_cycle() -> void:
 		return
 	match _day_night_manager.current_phase:
 		DayNightManager.CyclePhase.NIGHT:
-			help_label.text = "NOCHE — Protege el Centro Urbano. Construcción bloqueada."
+			if (
+				_run_boon_manager != null
+				and _run_boon_manager.should_keep_daylight()
+			):
+				help_label.text = "EQUINOCCIO — Día eterno. Puedes seguir construyendo."
+			else:
+				help_label.text = "NOCHE — Protege el Centro Urbano. Construcción bloqueada."
 		DayNightManager.CyclePhase.DUSK:
-			help_label.text = "ATARDECER — Últimos segundos para preparar defensas."
+			if (
+				_run_boon_manager != null
+				and _run_boon_manager.should_keep_daylight()
+			):
+				help_label.text = "EQUINOCCIO — Sin oscuridad ni enemigos esta noche."
+			else:
+				help_label.text = "ATARDECER — Últimos segundos para preparar defensas."
 		DayNightManager.CyclePhase.DAWN:
 			help_label.text = "AMANECER — Elige una bendición y reorganiza la base."
 		_:
