@@ -14,8 +14,15 @@ const WATER_ALPHA_BYTE_MIN := 72
 @export var slow_radius: float = 0.0
 @export var nav_block_half_size := Vector2(40.0, 25.0)
 
-## Texture-centered water polygons keyed by texture RID id (shared across lake instances).
+## Texture-centered water polygons keyed by lake texture resource path.
 static var _water_tex_poly_cache: Dictionary = {}
+## Optional baked alpha masks (lake_x_water_mask.png) keyed by lake texture path.
+static var _water_mask_texture_cache: Dictionary = {}
+## Precomputed outlines from lake_water_outlines.json (path -> Array of polys).
+static var _water_outline_file_cache: Dictionary = {}
+static var _water_outline_file_loaded: bool = false
+
+const WATER_OUTLINES_PATH := "res://assets/tilesets/mediterranean/Decor/lake_water_outlines.json"
 
 var _sprite: Sprite2D
 var _collision_body: StaticBody2D
@@ -223,22 +230,19 @@ func _build_water_block_outlines(
 	scale_factor: float
 ) -> Array[PackedVector2Array]:
 	var result: Array[PackedVector2Array] = []
-	var image := OcclusionUtils.get_texture_image(texture)
-	if image == null:
+	if texture == null:
 		return result
 
-	var width := image.get_width()
-	var height := image.get_height()
-	if width <= 0 or height <= 0:
-		return result
+	# Cache by resource path so every lake of the same variant reuses outlines.
+	var cache_key := texture.resource_path
+	if cache_key.is_empty():
+		cache_key = str(texture.get_rid().get_id())
 
-	# Cache texture-space polys once per lake variant (same mask for every placement).
-	var cache_key := texture.get_rid().get_id()
 	var tex_polys: Array
 	if _water_tex_poly_cache.has(cache_key):
 		tex_polys = _water_tex_poly_cache[cache_key]
 	else:
-		tex_polys = _extract_water_tex_polys(image, width, height)
+		tex_polys = extract_water_tex_polys(texture)
 		_water_tex_poly_cache[cache_key] = tex_polys
 
 	for tex_local in tex_polys:
@@ -252,19 +256,142 @@ func _build_water_block_outlines(
 	return result
 
 
-## Texture-centered water polygons (before sprite offset / scale).
-func _extract_water_tex_polys(
+## Prefer baked JSON outlines (instant). Else baked alpha mask + BitMap.
+## Falls back to a one-time teal scan only if bake assets are missing.
+static func extract_water_tex_polys(texture: Texture2D) -> Array:
+	var baked := _load_baked_water_outlines(texture)
+	if not baked.is_empty():
+		return baked
+
+	var mask_image := _load_baked_water_mask_image(texture)
+	if mask_image != null:
+		return _polys_from_alpha_mask(mask_image)
+
+	var image := OcclusionUtils.get_texture_image(texture)
+	if image == null:
+		return []
+	var width := image.get_width()
+	var height := image.get_height()
+	if width <= 0 or height <= 0:
+		return []
+	return _extract_water_tex_polys_from_color(image, width, height)
+
+
+static func _ensure_water_outline_file_loaded() -> void:
+	if _water_outline_file_loaded:
+		return
+	_water_outline_file_loaded = true
+	if not FileAccess.file_exists(WATER_OUTLINES_PATH):
+		return
+	var file := FileAccess.open(WATER_OUTLINES_PATH, FileAccess.READ)
+	if file == null:
+		return
+	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	file.close()
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return
+	_water_outline_file_cache = parsed
+
+
+static func _load_baked_water_outlines(texture: Texture2D) -> Array:
+	var result: Array = []
+	var lake_path := texture.resource_path
+	if lake_path.is_empty():
+		return result
+	_ensure_water_outline_file_loaded()
+	if not _water_outline_file_cache.has(lake_path):
+		return result
+	var raw_polys: Variant = _water_outline_file_cache[lake_path]
+	if typeof(raw_polys) != TYPE_ARRAY:
+		return result
+	for raw in raw_polys:
+		if typeof(raw) != TYPE_ARRAY or raw.size() < 3:
+			continue
+		var tex_poly := PackedVector2Array()
+		for point in raw:
+			if typeof(point) != TYPE_ARRAY or point.size() < 2:
+				continue
+			tex_poly.append(Vector2(float(point[0]), float(point[1])))
+		if tex_poly.size() >= 3:
+			result.append(tex_poly)
+	return result
+
+
+static func _load_baked_water_mask_image(texture: Texture2D) -> Image:
+	var lake_path := texture.resource_path
+	if lake_path.is_empty():
+		return null
+	if _water_mask_texture_cache.has(lake_path):
+		var cached: Variant = _water_mask_texture_cache[lake_path]
+		return cached as Image
+
+	var mask_path := lake_path.get_basename() + "_water_mask.png"
+	if not FileAccess.file_exists(mask_path):
+		_water_mask_texture_cache[lake_path] = null
+		return null
+
+	# Load PNG bytes directly — avoids texture import / VRAM round-trip.
+	var mask_image := Image.load_from_file(ProjectSettings.globalize_path(mask_path))
+	_water_mask_texture_cache[lake_path] = mask_image
+	return mask_image
+
+
+## Call once per lake variant before spawning many lakes (fills outline cache).
+static func warmup_water_outlines(texture: Texture2D) -> void:
+	if texture == null:
+		return
+	var cache_key := texture.resource_path
+	if cache_key.is_empty():
+		cache_key = str(texture.get_rid().get_id())
+	if _water_tex_poly_cache.has(cache_key):
+		return
+	_water_tex_poly_cache[cache_key] = extract_water_tex_polys(texture)
+
+
+static func _polys_from_alpha_mask(mask_image: Image) -> Array:
+	var result: Array = []
+	var width := mask_image.get_width()
+	var height := mask_image.get_height()
+	if width <= 0 or height <= 0:
+		return result
+
+	# Crop to opaque bounds — same polygons, less work for opaque_to_polygons.
+	var used := mask_image.get_used_rect()
+	if used.size.x <= 0 or used.size.y <= 0:
+		return result
+	var cropped := mask_image.get_region(used)
+
+	var bitmap := BitMap.new()
+	bitmap.create_from_image_alpha(cropped, 0.5)
+	var raw_polys := bitmap.opaque_to_polygons(
+		Rect2(Vector2.ZERO, Vector2(used.size.x, used.size.y)),
+		POLYGON_EPSILON
+	)
+
+	var half_tex := Vector2(float(width), float(height)) * 0.5
+	var origin := Vector2(float(used.position.x), float(used.position.y))
+	for raw in raw_polys:
+		if raw.size() < 3:
+			continue
+		var tex_poly := PackedVector2Array()
+		for point in raw:
+			tex_poly.append(origin + Vector2(point.x, point.y) - half_tex)
+		if tex_poly.size() >= 3:
+			result.append(tex_poly)
+	return result
+
+
+## Texture-centered water polygons from a full-color lake sprite (slow fallback).
+static func _extract_water_tex_polys_from_color(
 	image: Image,
 	width: int,
 	height: int
 ) -> Array:
-	var result: Array = []
 	var src := image
 	if src.get_format() != Image.FORMAT_RGBA8:
 		src = image.duplicate()
 		src.convert(Image.FORMAT_RGBA8)
 
-	# Raw RGBA scan — get_pixel/set_pixel on ~1M lake texels is the load hitch.
 	var pixels := src.get_data()
 	var mask_data := PackedByteArray()
 	mask_data.resize(width * height * 4)
@@ -276,7 +403,6 @@ func _extract_water_tex_polys(
 			var r := float(pixels[i]) / 255.0
 			var g := float(pixels[i + 1]) / 255.0
 			var b := float(pixels[i + 2]) / 255.0
-			# Same teal test as before (shore rocks / vegetation stay walkable).
 			if b > g * 0.7 and g > r and b > WATER_MIN_BLUE:
 				mask_data[i] = 255
 				mask_data[i + 1] = 255
@@ -285,23 +411,7 @@ func _extract_water_tex_polys(
 		i += 4
 
 	var mask := Image.create_from_data(width, height, false, Image.FORMAT_RGBA8, mask_data)
-	var bitmap := BitMap.new()
-	bitmap.create_from_image_alpha(mask, 0.5)
-	var raw_polys := bitmap.opaque_to_polygons(
-		Rect2(Vector2.ZERO, Vector2(width, height)),
-		POLYGON_EPSILON
-	)
-
-	var half_tex := Vector2(float(width), float(height)) * 0.5
-	for raw in raw_polys:
-		if raw.size() < 3:
-			continue
-		var tex_poly := PackedVector2Array()
-		for point in raw:
-			tex_poly.append(Vector2(point.x, point.y) - half_tex)
-		if tex_poly.size() >= 3:
-			result.append(tex_poly)
-	return result
+	return _polys_from_alpha_mask(mask)
 
 
 func _block_center_local() -> Vector2:

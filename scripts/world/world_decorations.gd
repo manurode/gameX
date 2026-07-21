@@ -242,6 +242,11 @@ func _spawn_resource_terrain(
 func _spawn_lakes(placements: Array[Dictionary]) -> void:
 	if _ground_layer == null or _entity_parent == null:
 		return
+	# Build water collision outlines once per lake variant (baked masks).
+	for lake_path in LAKE_PATHS:
+		var warm_tex: Texture2D = load(lake_path)
+		if warm_tex != null:
+			TerrainObstacle.warmup_water_outlines(warm_tex)
 	for placement in placements:
 		var variant := clampi(placement.get("variant", 0), 0, LAKE_PATHS.size() - 1)
 		var texture: Texture2D = load(LAKE_PATHS[variant])
