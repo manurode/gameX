@@ -5,51 +5,143 @@ signal unlocks_changed
 
 const SAVE_PATH := "user://meta_progression.cfg"
 
+## Permanent shop unlocks, ordered cheap → epic.
+## Economy: victory = 50 frags; night 10 ≈ 9; night 15 ≈ 23.
+## Early buys feel reachable after a few short runs; legion/academy need many clears.
 const UNLOCKS := {
-	"extra_villager": {
-		"name": "Aldeano extra",
-		"description": "Empiezas con +1 aldeano.",
-		"cost": 30,
+	# --- Tier 1: primeros pasos (pocos fragmentos) ---
+	"start_food": {
+		"name": "Despensa",
+		"description": "Empiezas con +25 comida.",
+		"cost": 4,
 	},
 	"start_wood": {
 		"name": "Reserva de madera",
 		"description": "Empiezas con +50 madera.",
-		"cost": 20,
+		"cost": 5,
 	},
-	"start_food": {
-		"name": "Despensa",
-		"description": "Empiezas con +25 comida.",
-		"cost": 20,
+	"start_gold": {
+		"name": "Monedas de viaje",
+		"description": "Empiezas con +15 oro.",
+		"cost": 6,
+	},
+	"free_curfew": {
+		"name": "Toque de queda gratis",
+		"description": "Activa el toque de queda gratis en el primer atardecer.",
+		"cost": 8,
+	},
+	"knight_hp": {
+		"name": "Armadura de caballero",
+		"description": "Los caballeros tienen +15 HP.",
+		"cost": 12,
+	},
+	# --- Tier 2: asentamiento ---
+	"extra_villager": {
+		"name": "Aldeano extra",
+		"description": "Empiezas con +1 aldeano.",
+		"cost": 25,
 	},
 	"gather_boost": {
 		"name": "Herramientas mejores",
 		"description": "Recolección permanente +5%.",
+		"cost": 30,
+	},
+	"foresight": {
+		"name": "Presagio",
+		"description": "Ves el modificador de la próxima noche con antelación.",
+		"cost": 35,
+	},
+	"starter_walls": {
+		"name": "Empalizada",
+		"description": "Empiezas con 4 segmentos de muro.",
 		"cost": 40,
 	},
 	"free_tower": {
 		"name": "Atalaya inicial",
 		"description": "Empiezas con 1 torre cerca del centro.",
-		"cost": 50,
-	},
-	"starter_walls": {
-		"name": "Empalizada",
-		"description": "Empiezas con 4 segmentos de muro.",
 		"cost": 45,
 	},
-	"knight_hp": {
-		"name": "Armadura de caballero",
-		"description": "Los caballeros tienen +15 HP.",
-		"cost": 35,
+	"archer_dmg": {
+		"name": "Puntas afiladas",
+		"description": "Los arqueros infligen +3 de daño.",
+		"cost": 50,
 	},
-	"free_curfew": {
-		"name": "Toque de queda gratis",
-		"description": "Activa el toque de queda gratis en el primer atardecer.",
-		"cost": 25,
+	"mage_chain": {
+		"name": "Relámpago mayor",
+		"description": "Los magos encadenan +1 objetivo y +2 daño de cadena.",
+		"cost": 55,
 	},
-	"foresight": {
-		"name": "Presagio",
-		"description": "Ves el modificador de la próxima noche con antelación.",
-		"cost": 40,
+	# --- Tier 3: poder de campaña ---
+	"pop_surge": {
+		"name": "Asentamiento amplio",
+		"description": "Límite de población base +8.",
+		"cost": 80,
+	},
+	"start_gold_cache": {
+		"name": "Tesoro del clan",
+		"description": "Empiezas con +60 oro.",
+		"cost": 90,
+	},
+	"gather_mastery": {
+		"name": "Maestría recolectora",
+		"description": "Recolección permanente +10% adicional.",
+		"cost": 100,
+	},
+	"knight_guard": {
+		"name": "Guardia de honor",
+		"description": "Empiezas con 3 caballeros.",
+		"cost": 110,
+	},
+	"archer_patrol": {
+		"name": "Patrulla de arqueros",
+		"description": "Empiezas con 4 arqueros.",
+		"cost": 120,
+	},
+	"bastion_outpost": {
+		"name": "Puesto avanzado",
+		"description": "Empiezas con 1 torre extra.",
+		"cost": 130,
+	},
+	"mage_coven": {
+		"name": "Círculo de magos",
+		"description": "Empiezas con 5 magos.",
+		"cost": 160,
+	},
+	# --- Tier 4: épicos (cientos de fragmentos) ---
+	"war_chest": {
+		"name": "Cofre de guerra",
+		"description": "Empiezas con +150 madera, +80 comida y +100 oro.",
+		"cost": 220,
+	},
+	"knight_company": {
+		"name": "Compañía de caballeros",
+		"description": "Empiezas con 8 caballeros.",
+		"cost": 250,
+	},
+	"archer_company": {
+		"name": "Compañía de arqueros",
+		"description": "Empiezas con 10 arqueros.",
+		"cost": 270,
+	},
+	"mage_company": {
+		"name": "Cónclave arcano",
+		"description": "Empiezas con 8 magos.",
+		"cost": 290,
+	},
+	"knight_legion": {
+		"name": "Legión de caballeros",
+		"description": "Empiezas con 20 caballeros. Imprescindible en las noches finales.",
+		"cost": 350,
+	},
+	"mage_academy": {
+		"name": "Academia arcana",
+		"description": "Empiezas con 15 magos. Imprescindible en las noches finales.",
+		"cost": 380,
+	},
+	"grand_bastion": {
+		"name": "Gran bastión",
+		"description": "Empiezas con 2 torres extra y 8 segmentos de muro.",
+		"cost": 400,
 	},
 }
 
@@ -117,11 +209,28 @@ func award_run_rewards(nights_survived: int, victory: bool) -> int:
 
 
 func get_start_wood_bonus() -> int:
-	return 50 if is_unlocked("start_wood") else 0
+	var bonus := 50 if is_unlocked("start_wood") else 0
+	if is_unlocked("war_chest"):
+		bonus += 150
+	return bonus
 
 
 func get_start_food_bonus() -> int:
-	return 25 if is_unlocked("start_food") else 0
+	var bonus := 25 if is_unlocked("start_food") else 0
+	if is_unlocked("war_chest"):
+		bonus += 80
+	return bonus
+
+
+func get_start_gold_bonus() -> int:
+	var bonus := 0
+	if is_unlocked("start_gold"):
+		bonus += 15
+	if is_unlocked("start_gold_cache"):
+		bonus += 60
+	if is_unlocked("war_chest"):
+		bonus += 100
+	return bonus
 
 
 func get_extra_villagers() -> int:
@@ -129,19 +238,98 @@ func get_extra_villagers() -> int:
 
 
 func get_gather_multiplier() -> float:
-	return 1.05 if is_unlocked("gather_boost") else 1.0
+	var mult := 1.0
+	if is_unlocked("gather_boost"):
+		mult *= 1.05
+	if is_unlocked("gather_mastery"):
+		mult *= 1.10
+	return mult
 
 
 func get_knight_hp_bonus() -> int:
 	return 15 if is_unlocked("knight_hp") else 0
 
 
+func get_archer_damage_bonus() -> int:
+	return 3 if is_unlocked("archer_dmg") else 0
+
+
+func get_mage_chain_target_bonus() -> int:
+	return 1 if is_unlocked("mage_chain") else 0
+
+
+func get_mage_chain_damage_bonus() -> int:
+	return 2 if is_unlocked("mage_chain") else 0
+
+
+func get_population_cap_bonus() -> int:
+	var bonus := 0
+	if is_unlocked("pop_surge"):
+		bonus += 8
+	# Housing for meta-spawned military so armies do not softlock population.
+	bonus += get_starter_knight_count()
+	bonus += get_starter_archer_count()
+	bonus += get_starter_mage_count()
+	return bonus
+
+
+func get_starter_knight_count() -> int:
+	var count := 0
+	if is_unlocked("knight_guard"):
+		count += 3
+	if is_unlocked("knight_company"):
+		count += 8
+	if is_unlocked("knight_legion"):
+		count += 20
+	return count
+
+
+func get_starter_archer_count() -> int:
+	var count := 0
+	if is_unlocked("archer_patrol"):
+		count += 4
+	if is_unlocked("archer_company"):
+		count += 10
+	return count
+
+
+func get_starter_mage_count() -> int:
+	var count := 0
+	if is_unlocked("mage_coven"):
+		count += 5
+	if is_unlocked("mage_company"):
+		count += 8
+	if is_unlocked("mage_academy"):
+		count += 15
+	return count
+
+
+func get_starter_tower_count() -> int:
+	var count := 0
+	if is_unlocked("free_tower"):
+		count += 1
+	if is_unlocked("bastion_outpost"):
+		count += 1
+	if is_unlocked("grand_bastion"):
+		count += 2
+	return count
+
+
+func get_starter_wall_segments() -> int:
+	var count := 0
+	if is_unlocked("starter_walls"):
+		count += 4
+	if is_unlocked("grand_bastion"):
+		count += 8
+	return count
+
+
 func has_free_tower() -> bool:
-	return is_unlocked("free_tower")
+	return get_starter_tower_count() > 0
 
 
 func has_starter_walls() -> bool:
-	return is_unlocked("starter_walls")
+	return get_starter_wall_segments() > 0
 
 
 func has_free_curfew() -> bool:

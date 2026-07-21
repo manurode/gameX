@@ -28,6 +28,7 @@ const BUILDING_SCENE: PackedScene = preload("res://scenes/buildings/building.tsc
 const VILLAGER_SCENE: PackedScene = preload("res://scenes/units/unit_villager.tscn")
 const ARCHER_SCENE: PackedScene = preload("res://scenes/units/unit_archer.tscn")
 const KNIGHT_SCENE: PackedScene = preload("res://scenes/units/unit_knight.tscn")
+const MAGE_SCENE: PackedScene = preload("res://scenes/units/unit_mage.tscn")
 
 var _town_center: Building
 
@@ -65,7 +66,9 @@ func on_ground_ready(ground: TinyTilesMap) -> void:
 			node.queue_free()
 
 	_spawn_starting_settlement(ground)
-	_apply_meta_start_buildings(ground)
+	_apply_meta_start_buildings()
+	population_manager.recalculate_cap_from_buildings()
+	_apply_meta_start_army()
 	rebuild_navigation()
 
 	build_manager.setup(ground, buildings, resource_manager, selection_manager, job_manager)
@@ -106,16 +109,24 @@ func on_ground_ready(ground: TinyTilesMap) -> void:
 
 func _apply_meta_start_resources() -> void:
 	resource_manager.wood = BalanceConfig.INITIAL_WOOD + MetaProgression.get_start_wood_bonus()
-	resource_manager.gold = BalanceConfig.INITIAL_GOLD
+	resource_manager.gold = BalanceConfig.INITIAL_GOLD + MetaProgression.get_start_gold_bonus()
 	resource_manager.food = BalanceConfig.INITIAL_FOOD + MetaProgression.get_start_food_bonus()
 	resource_manager.refresh()
 
 
-func _apply_meta_start_buildings(ground: TinyTilesMap) -> void:
-	if MetaProgression.has_free_tower():
+func _apply_meta_start_buildings() -> void:
+	var towers := MetaProgression.get_starter_tower_count()
+	for _i in towers:
 		spawn_free_tower()
-	if MetaProgression.has_starter_walls():
-		spawn_starter_walls(4)
+	var walls := MetaProgression.get_starter_wall_segments()
+	if walls > 0:
+		spawn_starter_walls(walls)
+
+
+func _apply_meta_start_army() -> void:
+	_spawn_starter_military(KNIGHT_SCENE, "knight", MetaProgression.get_starter_knight_count(), Vector2i(-2, -2))
+	_spawn_starter_military(ARCHER_SCENE, "archer", MetaProgression.get_starter_archer_count(), Vector2i(2, -2))
+	_spawn_starter_military(MAGE_SCENE, "mage", MetaProgression.get_starter_mage_count(), Vector2i(0, -3))
 
 
 func _spawn_starting_settlement(ground: TinyTilesMap) -> void:
@@ -282,6 +293,12 @@ func spawn_starter_walls(count: int) -> void:
 		Vector2i(-2, -1),
 		Vector2i(-2, 0),
 		Vector2i(-2, 1),
+		Vector2i(-1, 2),
+		Vector2i(0, 2),
+		Vector2i(1, 2),
+		Vector2i(-1, -2),
+		Vector2i(0, -2),
+		Vector2i(1, -2),
 	]
 	var placed := 0
 	for offset in offsets:
@@ -294,7 +311,7 @@ func spawn_starter_walls(count: int) -> void:
 			Building.BuildingState.ACTIVE,
 			1.0
 		)
-		building.set_wall_vertical(offset.x != 0)
+		building.set_wall_vertical(offset.x != 0 and abs(offset.x) >= abs(offset.y))
 		placed += 1
 	rebuild_navigation()
 
@@ -315,6 +332,35 @@ func spawn_temp_archers(count: int) -> void:
 
 func spawn_temp_knights(count: int) -> void:
 	_spawn_temp_boon_units(KNIGHT_SCENE, "knight", count, Vector2i(-1, -3))
+
+
+func _spawn_starter_military(
+	scene: PackedScene,
+	type_id: String,
+	count: int,
+	base_offset: Vector2i
+) -> void:
+	if count <= 0 or ground_layer == null or _town_center == null or scene == null:
+		return
+	var center := ground_layer.get_town_center_cell()
+	var cols := maxi(4, int(ceil(sqrt(float(count)))))
+	for i in count:
+		if not population_manager.can_add_population():
+			break
+		var col := i % cols
+		var row := int(i / cols)
+		var unit: Unit = scene.instantiate()
+		units.add_child(unit)
+		unit.global_position = ground_layer.map_to_local(
+			center + base_offset + Vector2i(col, row)
+		)
+		UnitDatabase.apply_definition_to_unit(unit, type_id)
+		unit.set_ground_layer(ground_layer)
+		unit.reset_navigation()
+		population_manager.register_unit(unit)
+		register_player_unit(unit)
+		if day_night_manager.should_apply_night_visuals():
+			unit.apply_cycle_visuals(true, true)
 
 
 func _spawn_temp_boon_units(

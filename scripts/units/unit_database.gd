@@ -248,6 +248,8 @@ static func apply_definition_to_unit(unit: Unit, type_id: String) -> void:
 	unit.is_civilian = def.get("is_civilian", unit.is_civilian)
 	unit.combat_style = def.get("combat_style", unit.combat_style)
 	unit.attack_damage = def.get("attack_damage", unit.attack_damage)
+	if type_id == "archer":
+		unit.attack_damage += MetaProgression.get_archer_damage_bonus()
 	unit.attack_cooldown = def.get("attack_cooldown", unit.attack_cooldown)
 	unit.melee_range = def.get("melee_range", unit.melee_range)
 	unit.attack_range_min = def.get("attack_range_min", unit.attack_range_min)
@@ -255,6 +257,9 @@ static func apply_definition_to_unit(unit: Unit, type_id: String) -> void:
 	unit.chain_radius = def.get("chain_radius", 0.0)
 	unit.chain_damage = def.get("chain_damage", 0)
 	unit.chain_max_targets = def.get("chain_max_targets", 0)
+	if type_id == "mage":
+		unit.chain_damage += MetaProgression.get_mage_chain_damage_bonus()
+		unit.chain_max_targets += MetaProgression.get_mage_chain_target_bonus()
 	unit.invert_up_flip = def.get("invert_up_flip", false)
 
 	apply_sheets_to_unit(unit, type_id)

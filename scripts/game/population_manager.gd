@@ -180,7 +180,11 @@ func _cleanup_invalid_units() -> void:
 
 
 func recalculate_cap_from_buildings() -> void:
-	var cap := BASE_POPULATION_CAP + MetaProgression.get_extra_villagers()
+	var cap := (
+		BASE_POPULATION_CAP
+		+ MetaProgression.get_extra_villagers()
+		+ MetaProgression.get_population_cap_bonus()
+	)
 	for node in get_tree().get_nodes_in_group("buildings"):
 		if not node is Building:
 			continue

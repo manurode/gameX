@@ -469,10 +469,20 @@ func _refresh_shop() -> void:
 	for child in _shop_list.get_children():
 		child.queue_free()
 
-	for unlock_id in MetaProgression.UNLOCKS.keys():
+	var unlock_ids: Array = MetaProgression.UNLOCKS.keys()
+	unlock_ids.sort_custom(func(a, b) -> bool:
+		var ca := int(MetaProgression.UNLOCKS[a].get("cost", 0))
+		var cb := int(MetaProgression.UNLOCKS[b].get("cost", 0))
+		if ca == cb:
+			return str(a) < str(b)
+		return ca < cb
+	)
+
+	for unlock_id in unlock_ids:
 		var def: Dictionary = MetaProgression.UNLOCKS[unlock_id]
-		var unlocked := MetaProgression.is_unlocked(unlock_id)
-		var can_buy := MetaProgression.can_purchase(unlock_id)
+		var unlocked := MetaProgression.is_unlocked(str(unlock_id))
+		var can_buy := MetaProgression.can_purchase(str(unlock_id))
+		var cost := int(def.get("cost", 0))
 
 		var row := PanelContainer.new()
 		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -496,9 +506,16 @@ func _refresh_shop() -> void:
 		h.add_child(info)
 
 		var name_lbl := Label.new()
-		name_lbl.text = "%s  ·  %d" % [def.get("name", unlock_id), def.get("cost", 0)]
+		name_lbl.text = "%s  ·  %d" % [def.get("name", unlock_id), cost]
 		name_lbl.add_theme_font_size_override("font_size", 13)
-		name_lbl.add_theme_color_override("font_color", COL_CREAM if not unlocked else COL_MUTED)
+		var name_color := COL_CREAM
+		if unlocked:
+			name_color = COL_MUTED
+		elif cost >= 300:
+			name_color = Color(1.0, 0.72, 0.38, 1.0)
+		elif cost >= 100:
+			name_color = COL_GOLD_SOFT
+		name_lbl.add_theme_color_override("font_color", name_color)
 		info.add_child(name_lbl)
 
 		var desc := Label.new()

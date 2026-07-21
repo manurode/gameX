@@ -41,6 +41,8 @@ var _wall_anchor_cache: Array[Vector2] = []
 var _wall_anchor_cache_frame: int = -1
 var _last_ghost_cell := Vector2i(1 << 30, 1 << 30)
 var _last_ghost_type := ""
+## Free placements granted by boons (type_id -> remaining count).
+var _free_placements: Dictionary = {}
 
 
 func setup(
@@ -183,6 +185,18 @@ func start_build_mode(type_id: String) -> void:
 	_start_build_mode(type_id)
 
 
+## Grants free placements and enters build mode (same ghost/cursor flow as buying).
+func grant_free_placements(type_id: String, count: int) -> void:
+	if not BuildingDatabase.is_buildable(type_id) or count <= 0:
+		return
+	_free_placements[type_id] = int(_free_placements.get(type_id, 0)) + count
+	_start_build_mode(type_id)
+
+
+func get_free_placements(type_id: String) -> int:
+	return int(_free_placements.get(type_id, 0))
+
+
 func _start_build_mode(type_id: String) -> void:
 	if not BuildingDatabase.is_buildable(type_id):
 		return
@@ -237,10 +251,15 @@ func _try_place_building(world_pos: Vector2) -> void:
 func _place_single_building(world_pos: Vector2, vertical: bool, charge_resources: bool = true) -> Building:
 	if not _is_construction_allowed():
 		return null
+	var consume_free := false
 	if charge_resources:
-		var cost := BuildingDatabase.get_cost(selected_building_type)
-		if _resource_manager == null or not _resource_manager.spend(cost):
-			return null
+		if get_free_placements(selected_building_type) > 0:
+			charge_resources = false
+			consume_free = true
+		else:
+			var cost := BuildingDatabase.get_cost(selected_building_type)
+			if _resource_manager == null or not _resource_manager.spend(cost):
+				return null
 
 	var building: Building = _building_scene.instantiate()
 	building.configure(selected_building_type, Building.BuildingState.CONSTRUCTING, 0.0)
@@ -250,6 +269,8 @@ func _place_single_building(world_pos: Vector2, vertical: bool, charge_resources
 	building.place_at(world_pos)
 	if selected_building_type == "wall":
 		building.notify_world_placed()
+	if consume_free:
+		_consume_free_placements(selected_building_type, 1)
 	if _job_manager != null:
 		_job_manager.alert_nearby_builders(building)
 	return building
@@ -281,10 +302,15 @@ func _place_wall_polyline(end_pos: Vector2) -> void:
 	if affordable < valid_segments.size():
 		valid_segments = valid_segments.slice(0, affordable)
 
-	var unit_cost := BuildingDatabase.get_cost("wall")
-	var total_cost := _multiply_cost(unit_cost, valid_segments.size())
-	if _resource_manager == null or not _resource_manager.spend(total_cost):
-		return
+	var free_to_use := mini(valid_segments.size(), get_free_placements("wall"))
+	var paid_count := valid_segments.size() - free_to_use
+	if paid_count > 0:
+		var unit_cost := BuildingDatabase.get_cost("wall")
+		var total_cost := _multiply_cost(unit_cost, paid_count)
+		if _resource_manager == null or not _resource_manager.spend(total_cost):
+			return
+	if free_to_use > 0:
+		_consume_free_placements("wall", free_to_use)
 
 	for segment in valid_segments:
 		_place_single_building(segment["pos"], segment["vertical"], false)
@@ -612,9 +638,10 @@ func _is_valid_wall_segment(
 		if node is TerrainObstacle and _placement_overlaps_obstacle(snap, test_rect, node as TerrainObstacle):
 			return false
 
-	var cost := BuildingDatabase.get_cost("wall")
-	if _resource_manager != null and not _resource_manager.can_afford(cost):
-		return false
+	if get_free_placements("wall") <= 0:
+		var cost := BuildingDatabase.get_cost("wall")
+		if _resource_manager != null and not _resource_manager.can_afford(cost):
+			return false
 
 	return true
 
@@ -702,9 +729,10 @@ func _is_valid_placement_at(world_pos: Vector2, type_id: String, vertical: bool)
 		if node is TerrainObstacle and _placement_overlaps_obstacle(world_pos, test_rect, node as TerrainObstacle):
 			return false
 
-	var cost := BuildingDatabase.get_cost(type_id)
-	if _resource_manager != null and not _resource_manager.can_afford(cost):
-		return false
+	if get_free_placements(type_id) <= 0:
+		var cost := BuildingDatabase.get_cost(type_id)
+		if _resource_manager != null and not _resource_manager.can_afford(cost):
+			return false
 
 	if BuildingDatabase.is_gather_building(type_id):
 		if (
@@ -730,6 +758,15 @@ func _is_construction_allowed() -> bool:
 
 
 func _max_affordable_wall_segments(desired: int) -> int:
+	if desired <= 0:
+		return 0
+	var free_left := get_free_placements("wall") if selected_building_type == "wall" else 0
+	var paid_desired := maxi(0, desired - free_left)
+	var paid_affordable := _max_resource_wall_segments(paid_desired)
+	return mini(desired, free_left + paid_affordable)
+
+
+func _max_resource_wall_segments(desired: int) -> int:
 	if desired <= 0 or _resource_manager == null:
 		return 0
 	var unit_cost := BuildingDatabase.get_cost("wall")
@@ -744,6 +781,21 @@ func _max_affordable_wall_segments(desired: int) -> int:
 	if food_cost > 0:
 		max_by_res = mini(max_by_res, int(_resource_manager.food / food_cost))
 	return maxi(0, max_by_res)
+
+
+func _consume_free_placements(type_id: String, count: int) -> int:
+	if count <= 0:
+		return 0
+	var available := get_free_placements(type_id)
+	var used := mini(available, count)
+	if used <= 0:
+		return 0
+	var remaining := available - used
+	if remaining > 0:
+		_free_placements[type_id] = remaining
+	else:
+		_free_placements.erase(type_id)
+	return used
 
 
 func _has_gather_node_nearby(world_pos: Vector2, type_id: String) -> bool:

@@ -40,12 +40,22 @@ func _test_meta_rewards() -> void:
 	assert(BalanceConfig.get_wave_base_count(1) < BalanceConfig.get_wave_base_count(10))
 	assert(BalanceConfig.get_wave_base_count(BalanceConfig.WIN_NIGHTS) > 100)
 
-	var before := MetaProgression.fragments
-	var earned := MetaProgression.award_run_rewards(3, false)
+	var meta := root.get_node_or_null("MetaProgression")
+	assert(meta != null)
+	# Shop spans cheap early buys through multi-victory epic armies.
+	assert(meta.UNLOCKS.has("start_food"))
+	assert(int(meta.UNLOCKS["start_food"].get("cost", 0)) <= 10)
+	assert(meta.UNLOCKS.has("knight_legion"))
+	assert(int(meta.UNLOCKS["knight_legion"].get("cost", 0)) >= 300)
+	assert(meta.UNLOCKS.has("mage_academy"))
+	assert(int(meta.UNLOCKS["mage_academy"].get("cost", 0)) >= 300)
+
+	var before: int = meta.fragments
+	var earned: int = meta.award_run_rewards(3, false)
 	assert(earned == BalanceConfig.meta_fragments_for_nights(3))
-	assert(MetaProgression.fragments == before + earned)
-	var victory_earn := MetaProgression.award_run_rewards(BalanceConfig.WIN_NIGHTS, true)
+	assert(meta.fragments == before + earned)
+	var victory_earn: int = meta.award_run_rewards(BalanceConfig.WIN_NIGHTS, true)
 	assert(victory_earn == BalanceConfig.META_FRAGMENT_TARGET_VICTORY)
 	# Restore to avoid polluting the user's save during tests.
-	MetaProgression.fragments = before
-	MetaProgression.save()
+	meta.fragments = before
+	meta.save()

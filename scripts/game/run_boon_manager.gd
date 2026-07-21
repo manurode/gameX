@@ -13,11 +13,11 @@ const BOON_DEFS := {
 	},
 	"free_walls": {
 		"name": "Muros de fortuna",
-		"description": "4 segmentos de muro aparecen junto al centro.",
+		"description": "Coloca 4 segmentos de muro gratis donde quieras.",
 	},
 	"free_tower": {
 		"name": "Torre de guardia",
-		"description": "Una torre aparece cerca del centro urbano.",
+		"description": "Coloca 1 torre gratis donde quieras.",
 	},
 	"extra_villagers": {
 		"name": "Refugiados",
@@ -230,11 +230,9 @@ func _apply_boon(boon_id: String) -> void:
 			gather_multiplier = 1.2
 			gather_multiplier_changed.emit(gather_multiplier)
 		"free_walls":
-			if _game_world != null and _game_world.has_method("spawn_starter_walls"):
-				_game_world.call("spawn_starter_walls", 4)
+			_grant_free_build("wall", 4)
 		"free_tower":
-			if _game_world != null and _game_world.has_method("spawn_free_tower"):
-				_game_world.call("spawn_free_tower")
+			_grant_free_build("tower", 1)
 		"extra_villagers":
 			if _game_world != null and _game_world.has_method("spawn_bonus_villagers"):
 				_game_world.call("spawn_bonus_villagers", 2)
@@ -257,3 +255,11 @@ func _apply_boon(boon_id: String) -> void:
 			_enemy_night_vision_pending = true
 		"summer_equinox":
 			_summer_equinox_pending = true
+
+
+func _grant_free_build(type_id: String, count: int) -> void:
+	if _game_world == null:
+		return
+	var build_manager := _game_world.get_node_or_null("BuildManager")
+	if build_manager != null and build_manager.has_method("grant_free_placements"):
+		build_manager.call("grant_free_placements", type_id, count)
