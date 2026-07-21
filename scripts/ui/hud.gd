@@ -20,6 +20,8 @@ var _boon_overlay: Control
 var _boon_buttons_box: VBoxContainer
 var _debug_boon_overlay: Control
 var _debug_boon_list: VBoxContainer
+var _debug_day_overlay: Control
+var _debug_day_grid: GridContainer
 var _end_overlay: Control
 var _end_title: Label
 var _end_body: Label
@@ -37,6 +39,7 @@ func _ready() -> void:
 	_create_event_banner()
 	_create_boon_overlay()
 	_create_debug_boon_overlay()
+	_create_debug_day_overlay()
 	_create_end_overlay()
 	_create_foresight_label()
 
@@ -49,9 +52,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		if key_event.keycode == KEY_F10:
 			_toggle_debug_boon_menu()
 			get_viewport().set_input_as_handled()
-		elif key_event.keycode == KEY_ESCAPE and _debug_boon_overlay != null and _debug_boon_overlay.visible:
-			_set_debug_boon_menu_visible(false)
+		elif key_event.keycode == KEY_F11:
+			_toggle_debug_day_menu()
 			get_viewport().set_input_as_handled()
+		elif key_event.keycode == KEY_ESCAPE:
+			if _debug_day_overlay != null and _debug_day_overlay.visible:
+				_set_debug_day_menu_visible(false)
+				get_viewport().set_input_as_handled()
+			elif _debug_boon_overlay != null and _debug_boon_overlay.visible:
+				_set_debug_boon_menu_visible(false)
+				get_viewport().set_input_as_handled()
 
 
 func _process(delta: float) -> void:
@@ -344,6 +354,7 @@ func _set_debug_boon_menu_visible(visible: bool) -> void:
 	if _debug_boon_overlay == null:
 		return
 	if visible:
+		_set_debug_day_menu_visible(false)
 		_rebuild_debug_boon_list()
 	_debug_boon_overlay.visible = visible
 
@@ -374,6 +385,122 @@ func _on_debug_boon_pressed(boon_id: String) -> void:
 		return
 	if _run_boon_manager.debug_apply_boon(boon_id):
 		_set_debug_boon_menu_visible(false)
+
+
+func _create_debug_day_overlay() -> void:
+	_debug_day_overlay = Control.new()
+	_debug_day_overlay.visible = false
+	_debug_day_overlay.process_mode = Node.PROCESS_MODE_ALWAYS
+	_debug_day_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_debug_day_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	_debug_day_overlay.z_index = 20
+
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.5)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	_debug_day_overlay.add_child(dim)
+
+	var panel := PanelContainer.new()
+	panel.set_anchors_preset(Control.PRESET_CENTER)
+	panel.offset_left = -260.0
+	panel.offset_right = 260.0
+	panel.offset_top = -220.0
+	panel.offset_bottom = 220.0
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.07, 0.1, 0.12, 0.97)
+	style.border_color = Color(0.85, 0.7, 0.35, 1.0)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(8)
+	style.set_content_margin_all(14)
+	panel.add_theme_stylebox_override("panel", style)
+	_debug_day_overlay.add_child(panel)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	vbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	panel.add_child(vbox)
+
+	var header := HBoxContainer.new()
+	vbox.add_child(header)
+
+	var title := Label.new()
+	title.text = "DEBUG — Día"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 18)
+	title.add_theme_color_override("font_color", Color(1.0, 0.85, 0.45))
+	header.add_child(title)
+
+	var close_button := Button.new()
+	close_button.text = "Cerrar (Esc)"
+	close_button.pressed.connect(_set_debug_day_menu_visible.bind(false))
+	header.add_child(close_button)
+
+	var hint := Label.new()
+	hint.text = "F11 para abrir/cerrar · salta al inicio del día elegido"
+	hint.add_theme_font_size_override("font_size", 11)
+	hint.add_theme_color_override("font_color", Color(0.65, 0.75, 0.8))
+	vbox.add_child(hint)
+
+	_debug_day_grid = GridContainer.new()
+	_debug_day_grid.columns = 5
+	_debug_day_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_debug_day_grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_debug_day_grid.add_theme_constant_override("h_separation", 8)
+	_debug_day_grid.add_theme_constant_override("v_separation", 8)
+	vbox.add_child(_debug_day_grid)
+
+	add_child(_debug_day_overlay)
+
+
+func _toggle_debug_day_menu() -> void:
+	if _debug_day_overlay == null:
+		return
+	_set_debug_day_menu_visible(not _debug_day_overlay.visible)
+
+
+func _set_debug_day_menu_visible(visible: bool) -> void:
+	if _debug_day_overlay == null:
+		return
+	if visible:
+		_set_debug_boon_menu_visible(false)
+		_rebuild_debug_day_grid()
+	_debug_day_overlay.visible = visible
+
+
+func _rebuild_debug_day_grid() -> void:
+	if _debug_day_grid == null:
+		return
+	for child in _debug_day_grid.get_children():
+		child.queue_free()
+	if _day_night_manager == null:
+		var empty := Label.new()
+		empty.text = "DayNightManager no disponible"
+		_debug_day_grid.add_child(empty)
+		return
+	var current_day := _day_night_manager.cycle_number
+	for day in range(1, BalanceConfig.WIN_NIGHTS + 1):
+		var button := Button.new()
+		button.text = "Día %d" % day
+		button.custom_minimum_size = Vector2(0, 44)
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if day == current_day:
+			button.text = "Día %d ★" % day
+			button.tooltip_text = "Día actual"
+		else:
+			button.tooltip_text = "Saltar al inicio del día %d" % day
+		button.pressed.connect(_on_debug_day_pressed.bind(day))
+		_debug_day_grid.add_child(button)
+
+
+func _on_debug_day_pressed(day: int) -> void:
+	if _day_night_manager == null:
+		return
+	_day_night_manager.debug_set_day(day)
+	if _boon_overlay != null:
+		_boon_overlay.visible = false
+	_set_debug_day_menu_visible(false)
+	_show_banner("DEBUG: Día %d" % day, 2.5)
 
 
 func _create_end_overlay() -> void:
@@ -444,6 +571,8 @@ func _on_run_ended(won: bool, nights_survived: int, fragments_earned: int) -> vo
 		_boon_overlay.visible = false
 	if _debug_boon_overlay != null:
 		_debug_boon_overlay.visible = false
+	if _debug_day_overlay != null:
+		_debug_day_overlay.visible = false
 	if _end_overlay == null:
 		return
 	_ensure_paused_input_chain()

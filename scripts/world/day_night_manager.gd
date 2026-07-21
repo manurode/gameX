@@ -103,6 +103,23 @@ func reset_cycle() -> void:
 	phase_time_changed.emit(seconds_remaining)
 
 
+## Debug helper: jump to the start of day D (1..WIN_NIGHTS) without simulating skipped phases.
+func debug_set_day(day: int) -> void:
+	var target := clampi(day, 1, BalanceConfig.WIN_NIGHTS)
+	cycle_number = target
+	nights_survived = target - 1
+	_run_finished = false
+	automatic_cycle = true
+	night_duration_multiplier = 1.0
+	use_fog_visuals = false
+	var waves := get_tree().get_first_node_in_group("night_wave_manager")
+	if waves != null and waves.has_method("debug_clear_wave"):
+		waves.call("debug_clear_wave")
+	set_phase(CyclePhase.DAY)
+	cycle_started.emit(cycle_number)
+	phase_time_changed.emit(seconds_remaining)
+
+
 func toggle_cycle() -> void:
 	_advance_phase()
 

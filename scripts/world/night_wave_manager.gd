@@ -66,6 +66,11 @@ func refresh_foresight() -> void:
 	_try_emit_foresight()
 
 
+func debug_clear_wave() -> void:
+	_continuous_remaining = 0
+	_despawn_all()
+
+
 func _process(delta: float) -> void:
 	if _continuous_remaining <= 0 or _day_night == null or not _day_night.is_night():
 		return
