@@ -317,21 +317,20 @@ func spawn_starter_walls(count: int) -> void:
 
 
 func spawn_bonus_villagers(count: int) -> void:
-	if ground_layer == null or _town_center == null:
+	if ground_layer == null or _town_center == null or count <= 0:
 		return
+	population_manager.grant_boon_population(count)
 	var center := ground_layer.get_town_center_cell()
 	for i in count:
-		if not population_manager.can_add_population():
-			break
 		_spawn_villager(ground_layer, center + Vector2i(i + 1, 1), i)
 
 
-func spawn_temp_archers(count: int) -> void:
-	_spawn_temp_boon_units(ARCHER_SCENE, "archer", count, Vector2i(-1, -2))
+func spawn_bonus_archers(count: int) -> void:
+	_spawn_bonus_military(ARCHER_SCENE, "archer", count, Vector2i(-1, -2))
 
 
-func spawn_temp_knights(count: int) -> void:
-	_spawn_temp_boon_units(KNIGHT_SCENE, "knight", count, Vector2i(-1, -3))
+func spawn_bonus_knights(count: int) -> void:
+	_spawn_bonus_military(KNIGHT_SCENE, "knight", count, Vector2i(-1, -3))
 
 
 func _spawn_starter_military(
@@ -363,14 +362,15 @@ func _spawn_starter_military(
 			unit.apply_cycle_visuals(true, true)
 
 
-func _spawn_temp_boon_units(
+func _spawn_bonus_military(
 	scene: PackedScene,
 	type_id: String,
 	count: int,
 	base_offset: Vector2i
 ) -> void:
-	if ground_layer == null or _town_center == null or scene == null:
+	if count <= 0 or ground_layer == null or _town_center == null or scene == null:
 		return
+	population_manager.grant_boon_population(count)
 	var center := ground_layer.get_town_center_cell()
 	for i in count:
 		var unit: Unit = scene.instantiate()
@@ -379,24 +379,10 @@ func _spawn_temp_boon_units(
 		UnitDatabase.apply_definition_to_unit(unit, type_id)
 		unit.set_ground_layer(ground_layer)
 		unit.reset_navigation()
-		unit.set_meta("temp_boon_unit", true)
+		population_manager.register_unit(unit)
 		register_player_unit(unit)
 		if day_night_manager.should_apply_night_visuals():
 			unit.apply_cycle_visuals(true, true)
-
-
-func clear_temp_archers() -> void:
-	clear_temp_boon_units()
-
-
-func clear_temp_boon_units() -> void:
-	var to_remove: Array[Unit] = []
-	for child in units.get_children():
-		if child is Unit and child.has_meta("temp_boon_unit"):
-			to_remove.append(child as Unit)
-	for unit in to_remove:
-		if is_instance_valid(unit):
-			unit.queue_free()
 
 
 func repair_all_player_buildings() -> void:
@@ -467,8 +453,7 @@ func _spawn_villager(ground: TinyTilesMap, cell: Vector2i, index: int) -> void:
 
 
 func _on_player_unit_died(unit: Unit) -> void:
-	if not unit.has_meta("temp_boon_unit"):
-		population_manager.unregister_unit(unit)
+	population_manager.unregister_unit(unit)
 	job_manager.on_villager_died(unit)
 
 

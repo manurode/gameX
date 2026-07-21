@@ -23,13 +23,13 @@ const BOON_DEFS := {
 		"name": "Refugiados",
 		"description": "2 aldeanos se unen a tu asentamiento.",
 	},
-	"temp_archers": {
-		"name": "Arqueros de paso",
-		"description": "3 arqueros aparecen cerca del centro hasta el anochecer.",
+	"extra_archers": {
+		"name": "Arqueros aliados",
+		"description": "3 arqueros se unen a tu asentamiento.",
 	},
-	"temp_knights": {
-		"name": "Caballeros de paso",
-		"description": "2 caballeros aparecen cerca del centro hasta el anochecer.",
+	"extra_knights": {
+		"name": "Caballeros aliados",
+		"description": "2 caballeros se unen a tu asentamiento.",
 	},
 	"production_double": {
 		"name": "Producción doble",
@@ -200,10 +200,6 @@ func _clear_daytime_boons() -> void:
 	if production_double_active:
 		production_double_active = false
 		production_double_changed.emit(false)
-	if _game_world != null and _game_world.has_method("clear_temp_boon_units"):
-		_game_world.call("clear_temp_boon_units")
-	elif _game_world != null and _game_world.has_method("clear_temp_archers"):
-		_game_world.call("clear_temp_archers")
 
 
 func _roll_choices(count: int) -> Array[String]:
@@ -236,12 +232,12 @@ func _apply_boon(boon_id: String) -> void:
 		"extra_villagers":
 			if _game_world != null and _game_world.has_method("spawn_bonus_villagers"):
 				_game_world.call("spawn_bonus_villagers", 2)
-		"temp_archers":
-			if _game_world != null and _game_world.has_method("spawn_temp_archers"):
-				_game_world.call("spawn_temp_archers", 3)
-		"temp_knights":
-			if _game_world != null and _game_world.has_method("spawn_temp_knights"):
-				_game_world.call("spawn_temp_knights", 2)
+		"extra_archers":
+			if _game_world != null and _game_world.has_method("spawn_bonus_archers"):
+				_game_world.call("spawn_bonus_archers", 3)
+		"extra_knights":
+			if _game_world != null and _game_world.has_method("spawn_bonus_knights"):
+				_game_world.call("spawn_bonus_knights", 2)
 		"production_double":
 			production_double_active = true
 			production_double_changed.emit(true)

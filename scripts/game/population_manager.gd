@@ -11,6 +11,8 @@ const UPKEEP_TICK_INTERVAL := 0.25
 var population: int = 0
 var population_cap: int = BASE_POPULATION_CAP
 var reserved_population: int = 0
+## Housing granted by run boons (refugees / allied military). Persists for the run.
+var boon_population_bonus: int = 0
 var food_shortage_active: bool = false
 
 var _resource_manager: ResourceManager
@@ -107,6 +109,15 @@ func release_reserved_population(amount: int) -> void:
 	reserved_population = maxi(0, reserved_population - amount)
 
 
+## Raises the population cap so boon units can always join, even at full housing.
+func grant_boon_population(amount: int) -> void:
+	if amount <= 0:
+		return
+	boon_population_bonus += amount
+	population_cap += amount
+	population_changed.emit(population, population_cap)
+
+
 func get_civilian_work_multiplier() -> float:
 	return BalanceConfig.STARVATION_WORK_MULTIPLIER if food_shortage_active else 1.0
 
@@ -184,6 +195,7 @@ func recalculate_cap_from_buildings() -> void:
 		BASE_POPULATION_CAP
 		+ MetaProgression.get_extra_villagers()
 		+ MetaProgression.get_population_cap_bonus()
+		+ boon_population_bonus
 	)
 	for node in get_tree().get_nodes_in_group("buildings"):
 		if not node is Building:
