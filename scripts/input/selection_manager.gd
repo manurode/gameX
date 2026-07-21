@@ -111,13 +111,14 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 	_drag_current_screen = event.position
 	_hide_selection_box()
 
+	var add_to_selection := event.shift_pressed or event.ctrl_pressed
 	if _is_dragging:
 		_select_units_in_box(
 			_screen_rect_to_world_rect(_get_screen_drag_rect()),
-			event.shift_pressed
+			add_to_selection
 		)
 	else:
-		_select_unit_at(_screen_to_world(event.position), event.shift_pressed)
+		_select_unit_at(_screen_to_world(event.position), add_to_selection)
 
 	_is_dragging = false
 	get_viewport().set_input_as_handled()
