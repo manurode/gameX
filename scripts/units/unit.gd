@@ -733,6 +733,7 @@ func assign_construction(site: Building) -> void:
 		return
 	var job_manager := get_tree().get_first_node_in_group("job_manager")
 	if job_manager is JobManager:
+		(job_manager as JobManager).forget_return_building(self)
 		(job_manager as JobManager).release_unit_job(self)
 	if garrisoned_building != null:
 		exit_garrison()
@@ -753,6 +754,7 @@ func assign_repair(target: Building) -> void:
 		return
 	var job_manager := get_tree().get_first_node_in_group("job_manager")
 	if job_manager is JobManager:
+		(job_manager as JobManager).forget_return_building(self)
 		(job_manager as JobManager).release_unit_job(self)
 	if garrisoned_building != null:
 		exit_garrison()

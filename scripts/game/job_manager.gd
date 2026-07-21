@@ -64,12 +64,14 @@ func try_assign_idle_villager(villager: Unit) -> void:
 		return
 	if villager.is_busy():
 		return
+
+	# Prefer nearby construction over remembered gather when truly idle.
+	if _try_assign_nearby_construction(villager):
+		return
+
 	var remembered := _take_return_building(villager)
 	if remembered != null and _can_assign_to_building(villager, remembered):
 		_assign_villager_to_building(villager, remembered)
-		return
-
-	if _try_assign_nearby_construction(villager):
 		return
 
 	var best_building := _find_best_gather_building_for_villager(villager)
@@ -80,10 +82,9 @@ func try_assign_idle_villager(villager: Unit) -> void:
 func on_villager_manual_move(unit: Unit) -> void:
 	if not unit.is_civilian:
 		return
+	# A manual move dismisses the gather job; do not snap them back to the same camp.
+	forget_return_building(unit)
 	if _unit_jobs.has(unit):
-		var building = _unit_jobs[unit].get("building")
-		if building is Building and is_instance_valid(building):
-			_return_buildings[unit] = building
 		release_unit_job(unit)
 
 
@@ -94,7 +95,7 @@ func on_villager_move_completed(unit: Unit) -> void:
 	if curfew is CurfewManager and (curfew as CurfewManager).is_active:
 		(curfew as CurfewManager).send_villager_to_shelter(unit)
 		return
-	try_assign_idle_villager(unit)
+	# After an explicit move, stay idle. Do not snap back to the previous gather job.
 
 
 func assign_villagers_to_resource(villagers: Array, resource_node: ResourceNode) -> bool:

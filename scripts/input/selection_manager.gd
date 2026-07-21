@@ -71,11 +71,18 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 			get_viewport().set_input_as_handled()
 			return
 
+		# Prefer build/repair over gather when the click hits a relevant building,
+		# so resource pick radii don't swallow construction/repair orders.
+		var target_building := _pick_building_at(world_point)
+		if target_building != null and _should_prefer_building_command(target_building):
+			_handle_building_command(target_building, world_point, event.shift_pressed)
+			get_viewport().set_input_as_handled()
+			return
+
 		if _try_gather_resource_command(world_point):
 			get_viewport().set_input_as_handled()
 			return
 
-		var target_building := _pick_building_at(world_point)
 		if target_building != null:
 			_handle_building_command(target_building, world_point, event.shift_pressed)
 			get_viewport().set_input_as_handled()
@@ -153,6 +160,20 @@ func _handle_building_command(building: Building, world_point: Vector2, force_at
 				unit.move_to(building.get_approach_point(unit.global_position))
 		else:
 			unit.move_to(world_point)
+
+
+func _should_prefer_building_command(building: Building) -> bool:
+	if building.building_state == Building.BuildingState.CONSTRUCTING:
+		for unit in selected_units:
+			if is_instance_valid(unit) and unit.can_build:
+				return true
+		return false
+	if not building.can_be_repaired():
+		return false
+	for unit in selected_units:
+		if is_instance_valid(unit) and unit.can_build and not unit.can_attack:
+			return true
+	return false
 
 
 func _try_gather_resource_command(world_point: Vector2) -> bool:
