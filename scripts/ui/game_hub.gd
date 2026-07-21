@@ -14,7 +14,7 @@ const ICON_VARIANT_SIZE := 128
 const SLOT_SIZE := Vector2(66, 80)
 const ICON_SIZE := Vector2(36, 30)
 const RESOURCE_ICON_SIZE := Vector2(28, 28)
-const ACTION_SLOT_SIZE := Vector2(72, 76)
+const ACTION_SLOT_SIZE := Vector2(64, 68)
 
 # Palette aligned with menu / dialog panels
 const COL_PANEL_INNER := Color(0.12, 0.1, 0.075, 0.9)
@@ -30,16 +30,17 @@ const COL_BTN_PRESSED := Color(0.1, 0.08, 0.05, 1.0)
 const COL_BTN_DISABLED := Color(0.08, 0.07, 0.06, 0.85)
 
 @onready var _resources_box: VBoxContainer = $MarginContainer/HBoxContainer/ResourcesBox
-@onready var _build_mode: HBoxContainer = $MarginContainer/HBoxContainer/CommandArea/BuildMode
-@onready var _selection_mode: HBoxContainer = $MarginContainer/HBoxContainer/CommandArea/SelectionMode
-@onready var _build_tab_icon: TextureRect = $MarginContainer/HBoxContainer/CommandArea/BuildMode/TabColumn/BuildTabIcon
-@onready var _build_grid: GridContainer = $MarginContainer/HBoxContainer/CommandArea/BuildMode/BuildGrid
-@onready var _status_column: VBoxContainer = $MarginContainer/HBoxContainer/CommandArea/RightColumn/StatusColumn
+@onready var _build_mode: HBoxContainer = $MarginContainer/HBoxContainer/CenterArea/BuildMode
+@onready var _selection_mode: HBoxContainer = $MarginContainer/HBoxContainer/CenterArea/SelectionMode
+@onready var _build_tab_icon: TextureRect = $MarginContainer/HBoxContainer/CenterArea/BuildMode/TabColumn/BuildTabIcon
+@onready var _build_grid: GridContainer = $MarginContainer/HBoxContainer/CenterArea/BuildMode/BuildGrid
+@onready var _status_column: VBoxContainer = $MarginContainer/HBoxContainer/RightColumn/StatusColumn
 
 var _selection_info: VBoxContainer
 var _selection_icon: TextureRect
 var _selection_title: Label
 var _selection_meta: Label
+var _actions_panel: PanelContainer
 var _selection_actions: HBoxContainer
 var _production_box: VBoxContainer
 var _production_title: Label
@@ -184,36 +185,43 @@ func _build_resource_rows() -> void:
 		resources_row.add_child(cell)
 		_resource_labels[entry.key] = amount
 
-	var stats_row := HBoxContainer.new()
-	stats_row.add_theme_constant_override("separation", 10)
-	stats_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	panel_vbox.add_child(stats_row)
+	var stats_col := VBoxContainer.new()
+	stats_col.add_theme_constant_override("separation", 1)
+	stats_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel_vbox.add_child(stats_col)
 
 	_population_label = Label.new()
 	_population_label.text = "Pob: 0/5"
+	_population_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_population_label.add_theme_font_size_override("font_size", 11)
 	_population_label.add_theme_color_override("font_color", Color(0.75, 0.85, 0.95))
-	stats_row.add_child(_population_label)
+	stats_col.add_child(_population_label)
 
 	_food_upkeep_label = Label.new()
 	_food_upkeep_label.text = "Consumo: 0/s"
+	_food_upkeep_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_food_upkeep_label.add_theme_font_size_override("font_size", 10)
 	_food_upkeep_label.add_theme_color_override("font_color", Color(0.72, 0.82, 0.55))
-	stats_row.add_child(_food_upkeep_label)
+	stats_col.add_child(_food_upkeep_label)
+
+	var bonus_row := HBoxContainer.new()
+	bonus_row.add_theme_constant_override("separation", 8)
+	bonus_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	stats_col.add_child(bonus_row)
 
 	_gather_bonus_label = Label.new()
 	_gather_bonus_label.text = "Cosecha +20%"
 	_gather_bonus_label.visible = false
 	_gather_bonus_label.add_theme_font_size_override("font_size", 10)
 	_gather_bonus_label.add_theme_color_override("font_color", Color(0.55, 0.92, 0.55))
-	stats_row.add_child(_gather_bonus_label)
+	bonus_row.add_child(_gather_bonus_label)
 
 	_production_double_label = Label.new()
 	_production_double_label.text = "Producción x2"
 	_production_double_label.visible = false
 	_production_double_label.add_theme_font_size_override("font_size", 10)
 	_production_double_label.add_theme_color_override("font_color", Color(0.95, 0.82, 0.35))
-	stats_row.add_child(_production_double_label)
+	bonus_row.add_child(_production_double_label)
 
 
 func _ensure_selection_ui() -> void:
@@ -222,7 +230,8 @@ func _ensure_selection_ui() -> void:
 
 	var info_panel := PanelContainer.new()
 	info_panel.name = "InfoPanel"
-	info_panel.custom_minimum_size = Vector2(168, 0)
+	info_panel.custom_minimum_size = Vector2(200, 0)
+	info_panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	info_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	info_panel.add_theme_stylebox_override("panel", _make_inner_panel_style())
 	_selection_mode.add_child(info_panel)
@@ -250,37 +259,40 @@ func _ensure_selection_ui() -> void:
 
 	var titles := VBoxContainer.new()
 	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	titles.add_theme_constant_override("separation", 1)
+	titles.add_theme_constant_override("separation", 2)
 	header.add_child(titles)
 
 	_selection_title = Label.new()
-	_selection_title.add_theme_font_size_override("font_size", 14)
+	_selection_title.add_theme_font_size_override("font_size", 13)
 	_selection_title.add_theme_color_override("font_color", COL_GOLD_SOFT)
-	_selection_title.clip_text = true
+	_selection_title.clip_text = false
+	_selection_title.autowrap_mode = TextServer.AUTOWRAP_OFF
 	titles.add_child(_selection_title)
 
 	_selection_meta = Label.new()
 	_selection_meta.add_theme_font_size_override("font_size", 11)
 	_selection_meta.add_theme_color_override("font_color", COL_MUTED)
-	_selection_meta.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_selection_meta.autowrap_mode = TextServer.AUTOWRAP_OFF
 	titles.add_child(_selection_meta)
 
-	var actions_panel := PanelContainer.new()
-	actions_panel.name = "ActionsPanel"
-	actions_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	actions_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	actions_panel.add_theme_stylebox_override("panel", _make_inner_panel_style())
-	_selection_mode.add_child(actions_panel)
+	_actions_panel = PanelContainer.new()
+	_actions_panel.name = "ActionsPanel"
+	_actions_panel.clip_contents = true
+	_actions_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_actions_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_actions_panel.add_theme_stylebox_override("panel", _make_inner_panel_style())
+	_selection_mode.add_child(_actions_panel)
 
 	var actions_margin := MarginContainer.new()
 	actions_margin.add_theme_constant_override("margin_left", 8)
 	actions_margin.add_theme_constant_override("margin_right", 8)
 	actions_margin.add_theme_constant_override("margin_top", 6)
 	actions_margin.add_theme_constant_override("margin_bottom", 6)
-	actions_panel.add_child(actions_margin)
+	_actions_panel.add_child(actions_margin)
 
 	_production_box = VBoxContainer.new()
 	_production_box.name = "ProductionBox"
+	_production_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_production_box.add_theme_constant_override("separation", 4)
 	actions_margin.add_child(_production_box)
 
@@ -290,15 +302,18 @@ func _ensure_selection_ui() -> void:
 	_production_box.add_child(_production_title)
 
 	_selection_actions = HBoxContainer.new()
+	_selection_actions.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_selection_actions.add_theme_constant_override("separation", 8)
 	_production_box.add_child(_selection_actions)
 
 	_production_items_box = HBoxContainer.new()
+	_production_items_box.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	_production_items_box.add_theme_constant_override("separation", 4)
 	_selection_actions.add_child(_production_items_box)
 
 	_market_box = VBoxContainer.new()
 	_market_box.visible = false
+	_market_box.clip_contents = true
 	_market_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_market_box.add_theme_constant_override("separation", 3)
 	_selection_actions.add_child(_market_box)
@@ -311,6 +326,7 @@ func _ensure_selection_ui() -> void:
 
 	_market_items_box = GridContainer.new()
 	_market_items_box.columns = 2
+	_market_items_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_market_items_box.add_theme_constant_override("h_separation", 4)
 	_market_items_box.add_theme_constant_override("v_separation", 3)
 	_market_box.add_child(_market_items_box)
@@ -656,22 +672,27 @@ func _refresh_selection_panel() -> void:
 	var show_market := _should_show_market(building)
 	var has_actions := not items.is_empty() or show_market
 
+	if _actions_panel != null:
+		_actions_panel.visible = has_actions
+
+	if not has_actions:
+		_production_panel_key = ""
+		return
+
 	if _has_production_double() and not items.is_empty():
 		_production_title.text = "PRODUCCIÓN · x2"
 		_production_title.add_theme_color_override("font_color", Color(0.95, 0.82, 0.35))
 	elif not items.is_empty():
 		_production_title.text = "PRODUCCIÓN"
 		_production_title.add_theme_color_override("font_color", COL_GOLD_SOFT)
-	elif show_market:
-		_production_title.text = "ACCIONES"
-		_production_title.add_theme_color_override("font_color", COL_GOLD_SOFT)
 	else:
-		_production_title.text = "SIN ACCIONES"
-		_production_title.add_theme_color_override("font_color", COL_MUTED)
+		_production_title.text = ""
+		_production_title.add_theme_color_override("font_color", COL_GOLD_SOFT)
 
+	_production_title.visible = not items.is_empty()
 	_production_items_box.visible = not items.is_empty()
 	_market_box.visible = show_market
-	_selection_actions.visible = has_actions
+	_selection_actions.visible = true
 
 	var trades_left := 0
 	if _market_manager != null:
@@ -700,7 +721,7 @@ func _update_selection_meta() -> void:
 		parts.append("Guarnición %d/%d" % [building.get_garrison_count(), building.garrison_capacity])
 	if building.upgrade_level > 0:
 		parts.append("Nv.%d" % (building.upgrade_level + 1))
-	_selection_meta.text = " · ".join(parts)
+	_selection_meta.text = "\n".join(parts)
 
 
 func _should_show_market(building: Building) -> bool:
@@ -778,7 +799,7 @@ func _rebuild_market_buttons(show_market: bool) -> void:
 		var from_key: String = offer.from
 		var to_key: String = offer.to
 		var button := Button.new()
-		button.text = _market_manager.format_offer_text(offer)
+		button.text = _format_market_offer_compact(offer)
 		button.tooltip_text = (
 			"Intercambia en el mercado del Centro Urbano.\n"
 			+ "Comisión del mercado: %d%% · máximo %d intercambios por día."
@@ -788,12 +809,27 @@ func _rebuild_market_buttons(show_market: bool) -> void:
 		]
 		button.focus_mode = Control.FOCUS_NONE
 		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-		button.custom_minimum_size = Vector2(148, 26)
+		button.custom_minimum_size = Vector2(118, 26)
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.clip_text = true
+		button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		button.add_theme_font_size_override("font_size", 10)
 		_style_dialog_button(button, true)
 		button.pressed.connect(_on_market_exchange_pressed.bind(from_key, to_key))
 		_market_items_box.add_child(button)
 		_market_buttons["%s>%s" % [from_key, to_key]] = button
+
+
+func _format_market_offer_compact(offer: Dictionary) -> String:
+	const SHORT := {"wood": "mad", "gold": "oro", "food": "com"}
+	var from_key: String = str(offer.get("from", ""))
+	var to_key: String = str(offer.get("to", ""))
+	return "%d %s → %d %s" % [
+		int(offer.get("pay", 0)),
+		SHORT.get(from_key, offer.get("from_label", from_key)),
+		int(offer.get("receive", 0)),
+		SHORT.get(to_key, offer.get("to_label", to_key)),
+	]
 
 
 func _update_market_status() -> void:
@@ -817,7 +853,7 @@ func _update_market_status() -> void:
 			continue
 		var can_trade := _market_manager.can_exchange(offer.from, offer.to)
 		button.disabled = not can_trade
-		button.text = _market_manager.format_offer_text(offer)
+		button.text = _format_market_offer_compact(offer)
 		var reason := _market_manager.get_exchange_block_reason(offer.from, offer.to)
 		if reason.is_empty():
 			button.tooltip_text = (

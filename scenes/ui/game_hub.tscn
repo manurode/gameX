@@ -4,23 +4,16 @@
 [ext_resource type="Script" path="res://scripts/ui/minimap.gd" id="2_minimap"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hub"]
-bg_color = Color(0.09, 0.07, 0.055, 0.94)
-border_width_left = 2
+bg_color = Color(0.09, 0.07, 0.055, 1)
+border_width_left = 0
 border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
+border_width_right = 0
+border_width_bottom = 0
 border_color = Color(0.72, 0.58, 0.32, 1)
-corner_radius_top_left = 10
-corner_radius_top_right = 10
-corner_radius_bottom_right = 10
-corner_radius_bottom_left = 10
-shadow_color = Color(0, 0, 0, 0.45)
-shadow_size = 10
-shadow_offset = Vector2(0, 3)
 content_margin_left = 10.0
-content_margin_top = 8.0
+content_margin_top = 6.0
 content_margin_right = 10.0
-content_margin_bottom = 8.0
+content_margin_bottom = 6.0
 
 [node name="GameHub" type="PanelContainer"]
 custom_minimum_size = Vector2(0, 118)
@@ -31,18 +24,15 @@ script = ExtResource("1_hub")
 [node name="MarginContainer" type="MarginContainer" parent="."]
 layout_mode = 2
 mouse_filter = 2
-theme_override_constants/margin_left = 4
-theme_override_constants/margin_top = 2
-theme_override_constants/margin_right = 4
-theme_override_constants/margin_bottom = 2
 
 [node name="HBoxContainer" type="HBoxContainer" parent="MarginContainer"]
 layout_mode = 2
-theme_override_constants/separation = 12
+theme_override_constants/separation = 10
 
 [node name="ResourcesBox" type="VBoxContainer" parent="MarginContainer/HBoxContainer"]
 custom_minimum_size = Vector2(200, 0)
 layout_mode = 2
+size_flags_horizontal = 0
 size_flags_vertical = 4
 theme_override_constants/separation = 4
 alignment = 1
@@ -56,32 +46,37 @@ horizontal_alignment = 1
 
 [node name="Separator1" type="VSeparator" parent="MarginContainer/HBoxContainer"]
 layout_mode = 2
+size_flags_horizontal = 0
 theme_override_colors/separator = Color(0.42, 0.35, 0.24, 0.7)
 
-[node name="CommandArea" type="HBoxContainer" parent="MarginContainer/HBoxContainer"]
+[node name="CenterArea" type="Control" parent="MarginContainer/HBoxContainer"]
+clip_contents = true
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/separation = 8
+size_flags_vertical = 3
 
-[node name="BuildMode" type="HBoxContainer" parent="MarginContainer/HBoxContainer/CommandArea"]
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 4
+[node name="BuildMode" type="HBoxContainer" parent="MarginContainer/HBoxContainer/CenterArea"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 theme_override_constants/separation = 6
 
-[node name="TabColumn" type="VBoxContainer" parent="MarginContainer/HBoxContainer/CommandArea/BuildMode"]
+[node name="TabColumn" type="VBoxContainer" parent="MarginContainer/HBoxContainer/CenterArea/BuildMode"]
 custom_minimum_size = Vector2(36, 0)
 layout_mode = 2
 size_flags_vertical = 4
 alignment = 1
 
-[node name="BuildTabIcon" type="TextureRect" parent="MarginContainer/HBoxContainer/CommandArea/BuildMode/TabColumn"]
+[node name="BuildTabIcon" type="TextureRect" parent="MarginContainer/HBoxContainer/CenterArea/BuildMode/TabColumn"]
 custom_minimum_size = Vector2(32, 32)
 layout_mode = 2
 expand_mode = 1
 stretch_mode = 5
 
-[node name="BuildGrid" type="GridContainer" parent="MarginContainer/HBoxContainer/CommandArea/BuildMode"]
+[node name="BuildGrid" type="GridContainer" parent="MarginContainer/HBoxContainer/CenterArea/BuildMode"]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 4
@@ -89,32 +84,41 @@ theme_override_constants/h_separation = 4
 theme_override_constants/v_separation = 2
 columns = 9
 
-[node name="SelectionMode" type="HBoxContainer" parent="MarginContainer/HBoxContainer/CommandArea"]
+[node name="SelectionMode" type="HBoxContainer" parent="MarginContainer/HBoxContainer/CenterArea"]
 visible = false
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 4
-theme_override_constants/separation = 10
+clip_contents = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 8
 
-[node name="Separator2" type="VSeparator" parent="MarginContainer/HBoxContainer/CommandArea"]
+[node name="Separator2" type="VSeparator" parent="MarginContainer/HBoxContainer"]
 layout_mode = 2
+size_flags_horizontal = 0
 theme_override_colors/separator = Color(0.42, 0.35, 0.24, 0.7)
 
-[node name="RightColumn" type="HBoxContainer" parent="MarginContainer/HBoxContainer/CommandArea"]
+[node name="RightColumn" type="HBoxContainer" parent="MarginContainer/HBoxContainer"]
+custom_minimum_size = Vector2(236, 0)
 layout_mode = 2
+size_flags_horizontal = 0
 size_flags_vertical = 4
 theme_override_constants/separation = 6
 alignment = 1
 
-[node name="StatusColumn" type="VBoxContainer" parent="MarginContainer/HBoxContainer/CommandArea/RightColumn"]
+[node name="StatusColumn" type="VBoxContainer" parent="MarginContainer/HBoxContainer/RightColumn"]
 custom_minimum_size = Vector2(118, 0)
 layout_mode = 2
+size_flags_horizontal = 0
 size_flags_vertical = 4
 alignment = 1
 
-[node name="Minimap" type="Control" parent="MarginContainer/HBoxContainer/CommandArea/RightColumn"]
+[node name="Minimap" type="Control" parent="MarginContainer/HBoxContainer/RightColumn"]
 custom_minimum_size = Vector2(112, 88)
 layout_mode = 2
+size_flags_horizontal = 0
 size_flags_vertical = 4
 mouse_filter = 0
 script = ExtResource("2_minimap")
