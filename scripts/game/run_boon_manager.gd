@@ -122,8 +122,8 @@ func offer_dawn_boons() -> void:
 	_used_this_dawn = true
 	_pending_choices = _roll_choices(3)
 	_awaiting_choice = true
-	if _day_night != null:
-		_day_night.automatic_cycle = false
+	# Keep the day clock running while the menu is open so players can't
+	# stall forever and farm resources indefinitely.
 	boon_choices_ready.emit(_pending_choices)
 
 
@@ -135,8 +135,6 @@ func select_boon(boon_id: String) -> void:
 	_awaiting_choice = false
 	_pending_choices.clear()
 	_apply_boon(boon_id)
-	if _day_night != null:
-		_day_night.automatic_cycle = true
 	boon_applied.emit(boon_id)
 
 
@@ -147,8 +145,6 @@ func debug_apply_boon(boon_id: String) -> bool:
 	if _awaiting_choice:
 		_awaiting_choice = false
 		_pending_choices.clear()
-		if _day_night != null:
-			_day_night.automatic_cycle = true
 	_apply_boon(boon_id)
 	boon_applied.emit(boon_id)
 	return true
