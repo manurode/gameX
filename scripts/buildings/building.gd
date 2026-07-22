@@ -1041,10 +1041,9 @@ func contains_command_point(world_point: Vector2) -> bool:
 func should_show_health_bar() -> bool:
 	if building_state == BuildingState.DESTROYED or hp <= 0:
 		return false
-	if building_state == BuildingState.CONSTRUCTING:
-		return true
-	if repair_in_progress:
-		return true
+	# Construction/repair already show ProgressBar; HP stays flat during build.
+	if building_state == BuildingState.CONSTRUCTING or repair_in_progress:
+		return false
 	if is_selected:
 		return true
 	if is_being_attacked():

@@ -89,7 +89,7 @@ func _draw() -> void:
 	var bg_rect := Rect2(-BAR_WIDTH * 0.5, 0.0, BAR_WIDTH, BAR_HEIGHT)
 	var fg_rect := Rect2(-BAR_WIDTH * 0.5, 0.0, BAR_WIDTH * ratio, BAR_HEIGHT)
 	draw_rect(bg_rect, Color(0.12, 0.08, 0.08, 0.88))
-	draw_rect(fg_rect, Color(0.88, 0.72, 0.28, 0.95))
+	draw_rect(fg_rect, Color(0.35, 0.75, 0.95, 0.95))
 	draw_rect(bg_rect, Color(0.0, 0.0, 0.0, 0.55), false, 1.0)
 
 	if _building.is_selected and _building.can_garrison:
