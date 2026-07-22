@@ -184,6 +184,8 @@ const DEFINITIONS: Dictionary = {
 		"visual_scale": 1.00,
 		"footprint": Vector2(105.0, 62.0),
 		"pick_half_size": Vector2(128.0, 128.0),
+		# Courtyard wall draws below the plant; keep exits on open grass.
+		"spawn_front_offset": 118.0,
 		"produces": ["knight_squad"],
 	},
 	"barracks": {
@@ -202,6 +204,7 @@ const DEFINITIONS: Dictionary = {
 		"visual_scale": 1.00,
 		"footprint": Vector2(105.0, 62.0),
 		"pick_half_size": Vector2(128.0, 128.0),
+		"spawn_front_offset": 118.0,
 		"produces": ["archer_squad"],
 	},
 	"arcanum": {
@@ -220,6 +223,7 @@ const DEFINITIONS: Dictionary = {
 		"visual_scale": 1.05,
 		"footprint": Vector2(110.0, 68.0),
 		"pick_half_size": Vector2(134.0, 134.0),
+		"spawn_front_offset": 125.0,
 		"produces": ["mage_squad"],
 	},
 	"tower": {

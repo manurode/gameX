@@ -6,23 +6,26 @@ var spawn_mode_active: bool = false
 var selected_unit_type: String = "knight"
 var spawn_valid: bool = false
 
-## Debug spawn hotkeys (F1–F9) stay inert until Ctrl+Shift+M unlocks them.
+## Debug hotkeys (F1–F9 spawn, F12 resources) stay inert until Ctrl+Shift+M unlocks them.
 var _spawn_hotkeys_unlocked: bool = false
 
 var _ghost_sprite: Sprite2D
 var _ground_layer: TinyTilesMap
 var _units_container: Node2D
 var _build_manager: Node
+var _resource_manager: ResourceManager
 
 
 func setup(
 	ground_layer: TinyTilesMap,
 	units_container: Node2D,
-	build_manager: Node = null
+	build_manager: Node = null,
+	resource_manager: ResourceManager = null
 ) -> void:
 	_ground_layer = ground_layer
 	_units_container = units_container
 	_build_manager = build_manager
+	_resource_manager = resource_manager
 	_create_ghost()
 
 
@@ -52,18 +55,19 @@ func _unhandled_input(event: InputEvent) -> void:
 			_spawn_hotkeys_unlocked = true
 			get_viewport().set_input_as_handled()
 			return
-		if (
-			OS.is_debug_build()
-			and _spawn_hotkeys_unlocked
-			and key_event.keycode in UnitDatabase.SPAWN_HOTKEYS
-		):
-			var type_id: String = UnitDatabase.SPAWN_HOTKEYS[key_event.keycode]
-			if type_id == "enemy":
-				_spawn_debug_enemy_at_cursor()
-			else:
-				_start_spawn_mode(type_id)
-			get_viewport().set_input_as_handled()
-			return
+		if OS.is_debug_build() and _spawn_hotkeys_unlocked:
+			if key_event.keycode == KEY_F12:
+				_add_debug_resources()
+				get_viewport().set_input_as_handled()
+				return
+			if key_event.keycode in UnitDatabase.SPAWN_HOTKEYS:
+				var type_id: String = UnitDatabase.SPAWN_HOTKEYS[key_event.keycode]
+				if type_id == "enemy":
+					_spawn_debug_enemy_at_cursor()
+				else:
+					_start_spawn_mode(type_id)
+				get_viewport().set_input_as_handled()
+				return
 
 	if not spawn_mode_active:
 		return
@@ -130,6 +134,12 @@ func _is_spawn_hotkey_unlock(key_event: InputEventKey) -> bool:
 		and not key_event.alt_pressed
 		and not key_event.meta_pressed
 	)
+
+
+func _add_debug_resources() -> void:
+	if _resource_manager == null:
+		return
+	_resource_manager.add_resources({"wood": 1000, "gold": 1000, "food": 1000})
 
 
 func _spawn_debug_enemy_at_cursor() -> void:

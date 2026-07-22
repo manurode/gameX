@@ -1210,10 +1210,11 @@ func _find_exit_position(reserved: Array[Vector2] = []) -> Vector2:
 					return candidate
 
 	# Walkable fallback if every slot is blocked by units/obstacles.
+	var clearance := _get_front_spawn_clearance()
 	var offsets: Array[Vector2] = [
-		Vector2(0.0, _footprint.y * 1.05),
-		Vector2(_footprint.x * 0.45, _footprint.y * 0.95),
-		Vector2(-_footprint.x * 0.45, _footprint.y * 0.95),
+		Vector2(0.0, clearance),
+		Vector2(_footprint.x * 0.45, clearance * 0.9),
+		Vector2(-_footprint.x * 0.45, clearance * 0.9),
 		Vector2(_footprint.x * 0.8, 0.0),
 		Vector2(-_footprint.x * 0.8, 0.0),
 		Vector2(0.0, -_footprint.y * 0.6),
@@ -1222,7 +1223,15 @@ func _find_exit_position(reserved: Array[Vector2] = []) -> Vector2:
 		var candidate := get_anchor_position() + offset
 		if _is_position_walkable(candidate):
 			return candidate
-	return get_anchor_position() + Vector2(0.0, _footprint.y * 1.05)
+	return get_anchor_position() + Vector2(0.0, clearance)
+
+
+## Distance south of the plant so spawned units clear courtyard walls / tall sprites.
+func _get_front_spawn_clearance() -> float:
+	var custom := float(_definition.get("spawn_front_offset", 0.0))
+	if custom > 0.0:
+		return custom
+	return _footprint.y * 0.95
 
 
 ## Grid of free slots in the courtyard / grass strip south of the footprint.
@@ -1232,7 +1241,7 @@ func _find_front_plaza_exit(
 	spacing: float
 ) -> Vector2:
 	# Start well below the courtyard wall/stairs so the building sprite never covers units.
-	var origin := get_anchor_position() + Vector2(0.0, _footprint.y * 0.95)
+	var origin := get_anchor_position() + Vector2(0.0, _get_front_spawn_clearance())
 	var half_span := _footprint.x * 0.55
 	for row in 8:
 		var y := origin.y + float(row) * spacing * 0.9

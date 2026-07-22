@@ -72,7 +72,7 @@ func on_ground_ready(ground: TinyTilesMap) -> void:
 	rebuild_navigation()
 
 	build_manager.setup(ground, buildings, resource_manager, selection_manager, job_manager)
-	unit_spawn_manager.setup(ground, units, build_manager)
+	unit_spawn_manager.setup(ground, units, build_manager, resource_manager)
 	build_manager.build_mode_changed.connect(_on_build_mode_changed)
 	unit_spawn_manager.spawn_mode_changed.connect(_on_spawn_mode_changed)
 	selection_manager.setup(buildings, resource_manager)
