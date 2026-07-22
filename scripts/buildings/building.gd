@@ -1183,32 +1183,73 @@ func _get_exit_positions(count: int) -> Array[Vector2]:
 
 func _find_exit_position(reserved: Array[Vector2] = []) -> Vector2:
 	var center := get_base_center()
-	var base_radius := maxf(_footprint.x, _footprint.y) * 0.85
 	var spacing := Unit.PERSONAL_SPACE_RADIUS * 2.0
-	var nearby := _get_nearby_unit_positions(center, base_radius + spacing * 5.0)
+	var search_radius := maxf(_footprint.x, _footprint.y) + spacing * 6.0
+	var nearby := _get_nearby_unit_positions(center, search_radius)
 
-	for ring in 8:
-		var ring_radius := base_radius + float(ring) * spacing * 0.9
-		var ring_capacity := maxi(6, int(TAU * ring_radius / spacing))
-		var angle_offset := float(ring) * (PI / float(ring_capacity) * 0.5)
-		for i in ring_capacity:
-			var angle := angle_offset + TAU * float(i) / float(ring_capacity)
-			var candidate: Vector2 = center + Vector2(cos(angle), sin(angle)) * ring_radius
-			if _is_spawn_slot_free(candidate, nearby, reserved):
-				return candidate
+	# Prefer the open plaza in front of the building (+Y = screen bottom) so
+	# tall sprites do not cover freshly spawned / ungarrisoned units.
+	var front := _find_front_plaza_exit(reserved, nearby, spacing)
+	if front != Vector2.INF:
+		return front
 
-	# Walkable fallback if every ring slot is blocked by units/obstacles.
+	# Fallback rings: try the front half (+Y) first, then the back half.
+	var base_radius := maxf(_footprint.x, _footprint.y) * 0.85
+	for prefer_front in [true, false]:
+		for ring in 8:
+			var ring_radius := base_radius + float(ring) * spacing * 0.9
+			var ring_capacity := maxi(6, int(TAU * ring_radius / spacing))
+			var angle_offset := float(ring) * (PI / float(ring_capacity) * 0.5)
+			for i in ring_capacity:
+				var angle := angle_offset + TAU * float(i) / float(ring_capacity)
+				var goes_front := sin(angle) >= 0.0
+				if goes_front != prefer_front:
+					continue
+				var candidate: Vector2 = center + Vector2(cos(angle), sin(angle)) * ring_radius
+				if _is_spawn_slot_free(candidate, nearby, reserved):
+					return candidate
+
+	# Walkable fallback if every slot is blocked by units/obstacles.
 	var offsets: Array[Vector2] = [
+		Vector2(0.0, _footprint.y * 1.05),
+		Vector2(_footprint.x * 0.45, _footprint.y * 0.95),
+		Vector2(-_footprint.x * 0.45, _footprint.y * 0.95),
 		Vector2(_footprint.x * 0.8, 0.0),
 		Vector2(-_footprint.x * 0.8, 0.0),
-		Vector2(0.0, _footprint.y * 0.6),
 		Vector2(0.0, -_footprint.y * 0.6),
 	]
 	for offset in offsets:
 		var candidate := get_anchor_position() + offset
 		if _is_position_walkable(candidate):
 			return candidate
-	return get_anchor_position() + Vector2(_footprint.x * 0.8, 0.0)
+	return get_anchor_position() + Vector2(0.0, _footprint.y * 1.05)
+
+
+## Grid of free slots in the courtyard / grass strip south of the footprint.
+func _find_front_plaza_exit(
+	reserved: Array[Vector2],
+	nearby: Array[Vector2],
+	spacing: float
+) -> Vector2:
+	# Start well below the courtyard wall/stairs so the building sprite never covers units.
+	var origin := get_anchor_position() + Vector2(0.0, _footprint.y * 0.95)
+	var half_span := _footprint.x * 0.55
+	for row in 8:
+		var y := origin.y + float(row) * spacing * 0.9
+		var cols := maxi(5, int(half_span * 2.0 / spacing) + 1 + row)
+		for i in cols:
+			# Center-out left/right so successive spawns fan across the plaza.
+			var signed_col := 0
+			if i > 0:
+				signed_col = (i + 1) / 2 if (i % 2) == 1 else -i / 2
+			var x := origin.x + float(signed_col) * spacing
+			var max_x := half_span + float(row) * spacing * 0.3
+			if absf(x - origin.x) > max_x:
+				continue
+			var candidate := Vector2(x, y)
+			if _is_spawn_slot_free(candidate, nearby, reserved):
+				return candidate
+	return Vector2.INF
 
 
 func _get_nearby_unit_positions(center: Vector2, radius: float) -> Array[Vector2]:

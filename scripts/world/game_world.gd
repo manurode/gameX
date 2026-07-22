@@ -124,25 +124,27 @@ func _apply_meta_start_buildings() -> void:
 
 
 func _apply_meta_start_army() -> void:
-	_spawn_starter_military(KNIGHT_SCENE, "knight", MetaProgression.get_starter_knight_count(), Vector2i(-2, -2))
-	_spawn_starter_military(ARCHER_SCENE, "archer", MetaProgression.get_starter_archer_count(), Vector2i(2, -2))
-	_spawn_starter_military(MAGE_SCENE, "mage", MetaProgression.get_starter_mage_count(), Vector2i(0, -3))
+	# Positive cell Y keeps starter army in front of the town center (+world Y).
+	_spawn_starter_military(KNIGHT_SCENE, "knight", MetaProgression.get_starter_knight_count(), Vector2i(-2, 2))
+	_spawn_starter_military(ARCHER_SCENE, "archer", MetaProgression.get_starter_archer_count(), Vector2i(2, 2))
+	_spawn_starter_military(MAGE_SCENE, "mage", MetaProgression.get_starter_mage_count(), Vector2i(0, 3))
 
 
 func _spawn_starting_settlement(ground: TinyTilesMap) -> void:
 	var center_cell := ground.get_town_center_cell()
 	_town_center = _spawn_building("town_center", center_cell, ground, Building.BuildingState.ACTIVE, 1.0)
 
+	# Spawn villagers on the front plaza so the town-center sprite does not hide them.
 	var villager_offsets: Array[Vector2i] = [
-		Vector2i(-1, 0),
-		Vector2i(1, 0),
-		Vector2i(0, -1),
+		Vector2i(0, 1),
 		Vector2i(-1, 1),
 		Vector2i(1, 1),
+		Vector2i(-1, 2),
+		Vector2i(1, 2),
 	]
 	var extra := MetaProgression.get_extra_villagers()
 	if extra > 0:
-		villager_offsets.append(Vector2i(0, 1))
+		villager_offsets.append(Vector2i(0, 2))
 	var villager_cells: Array[Vector2i] = []
 	for offset in villager_offsets:
 		villager_cells.append(center_cell + offset)
@@ -326,11 +328,11 @@ func spawn_bonus_villagers(count: int) -> void:
 
 
 func spawn_bonus_archers(count: int) -> void:
-	_spawn_bonus_military(ARCHER_SCENE, "archer", count, Vector2i(-1, -2))
+	_spawn_bonus_military(ARCHER_SCENE, "archer", count, Vector2i(-1, 2))
 
 
 func spawn_bonus_knights(count: int) -> void:
-	_spawn_bonus_military(KNIGHT_SCENE, "knight", count, Vector2i(-1, -3))
+	_spawn_bonus_military(KNIGHT_SCENE, "knight", count, Vector2i(-1, 3))
 
 
 func _spawn_starter_military(
