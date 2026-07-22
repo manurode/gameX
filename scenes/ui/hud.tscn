@@ -31,22 +31,31 @@ mouse_filter = 1
 theme_override_constants/margin_left = 12
 theme_override_constants/margin_top = 8
 
-[node name="VBoxContainer" type="VBoxContainer" parent="TopLeft/MarginContainer"]
+[node name="CyclePanel" type="PanelContainer" parent="TopLeft/MarginContainer"]
 layout_mode = 2
-theme_override_constants/separation = 4
+size_flags_horizontal = 0
+size_flags_vertical = 0
+mouse_filter = 2
 
-[node name="CycleButton" type="Button" parent="TopLeft/MarginContainer/VBoxContainer"]
-custom_minimum_size = Vector2(140, 26)
+[node name="VBoxContainer" type="VBoxContainer" parent="TopLeft/MarginContainer/CyclePanel"]
 layout_mode = 2
-text = "☀ Día"
+theme_override_constants/separation = 2
+mouse_filter = 2
 
-[node name="HelpLabel" type="Label" parent="TopLeft/MarginContainer/VBoxContainer"]
+[node name="CycleButton" type="Button" parent="TopLeft/MarginContainer/CyclePanel/VBoxContainer"]
+custom_minimum_size = Vector2(140, 0)
 layout_mode = 2
 mouse_filter = 2
-theme_override_colors/font_color = Color(0.9, 0.9, 0.9, 0.85)
-theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.6)
-theme_override_constants/shadow_offset_x = 1
-theme_override_constants/shadow_offset_y = 1
+focus_mode = 0
+disabled = true
+flat = true
+alignment = 0
+text = "☀ Día"
+
+[node name="HelpLabel" type="Label" parent="TopLeft/MarginContainer/CyclePanel/VBoxContainer"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.78, 0.74, 0.64, 1)
 theme_override_font_sizes/font_size = 11
 text = "Esc: cancelar  |  WASD: cámara"
 

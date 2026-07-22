@@ -646,8 +646,8 @@ func _is_pointer_over_ui(screen_pos: Vector2) -> bool:
 	if hud == null:
 		return false
 
-	var cycle_button := hud.get_node_or_null("TopLeft/MarginContainer/VBoxContainer/CycleButton")
-	if cycle_button is Control and (cycle_button as Control).get_global_rect().has_point(screen_pos):
+	var cycle_panel := hud.get_node_or_null("TopLeft/MarginContainer/CyclePanel")
+	if cycle_panel is Control and (cycle_panel as Control).get_global_rect().has_point(screen_pos):
 		return true
 
 	var top_left := hud.get_node_or_null("TopLeft/MarginContainer")

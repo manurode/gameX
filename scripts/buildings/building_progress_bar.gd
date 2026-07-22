@@ -26,10 +26,7 @@ func _draw() -> void:
 	var bg_rect := Rect2(-BAR_WIDTH * 0.5, 0.0, BAR_WIDTH, BAR_HEIGHT)
 	var fg_rect := Rect2(-BAR_WIDTH * 0.5, 0.0, BAR_WIDTH * ratio, BAR_HEIGHT)
 	draw_rect(bg_rect, Color(0.1, 0.1, 0.12, 0.9))
-	var fill := Color(0.35, 0.75, 0.95, 0.95)
-	if _building.repair_in_progress:
-		fill = Color(0.45, 0.85, 0.55, 0.95)
-	draw_rect(fg_rect, fill)
+	draw_rect(fg_rect, Color(0.35, 0.75, 0.95, 0.95))
 	draw_rect(bg_rect, Color(0.0, 0.0, 0.0, 0.55), false, 1.0)
 
 
@@ -65,5 +62,8 @@ func _current_progress() -> float:
 	if _building.building_state == Building.BuildingState.CONSTRUCTING:
 		return clampf(_building.construction_progress, 0.0, 1.0)
 	if _building.repair_in_progress:
-		return clampf(_building.get_repair_progress_ratio(), 0.0, 1.0)
+		# Show current HP fill so repair continues from damage, not from empty.
+		if _building.max_hp <= 0:
+			return -1.0
+		return clampf(float(_building.hp) / float(_building.max_hp), 0.0, 1.0)
 	return -1.0

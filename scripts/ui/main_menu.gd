@@ -159,7 +159,10 @@ func _build_title_screen() -> void:
 	vbox.add_child(rule)
 
 	var tagline := Label.new()
-	tagline.text = "Sobrevive %d noches en tu asentamiento." % BalanceConfig.WIN_NIGHTS
+	tagline.text = (
+		"Defiende tu Centro Urbano. Sobrevive %d noches."
+		% BalanceConfig.WIN_NIGHTS
+	)
 	tagline.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	tagline.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tagline.add_theme_font_size_override("font_size", 16)

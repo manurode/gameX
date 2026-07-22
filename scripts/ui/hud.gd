@@ -2,8 +2,9 @@ extends CanvasLayer
 
 const MENU_SCENE := "res://scenes/ui/main_menu.tscn"
 
-@onready var help_label: Label = $TopLeft/MarginContainer/VBoxContainer/HelpLabel
-@onready var cycle_button: Button = $TopLeft/MarginContainer/VBoxContainer/CycleButton
+@onready var help_label: Label = $TopLeft/MarginContainer/CyclePanel/VBoxContainer/HelpLabel
+@onready var cycle_button: Button = $TopLeft/MarginContainer/CyclePanel/VBoxContainer/CycleButton
+@onready var cycle_panel: PanelContainer = $TopLeft/MarginContainer/CyclePanel
 
 var game_hub: PanelContainer
 var minimap: Control
@@ -34,8 +35,7 @@ var _last_cycle_ui_seconds := -1
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_resolve_hub_nodes()
-	if cycle_button != null:
-		cycle_button.disabled = true
+	_style_cycle_panel()
 	_create_event_banner()
 	_create_boon_overlay()
 	_create_debug_boon_overlay()
@@ -129,6 +129,7 @@ func setup(
 		_day_night_manager.cycle_changed.connect(_on_cycle_changed)
 		_day_night_manager.phase_time_changed.connect(_on_phase_time_changed)
 		_update_cycle_ui(_day_night_manager.current_phase)
+		_update_help_for_cycle()
 
 	if _night_wave_manager != null:
 		_night_wave_manager.wave_warning.connect(_on_wave_warning)
@@ -146,6 +147,43 @@ func setup(
 		_game_state_manager.run_ended.connect(_on_run_ended)
 		if not _game_state_manager.game_over.is_connected(_on_game_over_legacy):
 			_game_state_manager.game_over.connect(_on_game_over_legacy)
+
+
+func _make_info_panel_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.09, 0.07, 0.055, 0.94)
+	style.border_color = Color(0.72, 0.58, 0.32, 1.0)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(8)
+	style.shadow_color = Color(0, 0, 0, 0.4)
+	style.shadow_size = 8
+	style.shadow_offset = Vector2(0, 3)
+	style.set_content_margin_all(8)
+	return style
+
+
+func _style_cycle_panel() -> void:
+	if cycle_panel != null:
+		cycle_panel.add_theme_stylebox_override("panel", _make_info_panel_style())
+		cycle_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if cycle_button == null:
+		return
+	cycle_button.disabled = true
+	cycle_button.flat = true
+	cycle_button.focus_mode = Control.FOCUS_NONE
+	cycle_button.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	cycle_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	var empty := StyleBoxEmpty.new()
+	for style_name in ["normal", "hover", "pressed", "disabled", "focus"]:
+		cycle_button.add_theme_stylebox_override(style_name, empty)
+	cycle_button.add_theme_font_size_override("font_size", 12)
+	cycle_button.add_theme_color_override("font_color", Color(0.9, 0.86, 0.74))
+	cycle_button.add_theme_color_override("font_disabled_color", Color(0.9, 0.86, 0.74))
+	cycle_button.add_theme_color_override("font_hover_color", Color(0.9, 0.86, 0.74))
+	cycle_button.add_theme_color_override("font_pressed_color", Color(0.9, 0.86, 0.74))
+	if help_label != null:
+		help_label.add_theme_color_override("font_color", Color(0.78, 0.74, 0.64))
+		help_label.add_theme_font_size_override("font_size", 11)
 
 
 func _create_event_banner() -> void:
@@ -188,16 +226,7 @@ func _create_foresight_label() -> void:
 	_foresight_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	_foresight_panel.grow_vertical = Control.GROW_DIRECTION_END
 
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.09, 0.07, 0.055, 0.94)
-	style.border_color = Color(0.72, 0.58, 0.32, 1.0)
-	style.set_border_width_all(2)
-	style.set_corner_radius_all(8)
-	style.shadow_color = Color(0, 0, 0, 0.4)
-	style.shadow_size = 8
-	style.shadow_offset = Vector2(0, 3)
-	style.set_content_margin_all(8)
-	_foresight_panel.add_theme_stylebox_override("panel", style)
+	_foresight_panel.add_theme_stylebox_override("panel", _make_info_panel_style())
 
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 2)
@@ -663,7 +692,12 @@ func _update_cycle_ui(phase: DayNightManager.CyclePhase, force: bool = false) ->
 		_day_night_manager.nights_survived,
 		BalanceConfig.WIN_NIGHTS,
 	]
-	cycle_button.tooltip_text = "Quedan %d noche(s) para la victoria" % nights_left
+	cycle_button.tooltip_text = (
+		"Defiende el Centro Urbano. Si cae, pierdes.\nQuedan %d noche(s) para la victoria"
+		% nights_left
+	)
+	if cycle_panel != null:
+		cycle_panel.tooltip_text = cycle_button.tooltip_text
 
 
 func _on_phase_time_changed(_seconds_remaining: float) -> void:
@@ -691,7 +725,7 @@ func _on_wave_started(enemy_count: int, _modifier_id: int = 0) -> void:
 	if help_label != null:
 		help_label.set_deferred(
 			"text",
-			"NOCHE — %d enemigos atacan. La construcción está bloqueada." % enemy_count
+			"NOCHE — %d enemigos atacan. Protege el Centro Urbano." % enemy_count
 		)
 
 
@@ -758,7 +792,7 @@ func _update_help_for_cycle() -> void:
 			):
 				help_label.text = "EQUINOCCIO — Día eterno. Puedes seguir construyendo."
 			else:
-				help_label.text = "NOCHE — Protege el Centro Urbano. Construcción bloqueada."
+				help_label.text = "NOCHE — Protege el Centro Urbano. Si cae, pierdes."
 		DayNightManager.CyclePhase.DUSK:
 			if (
 				_run_boon_manager != null
@@ -771,6 +805,6 @@ func _update_help_for_cycle() -> void:
 			help_label.text = "AMANECER — Elige una bendición y reorganiza la base."
 		_:
 			help_label.text = (
-				"DÍA — Recolecta y fortifica  |  Sobrevive %d noches"
+				"Defiende el Centro Urbano · Si cae, pierdes  |  Sobrevive %d noches"
 				% BalanceConfig.WIN_NIGHTS
 			)
