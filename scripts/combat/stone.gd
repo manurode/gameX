@@ -80,11 +80,15 @@ func _on_body_entered(body: Node2D) -> void:
 		_hit_building(building)
 
 
+func _valid_shooter() -> Unit:
+	return shooter if is_instance_valid(shooter) else null
+
+
 func _hit_unit(unit: Unit) -> void:
 	if _has_hit:
 		return
 	_has_hit = true
-	unit.take_damage(damage, shooter)
+	unit.take_damage(damage, _valid_shooter())
 	queue_free()
 
 
@@ -92,5 +96,5 @@ func _hit_building(building: Building) -> void:
 	if _has_hit:
 		return
 	_has_hit = true
-	building.take_damage(damage, shooter)
+	building.take_damage(damage, _valid_shooter())
 	queue_free()

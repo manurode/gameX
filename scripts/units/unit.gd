@@ -909,25 +909,29 @@ func _get_combat_world() -> Node:
 	return get_tree().current_scene
 
 
-func take_damage(amount: int, attacker: Unit = null) -> void:
+func take_damage(amount: int, attacker = null) -> void:
+	# Untyped: projectiles may still hold a freed shooter ref; typed Unit args reject those.
+	var source: Unit = null
+	if is_instance_valid(attacker) and attacker is Unit:
+		source = attacker as Unit
 	if _is_dying or hp <= 0:
 		return
 	# Garrisoned units are protected; attackers must hit the building instead.
 	if garrisoned_building != null and is_instance_valid(garrisoned_building):
 		return
-	if attacker != null and is_instance_valid(attacker) and not is_hostile_to(attacker):
+	if source != null and not is_hostile_to(source):
 		return
 
 	hp = maxi(0, hp - amount)
 	_last_damage_time = Time.get_ticks_msec()
 	health_changed.emit(hp, max_hp)
-	_play_hit_reaction(attacker)
+	_play_hit_reaction(source)
 
 	if hp <= 0:
 		_die()
 		return
 
-	_handle_auto_defense(attacker)
+	_handle_auto_defense(source)
 
 
 func _handle_auto_defense(attacker: Unit) -> void:

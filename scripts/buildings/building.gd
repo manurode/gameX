@@ -1364,23 +1364,27 @@ func _notify_building_ready() -> void:
 		(production_manager as ProductionManager).register_producer(self)
 
 
-func take_damage(amount: int, attacker: Unit = null) -> void:
+func take_damage(amount: int, attacker = null) -> void:
+	# Untyped: projectiles may still hold a freed shooter ref; typed Unit args reject those.
+	var source: Unit = null
+	if is_instance_valid(attacker) and attacker is Unit:
+		source = attacker as Unit
 	if not can_be_damaged():
 		return
-	if attacker != null and is_instance_valid(attacker):
-		if not Team.are_hostile(team_id, attacker.team_id):
+	if source != null:
+		if not Team.are_hostile(team_id, source.team_id):
 			return
-		if attacker.garrisoned_building == self:
+		if source.garrisoned_building == self:
 			return
 
 	hp = maxi(0, hp - amount)
 	_last_damage_time = Time.get_ticks_msec()
 	health_changed.emit(hp, max_hp)
 	_update_visual_damage()
-	_play_hit_effect(attacker)
-	_try_garrison_self_defense(attacker)
-	if attacker is EnemyUnit:
-		(attacker as EnemyUnit).notify_building_hit(self)
+	_play_hit_effect(source)
+	_try_garrison_self_defense(source)
+	if source is EnemyUnit:
+		(source as EnemyUnit).notify_building_hit(self)
 
 	if hp <= 0:
 		_destroy()

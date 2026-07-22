@@ -53,10 +53,11 @@ func _fire() -> void:
 	emit_origin = origin
 	global_position = origin
 
+	var valid_shooter: Unit = shooter if is_instance_valid(shooter) else null
 	var primary_point := origin + Vector2(40.0, 0.0)
 	if target != null and _can_hit_unit(target):
 		primary_point = target.get_sprite_center()
-		target.take_damage(damage, shooter)
+		target.take_damage(damage, valid_shooter)
 		_impact_points.append(primary_point)
 		_segments.append({
 			"from": origin,
@@ -68,7 +69,7 @@ func _fire() -> void:
 		_apply_chain_branches(target, primary_point)
 	elif building_target != null and _can_hit_building(building_target):
 		primary_point = building_target.get_attack_point()
-		building_target.take_damage(damage, shooter)
+		building_target.take_damage(damage, valid_shooter)
 		_impact_points.append(primary_point)
 		_segments.append({
 			"from": origin,
@@ -123,7 +124,7 @@ func _apply_chain_branches(primary: Unit, primary_point: Vector2) -> void:
 			break
 		var enemy: Unit = entry.unit
 		var hit_point := enemy.get_sprite_center()
-		enemy.take_damage(chain_damage, shooter)
+		enemy.take_damage(chain_damage, shooter if is_instance_valid(shooter) else null)
 		_impact_points.append(hit_point)
 		_segments.append({
 			"from": primary_point,
