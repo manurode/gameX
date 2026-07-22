@@ -34,8 +34,8 @@ const STONE_SCENE: PackedScene = preload("res://scenes/combat/stone.tscn")
 const FIREBALL_SCENE: PackedScene = preload("res://scenes/combat/fireball.tscn")
 const SEPARATION_UPDATE_INTERVAL := 0.08
 ## Soft push so units never settle on the exact same world point.
-const STACK_CLEAR_RADIUS := 16.0
-const STACK_PUSH_SPEED := 48.0
+const STACK_CLEAR_RADIUS := 20.0
+const STACK_PUSH_SPEED := 55.0
 const FORMATION_SLOT_SPACING := 22.0
 const NIGHT_LIGHT_COLOR := Color(1.0, 0.78, 0.48)
 const NIGHT_LIGHT_ENERGY := 1.15
@@ -1208,26 +1208,32 @@ func _physics_process(delta: float) -> void:
 
 	if _unit_state == UnitState.GARRISON_APPROACH:
 		_process_garrison_approach(delta)
+		_update_terrain_feedback(delta)
 		return
 
 	if _unit_state == UnitState.RECRUITING and recruitment_building != null:
 		_process_recruitment(delta)
+		_update_terrain_feedback(delta)
 		return
 
 	if _unit_state == UnitState.GATHERING and gather_target != null:
 		_process_gathering(delta)
+		_update_terrain_feedback(delta)
 		return
 
 	if _unit_state == UnitState.DEPOSITING and gather_building != null:
 		_process_depositing(delta)
+		_update_terrain_feedback(delta)
 		return
 
 	if _unit_state == UnitState.CONSTRUCTING and construction_target != null:
 		_process_construction(delta)
+		_update_terrain_feedback(delta)
 		return
 
 	if _unit_state == UnitState.REPAIRING and repair_target != null:
 		_process_repair(delta)
+		_update_terrain_feedback(delta)
 		return
 
 	if _unit_state == UnitState.ATTACKING or _is_attack_animating:

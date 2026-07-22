@@ -55,6 +55,7 @@ var _food_ui_timer := 0.0
 var _production_queue_label: Label
 var _production_progress_label: Label
 var _production_pending_label: Label
+var _production_status_label: Label
 var _production_panel_key: String = ""
 var _production_feedback_text: String = ""
 var _production_feedback_timer: float = 0.0
@@ -275,11 +276,30 @@ func _ensure_selection_ui() -> void:
 	_selection_meta.autowrap_mode = TextServer.AUTOWRAP_OFF
 	titles.add_child(_selection_meta)
 
+	# Fixed-height status slot under building info: never reflows ActionsPanel.
+	var status_slot := Control.new()
+	status_slot.name = "ProductionStatusSlot"
+	status_slot.custom_minimum_size = Vector2(0, 30)
+	status_slot.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	status_slot.clip_contents = true
+	_selection_info.add_child(status_slot)
+
+	_production_status_label = Label.new()
+	_production_status_label.name = "ProductionStatus"
+	_production_status_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_production_status_label.add_theme_font_size_override("font_size", 10)
+	_production_status_label.add_theme_color_override("font_color", Color(1.0, 0.78, 0.48, 0.0))
+	_production_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_production_status_label.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	_production_status_label.clip_text = false
+	_production_status_label.text = ""
+	status_slot.add_child(_production_status_label)
+
 	_actions_panel = PanelContainer.new()
 	_actions_panel.name = "ActionsPanel"
 	_actions_panel.clip_contents = true
 	_actions_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_actions_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_actions_panel.size_flags_vertical = Control.SIZE_SHRINK_END
 	_actions_panel.add_theme_stylebox_override("panel", _make_inner_panel_style())
 	_selection_mode.add_child(_actions_panel)
 
@@ -299,6 +319,8 @@ func _ensure_selection_ui() -> void:
 	_production_title = Label.new()
 	_production_title.add_theme_font_size_override("font_size", 11)
 	_production_title.add_theme_color_override("font_color", COL_GOLD_SOFT)
+	_production_title.clip_text = true
+	_production_title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	_production_box.add_child(_production_title)
 
 	_selection_actions = HBoxContainer.new()
@@ -337,22 +359,11 @@ func _ensure_selection_ui() -> void:
 	_market_box.add_child(_market_limit_label)
 
 	_production_queue_label = Label.new()
-	_production_queue_label.add_theme_font_size_override("font_size", 10)
-	_production_queue_label.add_theme_color_override("font_color", COL_MUTED)
 	_production_queue_label.visible = false
-	_production_box.add_child(_production_queue_label)
-
 	_production_progress_label = Label.new()
-	_production_progress_label.add_theme_font_size_override("font_size", 10)
-	_production_progress_label.add_theme_color_override("font_color", COL_CREAM)
 	_production_progress_label.visible = false
-	_production_box.add_child(_production_progress_label)
-
 	_production_pending_label = Label.new()
-	_production_pending_label.add_theme_font_size_override("font_size", 10)
-	_production_pending_label.add_theme_color_override("font_color", Color(1.0, 0.7, 0.5))
 	_production_pending_label.visible = false
-	_production_box.add_child(_production_pending_label)
 
 
 func _build_command_grid() -> void:
@@ -781,6 +792,12 @@ func _rebuild_production_item_buttons(items: Array[String]) -> void:
 			" · genera 2 unidades" if _has_production_double() else "",
 		]
 		button.pressed.connect(_on_production_pressed.bind(item_id))
+		# Fixed bottom padding so text does not jump when the bar appears.
+		var style_names := ["normal", "hover", "pressed", "disabled"]
+		for style_name in style_names:
+			var style: StyleBoxFlat = button.get_theme_stylebox(style_name) as StyleBoxFlat
+			if style != null:
+				style.content_margin_bottom = 12.0
 		var progress_bar := _create_production_progress_bar()
 		button.add_child(progress_bar)
 		button.set_meta("progress_bar", progress_bar)
@@ -919,27 +936,44 @@ func _update_production_status_labels() -> void:
 		if queued_count > 0:
 			button.text += "\n(x%d)" % queued_count
 
-	var queue := _production_manager.get_queue(_selected_building)
-	if queue.size() > 0:
-		_production_queue_label.visible = true
-		_production_queue_label.text = "En cola: %d" % queue.size()
-	else:
-		_production_queue_label.visible = false
-
 	_update_production_progress_label()
 
-	if not _production_feedback_text.is_empty():
-		_production_pending_label.text = _production_feedback_text
-		_production_pending_label.visible = true
+
+func _set_production_status_message(text: String) -> void:
+	if _production_status_label == null:
+		return
+	# Keep reserved height even when empty so the hub never jumps.
+	_production_status_label.text = text
+	if text.is_empty():
+		_production_status_label.add_theme_color_override("font_color", Color(1.0, 0.78, 0.48, 0.0))
 	else:
-		var pending := _production_manager.get_pending_recruitment(_selected_building)
-		if not pending.is_empty() and pending.get("count", 0) > 0:
-			var pending_def := EquipmentDatabase.get_definition(pending.get("item_id", ""))
-			var pending_name: String = pending_def.get("name", "equipo")
-			_production_pending_label.text = "Esperando %d aldeano(s) para %s" % [pending.count, pending_name]
-			_production_pending_label.visible = true
-		else:
-			_production_pending_label.visible = false
+		_production_status_label.add_theme_color_override("font_color", Color(1.0, 0.78, 0.48, 1.0))
+
+
+func _resolve_production_status_message(_queue: Array, current: Dictionary = {}) -> String:
+	if not _production_feedback_text.is_empty():
+		return _production_feedback_text
+
+	if not current.is_empty():
+		if not current.get("paid", true):
+			return "Esperando recursos..."
+		var time_total: float = maxf(float(current.get("time_total", 1.0)), 0.1)
+		var progress: float = float(current.get("progress", 0.0))
+		if progress >= time_total:
+			var item_id: String = current.get("item_id", "")
+			var def := EquipmentDatabase.get_definition(item_id)
+			if def.get("transforms_to", "").is_empty() \
+					and _population_manager != null \
+					and not _population_manager.can_add_population():
+				return "Falta espacio de población — construye casas"
+
+	var pending := _production_manager.get_pending_recruitment(_selected_building)
+	if not pending.is_empty() and pending.get("count", 0) > 0:
+		var pending_def := EquipmentDatabase.get_definition(pending.get("item_id", ""))
+		var pending_name: String = pending_def.get("name", "equipo")
+		return "Esperando %d aldeano(s) para %s" % [pending.count, pending_name]
+
+	return ""
 
 
 func _create_production_progress_bar() -> ProgressBar:
@@ -948,14 +982,14 @@ func _create_production_progress_bar() -> ProgressBar:
 	bar.show_percentage = false
 	bar.max_value = 1.0
 	bar.value = 0.0
-	bar.visible = false
 	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bar.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	bar.offset_left = 4.0
 	bar.offset_right = -4.0
 	bar.offset_top = -8.0
 	bar.offset_bottom = -3.0
-	bar.custom_minimum_size = Vector2(0, 5)
+	# Always occupy the same slot; empty fill when idle so layout never shifts.
+	bar.modulate.a = 0.35
 
 	var bg := StyleBoxFlat.new()
 	bg.bg_color = Color(0.08, 0.06, 0.04, 0.95)
@@ -972,66 +1006,67 @@ func _create_production_progress_bar() -> ProgressBar:
 	return bar
 
 
+func _set_production_button_progress(button: Button, ratio: float, active: bool, status_tooltip: String = "") -> void:
+	var bar: ProgressBar = button.get_meta("progress_bar", null)
+	if bar != null:
+		bar.value = ratio if active else 0.0
+		bar.modulate.a = 1.0 if active else 0.35
+	if active and not status_tooltip.is_empty():
+		button.tooltip_text = status_tooltip
+	elif button.has_meta("base_tooltip"):
+		button.tooltip_text = button.get_meta("base_tooltip")
+
+
 func _clear_production_button_progress() -> void:
 	for item_id in _production_item_buttons:
 		var button: Button = _production_item_buttons[item_id]
 		if button == null or not is_instance_valid(button):
 			continue
-		var bar: ProgressBar = button.get_meta("progress_bar", null)
-		if bar != null:
-			bar.visible = false
-			bar.value = 0.0
-		if button.has_meta("base_tooltip"):
-			button.tooltip_text = button.get_meta("base_tooltip")
+		_set_production_button_progress(button, 0.0, false)
 
 
 func _update_production_progress_label() -> void:
-	if _production_progress_label == null or _production_manager == null or _selected_building == null:
+	if _production_manager == null or _selected_building == null:
+		_set_production_status_message("")
 		return
 
 	var queue := _production_manager.get_queue(_selected_building)
 	if queue.is_empty():
-		_production_progress_label.visible = false
 		_clear_production_button_progress()
+		_set_production_status_message(_resolve_production_status_message(queue))
 		return
 
 	var current: Dictionary = queue[0]
 	var active_item_id: String = current.get("item_id", "")
-	if not current.get("paid", true):
-		_production_progress_label.text = "Esperando recursos..."
-		_production_progress_label.visible = true
-		_clear_production_button_progress()
-		return
-
 	var time_total: float = maxf(float(current.get("time_total", 1.0)), 0.1)
 	var progress: float = float(current.get("progress", 0.0))
-	if progress >= time_total:
-		var def := EquipmentDatabase.get_definition(active_item_id)
-		if def.get("transforms_to", "").is_empty() \
-				and _population_manager != null \
-				and not _population_manager.can_add_population():
-			_production_progress_label.text = "Esperando espacio de población..."
-			_production_progress_label.visible = true
-			_clear_production_button_progress()
-			return
+	var ratio: float = 0.0
+	var status_tooltip := ""
+	var status_message := _resolve_production_status_message(queue, current)
 
-	# Progress lives on the unit button so the hub height stays stable.
-	_production_progress_label.visible = false
-	var ratio: float = clampf(progress / time_total, 0.0, 1.0)
-	var remaining: float = maxf(time_total - progress, 0.0)
+	if not current.get("paid", true):
+		status_tooltip = status_message
+	elif progress >= time_total:
+		ratio = 1.0
+		status_tooltip = status_message if not status_message.is_empty() else "Produciendo... 100%"
+	else:
+		ratio = clampf(progress / time_total, 0.0, 1.0)
+		var remaining: float = maxf(time_total - progress, 0.0)
+		status_tooltip = "Produciendo... %d%% · %.1f s" % [int(ratio * 100.0), remaining]
+
+	_set_production_status_message(status_message)
+
 	for item_id in _production_item_buttons:
 		var button: Button = _production_item_buttons[item_id]
 		if button == null or not is_instance_valid(button):
 			continue
-		var bar: ProgressBar = button.get_meta("progress_bar", null)
 		var is_active: bool = str(item_id) == active_item_id
-		if bar != null:
-			bar.visible = is_active
-			bar.value = ratio if is_active else 0.0
-		if is_active:
-			button.tooltip_text = "Produciendo... %d%% · %.1f s" % [int(ratio * 100.0), remaining]
-		elif button.has_meta("base_tooltip"):
-			button.tooltip_text = button.get_meta("base_tooltip")
+		_set_production_button_progress(
+			button,
+			ratio if is_active else 0.0,
+			is_active,
+			status_tooltip if is_active else ""
+		)
 
 
 func _on_production_pressed(item_id: String) -> void:
@@ -1055,6 +1090,7 @@ func _show_build_mode() -> void:
 		_build_mode.visible = true
 	if _selection_mode != null:
 		_selection_mode.visible = false
+	_set_production_status_message("")
 	if _build_tab_icon != null:
 		_build_tab_icon.texture = _make_icon_atlas(TEX_HAMMER)
 
