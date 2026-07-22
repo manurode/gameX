@@ -3,12 +3,12 @@ extends RefCounted
 
 const DEFAULT_MAP_SIZE := Vector2i(64, 64)
 const BASE_MAP_AREA := 64 * 64
-## Land disk around the Centro Urbano where water is forbidden (scaled for 64×64).
+## Land disk around the Ciudadela where water is forbidden (scaled for 64×64).
 ## Slightly larger than the settlement so starter units do not spawn into lakes.
 const BASE_TOWN_CLEAR_RADIUS := 9.5
 const BASE_CONTENT_CLEAR_RADIUS := 9.0
 ## Open plaza south of the town (+cell Y = screen-front). Keeps lake/forest/mountain
-## sprites from drawing over the Centro Urbano. Sides and north stay unrestricted.
+## sprites from drawing over the Ciudadela. Sides and north stay unrestricted.
 const BASE_FRONT_CLEAR_HALF_WIDTH := 11.0
 const BASE_FRONT_CLEAR_DEPTH := 18.0
 ## Extra cells a tall lake/forest/mountain sprite reaches north (-Y) from its origin.
@@ -657,7 +657,7 @@ func _get_large_prop_visual_north() -> float:
 
 
 func _is_in_town_front_apron(cell: Vector2i, town_center: Vector2i) -> bool:
-	## Rectangular plaza directly south of the Centro Urbano (+Y = screen-front).
+	## Rectangular plaza directly south of the Ciudadela (+Y = screen-front).
 	## No restriction to the sides or behind the building.
 	var dy := float(cell.y - town_center.y)
 	if dy <= 0.0 or dy > _get_front_clear_depth():

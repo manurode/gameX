@@ -817,7 +817,7 @@ func _rebuild_market_buttons(show_market: bool) -> void:
 		var button := Button.new()
 		button.text = _format_market_offer_compact(offer)
 		button.tooltip_text = (
-			"Intercambia en el mercado del Centro Urbano.\n"
+			"Intercambia en el mercado de la Ciudadela.\n"
 			+ "Comisión del mercado: %d%% · máximo %d intercambios por día."
 		) % [
 			int(BalanceConfig.MARKET_FEE * 100.0),
@@ -873,7 +873,7 @@ func _update_market_status() -> void:
 		var reason := _market_manager.get_exchange_block_reason(offer.from, offer.to)
 		if reason.is_empty():
 			button.tooltip_text = (
-				"Intercambia en el mercado del Centro Urbano.\n"
+				"Intercambia en el mercado de la Ciudadela.\n"
 				+ "Comisión del mercado: %d%% · máximo %d intercambios por día."
 			) % [
 				int(BalanceConfig.MARKET_FEE * 100.0),

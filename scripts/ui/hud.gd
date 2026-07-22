@@ -771,7 +771,7 @@ func _on_run_ended(won: bool, nights_survived: int, fragments_earned: int) -> vo
 		_end_title.text = "DERROTA"
 		_end_title.add_theme_color_override("font_color", Color(1.0, 0.4, 0.4))
 		_end_body.text = (
-			"El Centro Urbano ha caído tras %d noche(s).\n"
+			"La Ciudadela ha caído tras %d noche(s).\n"
 			+ "Recompensa: +%d fragmentos (total %d)."
 		) % [nights_survived, fragments_earned, MetaProgression.fragments]
 	if help_label != null:
@@ -847,7 +847,7 @@ func _update_cycle_ui(phase: DayNightManager.CyclePhase, force: bool = false) ->
 		BalanceConfig.WIN_NIGHTS,
 	]
 	cycle_button.tooltip_text = (
-		"Defiende el Centro Urbano.\nQuedan %d noche(s) para la victoria"
+		"Defiende la Ciudadela.\nQuedan %d noche(s) para la victoria"
 		% nights_left
 	)
 	if cycle_panel != null:
@@ -879,7 +879,7 @@ func _on_wave_started(enemy_count: int, _modifier_id: int = 0) -> void:
 	if help_label != null:
 		help_label.set_deferred(
 			"text",
-			"NOCHE — %d enemigos atacan. Protege el Centro Urbano." % enemy_count
+			"NOCHE — %d enemigos atacan. Protege la Ciudadela." % enemy_count
 		)
 
 
@@ -946,7 +946,7 @@ func _update_help_for_cycle() -> void:
 			):
 				help_label.text = "EQUINOCCIO — Día eterno. Puedes seguir construyendo."
 			else:
-				help_label.text = "NOCHE — Protege el Centro Urbano. Si cae, pierdes."
+				help_label.text = "NOCHE — Protege la Ciudadela. Si cae, pierdes."
 		DayNightManager.CyclePhase.DUSK:
 			if (
 				_run_boon_manager != null
@@ -959,6 +959,6 @@ func _update_help_for_cycle() -> void:
 			help_label.text = "AMANECER — Elige una bendición y reorganiza la base."
 		_:
 			help_label.text = (
-				"Defiende el Centro Urbano  |  Sobrevive %d noches"
+				"Defiende la Ciudadela  |  Sobrevive %d noches"
 				% BalanceConfig.WIN_NIGHTS
 			)

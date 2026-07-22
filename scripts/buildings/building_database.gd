@@ -47,7 +47,7 @@ const UPGRADE_PATHS: Dictionary = {
 
 const DEFINITIONS: Dictionary = {
 	"town_center": {
-		"name": "Centro Urbano",
+		"name": "Ciudadela",
 		"texture": "res://assets/tilesets/mediterranean/Buildings/town_center.png",
 		"wood": 0,
 		"gold": 0,

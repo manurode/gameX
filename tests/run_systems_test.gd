@@ -51,11 +51,18 @@ func _test_meta_rewards() -> void:
 	assert(int(meta.UNLOCKS["mage_academy"].get("cost", 0)) >= 300)
 
 	var before: int = meta.fragments
+	var before_best: int = meta.best_nights
+	var before_wins: int = meta.wins
 	var earned: int = meta.award_run_rewards(3, false)
 	assert(earned == BalanceConfig.meta_fragments_for_nights(3))
 	assert(meta.fragments == before + earned)
+	assert(meta.best_nights == maxi(before_best, 3))
 	var victory_earn: int = meta.award_run_rewards(BalanceConfig.WIN_NIGHTS, true)
 	assert(victory_earn == BalanceConfig.META_FRAGMENT_TARGET_VICTORY)
+	assert(meta.wins == before_wins + 1)
+	assert(meta.best_nights == maxi(before_best, BalanceConfig.WIN_NIGHTS))
 	# Restore to avoid polluting the user's save during tests.
 	meta.fragments = before
+	meta.best_nights = before_best
+	meta.wins = before_wins
 	meta.save()
