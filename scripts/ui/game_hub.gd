@@ -765,6 +765,7 @@ func _rebuild_production_item_buttons(items: Array[String]) -> void:
 		button.custom_minimum_size = ACTION_SLOT_SIZE
 		button.focus_mode = Control.FOCUS_NONE
 		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		button.clip_contents = true
 		_style_dialog_button(button, true)
 		button.add_theme_font_size_override("font_size", 11)
 
@@ -780,6 +781,10 @@ func _rebuild_production_item_buttons(items: Array[String]) -> void:
 			" · genera 2 unidades" if _has_production_double() else "",
 		]
 		button.pressed.connect(_on_production_pressed.bind(item_id))
+		var progress_bar := _create_production_progress_bar()
+		button.add_child(progress_bar)
+		button.set_meta("progress_bar", progress_bar)
+		button.set_meta("base_tooltip", button.tooltip_text)
 		_production_items_box.add_child(button)
 		_production_item_buttons[item_id] = button
 
@@ -937,6 +942,49 @@ func _update_production_status_labels() -> void:
 			_production_pending_label.visible = false
 
 
+func _create_production_progress_bar() -> ProgressBar:
+	var bar := ProgressBar.new()
+	bar.name = "TrainProgress"
+	bar.show_percentage = false
+	bar.max_value = 1.0
+	bar.value = 0.0
+	bar.visible = false
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	bar.offset_left = 4.0
+	bar.offset_right = -4.0
+	bar.offset_top = -8.0
+	bar.offset_bottom = -3.0
+	bar.custom_minimum_size = Vector2(0, 5)
+
+	var bg := StyleBoxFlat.new()
+	bg.bg_color = Color(0.08, 0.06, 0.04, 0.95)
+	bg.set_corner_radius_all(2)
+	bg.set_content_margin_all(0)
+
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = COL_GOLD
+	fill.set_corner_radius_all(2)
+	fill.set_content_margin_all(0)
+
+	bar.add_theme_stylebox_override("background", bg)
+	bar.add_theme_stylebox_override("fill", fill)
+	return bar
+
+
+func _clear_production_button_progress() -> void:
+	for item_id in _production_item_buttons:
+		var button: Button = _production_item_buttons[item_id]
+		if button == null or not is_instance_valid(button):
+			continue
+		var bar: ProgressBar = button.get_meta("progress_bar", null)
+		if bar != null:
+			bar.visible = false
+			bar.value = 0.0
+		if button.has_meta("base_tooltip"):
+			button.tooltip_text = button.get_meta("base_tooltip")
+
+
 func _update_production_progress_label() -> void:
 	if _production_progress_label == null or _production_manager == null or _selected_building == null:
 		return
@@ -944,29 +992,46 @@ func _update_production_progress_label() -> void:
 	var queue := _production_manager.get_queue(_selected_building)
 	if queue.is_empty():
 		_production_progress_label.visible = false
+		_clear_production_button_progress()
 		return
 
 	var current: Dictionary = queue[0]
+	var active_item_id: String = current.get("item_id", "")
 	if not current.get("paid", true):
 		_production_progress_label.text = "Esperando recursos..."
 		_production_progress_label.visible = true
+		_clear_production_button_progress()
 		return
 
 	var time_total: float = maxf(float(current.get("time_total", 1.0)), 0.1)
 	var progress: float = float(current.get("progress", 0.0))
 	if progress >= time_total:
-		var item_id: String = current.get("item_id", "")
-		var def := EquipmentDatabase.get_definition(item_id)
+		var def := EquipmentDatabase.get_definition(active_item_id)
 		if def.get("transforms_to", "").is_empty() \
 				and _population_manager != null \
 				and not _population_manager.can_add_population():
 			_production_progress_label.text = "Esperando espacio de población..."
 			_production_progress_label.visible = true
+			_clear_production_button_progress()
 			return
 
-	var pct: float = progress / time_total
-	_production_progress_label.text = "Produciendo... %d%%" % int(pct * 100.0)
-	_production_progress_label.visible = true
+	# Progress lives on the unit button so the hub height stays stable.
+	_production_progress_label.visible = false
+	var ratio: float = clampf(progress / time_total, 0.0, 1.0)
+	var remaining: float = maxf(time_total - progress, 0.0)
+	for item_id in _production_item_buttons:
+		var button: Button = _production_item_buttons[item_id]
+		if button == null or not is_instance_valid(button):
+			continue
+		var bar: ProgressBar = button.get_meta("progress_bar", null)
+		var is_active: bool = str(item_id) == active_item_id
+		if bar != null:
+			bar.visible = is_active
+			bar.value = ratio if is_active else 0.0
+		if is_active:
+			button.tooltip_text = "Produciendo... %d%% · %.1f s" % [int(ratio * 100.0), remaining]
+		elif button.has_meta("base_tooltip"):
+			button.tooltip_text = button.get_meta("base_tooltip")
 
 
 func _on_production_pressed(item_id: String) -> void:

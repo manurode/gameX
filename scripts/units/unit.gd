@@ -33,6 +33,10 @@ const DEATH_FRAME_COUNT := 6
 const STONE_SCENE: PackedScene = preload("res://scenes/combat/stone.tscn")
 const FIREBALL_SCENE: PackedScene = preload("res://scenes/combat/fireball.tscn")
 const SEPARATION_UPDATE_INTERVAL := 0.08
+## Soft push so units never settle on the exact same world point.
+const STACK_CLEAR_RADIUS := 16.0
+const STACK_PUSH_SPEED := 48.0
+const FORMATION_SLOT_SPACING := 22.0
 const NIGHT_LIGHT_COLOR := Color(1.0, 0.78, 0.48)
 const NIGHT_LIGHT_ENERGY := 1.15
 const NIGHT_LIGHT_SCALE := 1.55
@@ -124,6 +128,7 @@ var _cached_navigation_manager: Node = null
 var _cached_move_speed_mult := 1.0
 var _move_speed_mult_timer := 0.0
 var _last_separation_nudge := Vector2.ZERO
+var _last_stack_push := Vector2.ZERO
 var _night_light: PointLight2D
 var _night_light_tween: Tween
 
@@ -563,16 +568,41 @@ static func assign_move_destinations(units: Array, destination: Vector2) -> void
 	if tree != null:
 		navigation_manager = tree.get_first_node_in_group("navigation_manager")
 
+	# Spread destinations so a group order does not pile every unit on one pixel.
+	var offsets := _formation_offsets(valid_units.size(), FORMATION_SLOT_SPACING)
 	var path_requests: Array = []
-	for unit in valid_units:
-		unit.move_to(destination)
+	for i in valid_units.size():
+		var unit := valid_units[i]
+		var slot_destination := destination + offsets[i]
+		unit.move_to(slot_destination)
 		path_requests.append({
 			"from": unit.global_position,
-			"to": destination,
+			"to": slot_destination,
 		})
 
 	if navigation_manager != null and navigation_manager.has_method("queue_navigation_paths"):
 		navigation_manager.call("queue_navigation_paths", path_requests)
+
+
+static func _formation_offsets(count: int, spacing: float) -> Array[Vector2]:
+	var offsets: Array[Vector2] = []
+	if count <= 0:
+		return offsets
+	offsets.append(Vector2.ZERO)
+	var placed := 1
+	var ring := 1
+	while placed < count:
+		var ring_radius := float(ring) * spacing
+		var capacity := maxi(6, int(TAU * ring_radius / spacing))
+		var angle_offset := float(ring) * 0.35
+		for i in capacity:
+			if placed >= count:
+				break
+			var angle := angle_offset + TAU * float(i) / float(capacity)
+			offsets.append(Vector2(cos(angle), sin(angle)) * ring_radius)
+			placed += 1
+		ring += 1
+	return offsets
 
 
 func select() -> void:
@@ -2430,19 +2460,29 @@ func _play_idle_facing_target() -> void:
 	_play_directional_animation(&"idle", direction)
 
 
-func _update_visual_separation() -> void:
+func _own_stack_break_direction() -> Vector2:
+	# Stable per-unit direction so exact overlaps fan out instead of staying stacked.
+	var angle := float(get_instance_id() % 6283) * 0.001
+	return Vector2(cos(angle), sin(angle))
+
+
+func _update_visual_separation(delta: float) -> void:
 	if garrisoned_building != null or _is_dying:
+		_last_stack_push = Vector2.ZERO
 		return
 
-	_separation_timer -= get_physics_process_delta_time()
+	_separation_timer -= delta
 	if _separation_timer > 0.0:
 		animated_sprite.offset = sprite_offset + _last_separation_nudge
+		_apply_cached_stack_push(delta)
 		return
 	_separation_timer = SEPARATION_UPDATE_INTERVAL
 
 	var nudge := Vector2.ZERO
+	var push := Vector2.ZERO
 	var separation_radius := PERSONAL_SPACE_RADIUS * 1.5
 	var separation_radius_sq := separation_radius * separation_radius
+	var clear_radius_sq := STACK_CLEAR_RADIUS * STACK_CLEAR_RADIUS
 	var origin := global_position
 	for item in UnitSpatialIndex.query_nearby(get_tree(), origin, separation_radius):
 		if not item is Unit:
@@ -2452,18 +2492,34 @@ func _update_visual_separation() -> void:
 			continue
 		var offset := origin - other.global_position
 		var dist_sq := offset.length_squared()
-		if dist_sq >= separation_radius_sq or dist_sq < 0.0001:
+		if dist_sq >= separation_radius_sq:
+			continue
+		if dist_sq < 0.0001:
+			var break_dir := _own_stack_break_direction()
+			nudge += break_dir * (separation_radius * 0.35)
+			push += break_dir
 			continue
 		var dist := sqrt(dist_sq)
 		nudge += offset * ((separation_radius - dist) * 0.25 / dist)
+		if dist_sq < clear_radius_sq:
+			push += offset * ((STACK_CLEAR_RADIUS - dist) / (dist * STACK_CLEAR_RADIUS))
 
-	const MAX_NUDGE := 14.0
+	const MAX_NUDGE := 18.0
 	var nudge_len_sq := nudge.length_squared()
 	if nudge_len_sq > MAX_NUDGE * MAX_NUDGE:
 		nudge = nudge * (MAX_NUDGE / sqrt(nudge_len_sq))
 
 	_last_separation_nudge = nudge
+	_last_stack_push = push.normalized() if push.length_squared() > 0.0001 else Vector2.ZERO
 	animated_sprite.offset = sprite_offset + nudge
+	_apply_cached_stack_push(delta)
+
+
+func _apply_cached_stack_push(delta: float) -> void:
+	if _last_stack_push == Vector2.ZERO:
+		return
+	var step := minf(STACK_PUSH_SPEED * delta, STACK_CLEAR_RADIUS * 0.5)
+	global_position += _last_stack_push * step
 
 
 func _play_walk_animation(direction: Vector2) -> void:
@@ -2472,7 +2528,7 @@ func _play_walk_animation(direction: Vector2) -> void:
 
 
 func _update_terrain_feedback(_delta: float) -> void:
-	_update_visual_separation()
+	_update_visual_separation(_delta)
 
 	if _ground_layer == null:
 		return
