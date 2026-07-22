@@ -6,6 +6,9 @@ var spawn_mode_active: bool = false
 var selected_unit_type: String = "knight"
 var spawn_valid: bool = false
 
+## Debug spawn hotkeys (F1–F9) stay inert until Ctrl+Shift+M unlocks them.
+var _spawn_hotkeys_unlocked: bool = false
+
 var _ghost_sprite: Sprite2D
 var _ground_layer: TinyTilesMap
 var _units_container: Node2D
@@ -45,7 +48,15 @@ func _unhandled_input(event: InputEvent) -> void:
 			_cancel_spawn_mode()
 			get_viewport().set_input_as_handled()
 			return
-		if OS.is_debug_build() and key_event.keycode in UnitDatabase.SPAWN_HOTKEYS:
+		if OS.is_debug_build() and _is_spawn_hotkey_unlock(key_event):
+			_spawn_hotkeys_unlocked = true
+			get_viewport().set_input_as_handled()
+			return
+		if (
+			OS.is_debug_build()
+			and _spawn_hotkeys_unlocked
+			and key_event.keycode in UnitDatabase.SPAWN_HOTKEYS
+		):
 			var type_id: String = UnitDatabase.SPAWN_HOTKEYS[key_event.keycode]
 			if type_id == "enemy":
 				_spawn_debug_enemy_at_cursor()
@@ -109,6 +120,16 @@ func _update_ghost_texture() -> void:
 	atlas.region = Rect2(0, 0, mini(80, texture.get_width()), mini(80, texture.get_height()))
 	_ghost_sprite.texture = atlas
 	_ghost_sprite.offset = Vector2(0.0, -36.0)
+
+
+func _is_spawn_hotkey_unlock(key_event: InputEventKey) -> bool:
+	return (
+		key_event.keycode == KEY_M
+		and key_event.ctrl_pressed
+		and key_event.shift_pressed
+		and not key_event.alt_pressed
+		and not key_event.meta_pressed
+	)
 
 
 func _spawn_debug_enemy_at_cursor() -> void:
