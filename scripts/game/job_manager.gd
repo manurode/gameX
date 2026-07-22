@@ -64,6 +64,8 @@ func try_assign_idle_villager(villager: Unit) -> void:
 		return
 	if villager.is_busy():
 		return
+	if villager.garrisoned_building != null or villager.garrison_approach_target != null:
+		return
 
 	# Prefer nearby construction over remembered gather when truly idle.
 	if _try_assign_nearby_construction(villager):
@@ -164,7 +166,8 @@ func collect_civilian_villagers(count: int) -> Array[Unit]:
 		candidates.append(unit)
 
 	candidates.sort_custom(func(a: Unit, b: Unit) -> bool:
-		return a.is_busy() and not b.is_busy()
+		# Prefer idle civilians so recruitment doesn't yank active workers first.
+		return not a.is_busy() and b.is_busy()
 	)
 
 	for unit in candidates:
@@ -262,6 +265,9 @@ func release_unit_job(unit: Unit) -> void:
 
 func on_unit_reached_deposit_building(unit: Unit, building: Building) -> void:
 	if not _unit_jobs.has(unit):
+		# Depositing without a tracked job used to freeze the unit forever.
+		if is_instance_valid(unit):
+			unit.clear_gather_job()
 		return
 	var job: Dictionary = _unit_jobs[unit]
 	var node: ResourceNode = job.get("node")
@@ -282,6 +288,9 @@ func on_unit_reached_deposit_building(unit: Unit, building: Building) -> void:
 
 	job.phase = "travel_to_node"
 	unit.assign_gather_at_node(node)
+	# assign_gather can no-op (invalid node / !can_gather); never leave DEPOSITING stuck.
+	if is_instance_valid(unit) and unit._unit_state == Unit.UnitState.DEPOSITING:
+		_reassign_unit_from_job(unit)
 
 
 func on_construction_finished(unit: Unit) -> void:
@@ -415,7 +424,14 @@ func _assign_villager_to_building(villager: Unit, building: Building) -> void:
 
 
 func _is_eligible_idle_civilian(unit: Unit) -> bool:
-	return unit.is_civilian and not unit.is_busy() and not unit._is_dying and unit.hp > 0
+	if not unit.is_civilian or unit.is_busy() or unit._is_dying or unit.hp <= 0:
+		return false
+	# Stale approach targets can linger if a prior order didn't clear them.
+	if unit.garrisoned_building != null or unit.garrison_approach_target != null:
+		return false
+	if unit.construction_target != null or unit.repair_target != null:
+		return false
+	return true
 
 
 func _find_nearest_idle_civilian_near(center: Vector2, radius: float = WORKER_ASSIGN_RADIUS) -> Unit:

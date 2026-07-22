@@ -382,6 +382,7 @@ func is_busy() -> bool:
 		UnitState.RECRUITING,
 		UnitState.CHASING,
 		UnitState.ATTACKING,
+		UnitState.GARRISON_APPROACH,
 	]
 
 
@@ -401,6 +402,7 @@ func assign_gather_at_node(node: ResourceNode) -> void:
 		exit_garrison()
 	attack_target = null
 	_set_attack_target_building(null)
+	garrison_approach_target = null
 	construction_target = null
 	repair_target = null
 	gather_target = node
@@ -409,6 +411,7 @@ func assign_gather_at_node(node: ResourceNode) -> void:
 	_unit_state = UnitState.GATHERING
 	_gather_timer = 0.0
 	_is_attack_animating = false
+	_reset_navigation_recovery()
 	navigation_agent.target_desired_distance = 4.0
 	navigation_agent.target_position = node.get_work_position(global_position)
 
@@ -416,10 +419,12 @@ func assign_gather_at_node(node: ResourceNode) -> void:
 func assign_deposit_at_building(building: Building) -> void:
 	if not is_instance_valid(building):
 		return
+	garrison_approach_target = null
 	gather_building = building
 	gather_target = null
 	_unit_state = UnitState.DEPOSITING
 	_gather_timer = 0.0
+	_reset_navigation_recovery()
 	navigation_agent.target_desired_distance = 4.0
 	navigation_agent.target_position = building.get_approach_point(global_position)
 
@@ -437,11 +442,13 @@ func begin_recruitment(
 	release_repair()
 	attack_target = null
 	_set_attack_target_building(null)
+	garrison_approach_target = null
 	recruitment_building = building
 	recruitment_type_id = target_type_id
 	recruitment_squad_size = squad_size
 	recruitment_squad_id = squad_id
 	_unit_state = UnitState.RECRUITING
+	_reset_navigation_recovery()
 	navigation_agent.target_desired_distance = 4.0
 	navigation_agent.target_position = building.get_approach_point(global_position)
 
@@ -638,6 +645,7 @@ func move_to(target: Vector2) -> void:
 	clear_gather_job()
 	attack_target = null
 	_set_attack_target_building(null)
+	garrison_approach_target = null
 	construction_target = null
 	repair_target = null
 	_unit_state = UnitState.MOVING
@@ -721,6 +729,7 @@ func approach_garrison(building: Building) -> void:
 	_set_attack_target_building(null)
 	construction_target = null
 	repair_target = null
+	clear_gather_job()
 	garrison_approach_target = building
 	_unit_state = UnitState.GARRISON_APPROACH
 	_is_attack_animating = false
@@ -738,10 +747,12 @@ func assign_construction(site: Building) -> void:
 	if job_manager is JobManager:
 		(job_manager as JobManager).forget_return_building(self)
 		(job_manager as JobManager).release_unit_job(self)
+	clear_gather_job()
 	if garrisoned_building != null:
 		exit_garrison()
 	attack_target = null
 	_set_attack_target_building(null)
+	garrison_approach_target = null
 	construction_target = site
 	_unit_state = UnitState.CONSTRUCTING
 	_is_attack_animating = false
@@ -759,10 +770,12 @@ func assign_repair(target: Building) -> void:
 	if job_manager is JobManager:
 		(job_manager as JobManager).forget_return_building(self)
 		(job_manager as JobManager).release_unit_job(self)
+	clear_gather_job()
 	if garrisoned_building != null:
 		exit_garrison()
 	attack_target = null
 	_set_attack_target_building(null)
+	garrison_approach_target = null
 	construction_target = null
 	repair_target = target
 	_unit_state = UnitState.REPAIRING
@@ -1158,6 +1171,11 @@ func _physics_process(delta: float) -> void:
 		if _unit_state == UnitState.GARRISON_APPROACH:
 			_unit_state = UnitState.IDLE
 
+	# Recover desynced work states (busy + missing target) so units don't freeze forever.
+	if _recover_orphaned_work_state():
+		_update_terrain_feedback(delta)
+		return
+
 	if _unit_state == UnitState.GARRISON_APPROACH:
 		_process_garrison_approach(delta)
 		return
@@ -1192,14 +1210,8 @@ func _physics_process(delta: float) -> void:
 		return
 
 	if _should_stop_move_order():
-		velocity = Vector2.ZERO
-		_unit_state = UnitState.IDLE
-		navigation_agent.target_position = global_position
-		_play_idle()
+		_complete_move_order()
 		_update_terrain_feedback(delta)
-		var job_manager := get_tree().get_first_node_in_group("job_manager")
-		if job_manager is JobManager:
-			(job_manager as JobManager).on_villager_move_completed(self)
 		return
 
 	if _unit_state != UnitState.MOVING:
@@ -1209,8 +1221,58 @@ func _physics_process(delta: float) -> void:
 		return
 
 	_unit_state = UnitState.MOVING
-	_follow_navigation_toward(_move_destination, PERSONAL_SPACE_RADIUS * 0.85, delta)
+	if _follow_navigation_toward(_move_destination, PERSONAL_SPACE_RADIUS * 0.85, delta):
+		# Unreachable destination after repeated repaths — stop looking "busy" forever.
+		_complete_move_order()
 	_update_terrain_feedback(delta)
+
+
+func _recover_orphaned_work_state() -> bool:
+	match _unit_state:
+		UnitState.GATHERING:
+			if gather_target != null:
+				return false
+			_finish_gather_job()
+			return true
+		UnitState.DEPOSITING:
+			if gather_building != null:
+				return false
+			_finish_gather_job()
+			return true
+		UnitState.CONSTRUCTING:
+			if construction_target != null:
+				return false
+			_notify_construction_finished()
+			return true
+		UnitState.REPAIRING:
+			if repair_target != null:
+				return false
+			_notify_repair_finished()
+			return true
+		UnitState.RECRUITING:
+			if recruitment_building != null:
+				return false
+			_release_recruitment_reservation()
+			_unit_state = UnitState.IDLE
+			return true
+		UnitState.GARRISON_APPROACH:
+			if garrison_approach_target != null:
+				return false
+			_unit_state = UnitState.IDLE
+			return true
+		_:
+			return false
+
+
+func _complete_move_order() -> void:
+	velocity = Vector2.ZERO
+	_unit_state = UnitState.IDLE
+	navigation_agent.target_position = global_position
+	_reset_navigation_recovery()
+	_play_idle()
+	var job_manager := get_tree().get_first_node_in_group("job_manager")
+	if job_manager is JobManager:
+		(job_manager as JobManager).on_villager_move_completed(self)
 
 
 func _reset_navigation_recovery() -> void:
@@ -1330,13 +1392,13 @@ func _did_move_well(moved: float, progress: float, speed: float, delta: float) -
 	return moved >= speed * delta * BLOCKED_SPEED_RATIO and progress >= TARGET_PROGRESS_MIN * delta
 
 
-func _follow_navigation_toward(target: Vector2, desired_distance: float, delta: float) -> void:
+func _follow_navigation_toward(target: Vector2, desired_distance: float, delta: float) -> bool:
 	var remaining := global_position.distance_to(target)
 	if remaining <= desired_distance:
 		velocity = Vector2.ZERO
 		_reset_stuck_tracking(target)
 		_play_idle()
-		return
+		return false
 
 	navigation_agent.target_desired_distance = desired_distance
 	_sync_navigation_target(target)
@@ -1345,30 +1407,52 @@ func _follow_navigation_toward(target: Vector2, desired_distance: float, delta: 
 		if _resolved_navigation_target != Vector2.INF:
 			var fallback_direction := global_position.direction_to(_resolved_navigation_target)
 			if fallback_direction != Vector2.ZERO:
-				_move_along_path(fallback_direction, _resolved_navigation_target, delta)
-				return
-		velocity = Vector2.ZERO
-		_play_idle()
-		return
+				if _move_along_path(fallback_direction, _resolved_navigation_target, delta):
+					return false
+				return _handle_navigation_stuck(_resolved_navigation_target, target, delta)
+		return _handle_navigation_stuck(target, target, delta)
 
 	var direction := _get_navigation_direction(target)
 	if direction == Vector2.ZERO:
-		velocity = Vector2.ZERO
-		_play_idle()
-		return
+		return _handle_navigation_stuck(target, target, delta)
 
 	var movement_goal := _get_current_navigation_goal(target)
 	if _move_along_path(direction, movement_goal, delta):
-		return
+		return false
 
-	if _is_stuck_moving(delta, movement_goal):
-		if _nav_repath_attempts < STUCK_REPATH_MAX:
-			_force_navigation_repath(target)
-		else:
-			_reset_navigation_recovery()
+	return _handle_navigation_stuck(movement_goal, target, delta)
+
+
+## Returns true when repaths are exhausted and the unit should abandon this navigation goal.
+func _handle_navigation_stuck(stuck_target: Vector2, repath_target: Vector2, delta: float) -> bool:
+	if not _is_stuck_moving(delta, stuck_target):
+		velocity = Vector2.ZERO
 		_play_idle()
-	else:
+		return false
+
+	if _nav_repath_attempts < STUCK_REPATH_MAX:
+		_force_navigation_repath(repath_target)
 		_play_idle()
+		return false
+
+	_reset_navigation_recovery()
+	velocity = Vector2.ZERO
+	_play_idle()
+	return true
+
+
+func _is_in_build_range(building: Building) -> bool:
+	if not is_instance_valid(building):
+		return false
+	if building.contains_world_point(global_position):
+		return true
+	var approach := building.get_approach_point(global_position)
+	var surface := building.get_closest_surface_point(global_position)
+	var distance := minf(
+		global_position.distance_to(approach),
+		global_position.distance_to(surface)
+	)
+	return distance <= build_range
 
 
 func _get_navigation_direction(target: Vector2) -> Vector2:
@@ -1517,9 +1601,14 @@ func _process_garrison_approach(_delta: float) -> void:
 		return
 
 	var approach := building.get_entry_approach_point(global_position)
-	_follow_navigation_toward(approach, 4.0, _delta)
-	if navigation_agent.is_navigation_finished() and _is_close_enough_to_enter_garrison(building):
+	var stuck := _follow_navigation_toward(approach, 4.0, _delta)
+	if _is_close_enough_to_enter_garrison(building):
 		building.enter_garrison(self)
+		return
+	if stuck:
+		# Unreachable shelter — give up so the villager can accept other orders.
+		garrison_approach_target = null
+		_unit_state = UnitState.IDLE
 
 
 func _is_close_enough_to_enter_garrison(building: Building) -> bool:
@@ -1550,11 +1639,16 @@ func _process_construction(delta: float) -> void:
 		_play_idle()
 		return
 
-	var approach := site.get_approach_point(global_position)
-	var distance := global_position.distance_to(approach)
-	if distance > build_range:
-		_follow_navigation_toward(approach, 4.0, delta)
-		return
+	if not _is_in_build_range(site):
+		var approach := site.get_approach_point(global_position)
+		var stuck := _follow_navigation_toward(approach, 4.0, delta)
+		if _is_in_build_range(site):
+			pass  # Fall through to work this frame.
+		elif stuck:
+			_notify_construction_finished()
+			return
+		else:
+			return
 
 	velocity = Vector2.ZERO
 	_play_build_animation()
@@ -1594,11 +1688,16 @@ func _process_repair(delta: float) -> void:
 		_play_idle()
 		return
 
-	var approach := target.get_approach_point(global_position)
-	var distance := global_position.distance_to(approach)
-	if distance > build_range:
-		_follow_navigation_toward(approach, 4.0, delta)
-		return
+	if not _is_in_build_range(target):
+		var approach := target.get_approach_point(global_position)
+		var stuck := _follow_navigation_toward(approach, 4.0, delta)
+		if _is_in_build_range(target):
+			pass
+		elif stuck:
+			_notify_repair_finished()
+			return
+		else:
+			return
 
 	if not target.repair_in_progress:
 		var resource_manager := get_tree().get_first_node_in_group("resource_manager")
@@ -1641,8 +1740,14 @@ func _process_gathering(delta: float) -> void:
 
 	var work_pos := node.get_work_position(global_position)
 	if not node.is_within_gather_range(global_position, build_range):
-		_follow_navigation_toward(work_pos, 4.0, delta)
-		return
+		var stuck := _follow_navigation_toward(work_pos, 4.0, delta)
+		if node.is_within_gather_range(global_position, build_range):
+			pass
+		elif stuck:
+			_finish_gather_job()
+			return
+		else:
+			return
 
 	velocity = Vector2.ZERO
 	_play_gather_animation()
@@ -1670,21 +1775,33 @@ func _process_depositing(delta: float) -> void:
 		_finish_gather_job()
 		return
 
-	var approach := building.get_approach_point(global_position)
-	var distance := global_position.distance_to(approach)
-	if distance > build_range:
-		_gather_timer = 0.0
-		_follow_navigation_toward(approach, 4.0, delta)
+	var job_manager := get_tree().get_first_node_in_group("job_manager")
+	if not job_manager is JobManager or (job_manager as JobManager).get_worker_building(self) == null:
+		_finish_gather_job()
 		return
+
+	if not _is_in_build_range(building):
+		_gather_timer = 0.0
+		var approach := building.get_approach_point(global_position)
+		var stuck := _follow_navigation_toward(approach, 4.0, delta)
+		if _is_in_build_range(building):
+			pass
+		elif stuck:
+			_finish_gather_job()
+			return
+		else:
+			return
 
 	velocity = Vector2.ZERO
 	_play_idle()
 	if _gather_timer > 0.0:
+		# Deposit already handed in this visit; wait for state change from JobManager.
+		# If the job vanished without updating us, recover instead of freezing forever.
+		if (job_manager as JobManager).get_worker_building(self) == null:
+			_finish_gather_job()
 		return
 	_gather_timer = 1.0
-	var job_manager := get_tree().get_first_node_in_group("job_manager")
-	if job_manager is JobManager:
-		(job_manager as JobManager).on_unit_reached_deposit_building(self, building)
+	(job_manager as JobManager).on_unit_reached_deposit_building(self, building)
 
 
 func _is_mill_field_node(building: Building, node: ResourceNode) -> bool:
@@ -1704,11 +1821,17 @@ func _process_recruitment(delta: float) -> void:
 		_unit_state = UnitState.IDLE
 		return
 
-	var approach := building.get_approach_point(global_position)
-	var distance := global_position.distance_to(approach)
-	if distance > build_range:
-		_follow_navigation_toward(approach, 4.0, delta)
-		return
+	if not _is_in_build_range(building):
+		var approach := building.get_approach_point(global_position)
+		var stuck := _follow_navigation_toward(approach, 4.0, delta)
+		if _is_in_build_range(building):
+			pass
+		elif stuck:
+			_release_recruitment_reservation()
+			_unit_state = UnitState.IDLE
+			return
+		else:
+			return
 
 	velocity = Vector2.ZERO
 	var target_type := recruitment_type_id
@@ -1750,6 +1873,8 @@ func _release_recruitment_reservation() -> void:
 
 func cancel_recruitment() -> void:
 	if recruitment_building == null and recruitment_squad_size <= 1:
+		if _unit_state == UnitState.RECRUITING:
+			_unit_state = UnitState.IDLE
 		return
 	_release_recruitment_reservation()
 	if _unit_state == UnitState.RECRUITING:

@@ -23,6 +23,7 @@ const WOOD_PER_SECOND := 1.0
 const GOLD_PER_SECOND := 1.0
 ## ~2 farmers cover 5 starters with surplus to train; 1 farmer alone is tight.
 const FOOD_PER_SECOND := 0.32
+
 const TREE_CAPACITY := 2400
 const GOLD_VEIN_CAPACITY := 900
 const GOLD_MOUNTAIN_CAPACITY := 4500
