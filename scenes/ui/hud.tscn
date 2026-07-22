@@ -48,7 +48,7 @@ theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.6)
 theme_override_constants/shadow_offset_x = 1
 theme_override_constants/shadow_offset_y = 1
 theme_override_font_sizes/font_size = 11
-text = "1-8: construir  |  Esc: cancelar  |  WASD: cámara  |  U: mejorar"
+text = "Esc: cancelar  |  WASD: cámara"
 
 [node name="SelectionBox" type="Panel" parent="."]
 visible = false

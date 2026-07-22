@@ -369,9 +369,7 @@ func _ensure_selection_ui() -> void:
 func _build_command_grid() -> void:
 	for i in BUILD_ORDER.size():
 		var type_id: String = BUILD_ORDER[i]
-		# Hotkeys 1-9 then 0 for the 10th buildable (muralla).
-		var hotkey_num := (i + 1) % 10
-		var slot := _create_build_slot(type_id, hotkey_num)
+		var slot := _create_build_slot(type_id)
 		_build_grid.add_child(slot)
 		_build_slots[type_id] = slot
 
@@ -417,7 +415,7 @@ func _refresh_curfew_button() -> void:
 		_curfew_button.add_theme_color_override("font_color", COL_CREAM)
 
 
-func _create_build_slot(type_id: String, hotkey: int) -> Button:
+func _create_build_slot(type_id: String) -> Button:
 	var def := BuildingDatabase.get_definition(type_id)
 	var button := Button.new()
 	button.custom_minimum_size = SLOT_SIZE
@@ -465,15 +463,6 @@ func _create_build_slot(type_id: String, hotkey: int) -> Button:
 	name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	name_label.clip_text = true
 	vbox.add_child(name_label)
-
-	var hotkey_label := Label.new()
-	hotkey_label.text = str(hotkey)
-	hotkey_label.add_theme_font_size_override("font_size", 10)
-	hotkey_label.add_theme_color_override("font_color", COL_MUTED)
-	hotkey_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
-	hotkey_label.position = Vector2(3, 1)
-	hotkey_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	button.add_child(hotkey_label)
 
 	var cost := BuildingDatabase.get_cost(type_id)
 	button.tooltip_text = _format_cost_tooltip(
