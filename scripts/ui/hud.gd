@@ -693,7 +693,7 @@ func _update_cycle_ui(phase: DayNightManager.CyclePhase, force: bool = false) ->
 		BalanceConfig.WIN_NIGHTS,
 	]
 	cycle_button.tooltip_text = (
-		"Defiende el Centro Urbano. Si cae, pierdes.\nQuedan %d noche(s) para la victoria"
+		"Defiende el Centro Urbano.\nQuedan %d noche(s) para la victoria"
 		% nights_left
 	)
 	if cycle_panel != null:
@@ -805,6 +805,6 @@ func _update_help_for_cycle() -> void:
 			help_label.text = "AMANECER — Elige una bendición y reorganiza la base."
 		_:
 			help_label.text = (
-				"Defiende el Centro Urbano · Si cae, pierdes  |  Sobrevive %d noches"
+				"Defiende el Centro Urbano  |  Sobrevive %d noches"
 				% BalanceConfig.WIN_NIGHTS
 			)
