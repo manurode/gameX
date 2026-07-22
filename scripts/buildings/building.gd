@@ -58,6 +58,11 @@ var _definition: Dictionary = {}
 var _visual_scale: float = 1.0
 var _footprint := Vector2(70.0, 45.0)
 var _wall_vertical: bool = false
+## 4-bit wall junction mask (see WallTexture DIR_*). 0 = derive from _wall_vertical.
+var _wall_mask: int = 0
+## Layered arm sprites + corner post for multi-axis junctions.
+var _wall_arm_sprites: Array[Sprite2D] = []
+var _wall_post_sprite: Sprite2D = null
 var _repair_start_hp: int = 0
 var _repair_progress: float = 0.0
 var _last_visual_phase: String = ""
@@ -120,6 +125,7 @@ func configure(type_id: String, state: BuildingState = BuildingState.ACTIVE, pro
 	building_state = state
 	construction_progress = progress
 	_wall_vertical = false
+	_wall_mask = 0
 	_apply_definition()
 	_update_visual_damage()
 	_update_construction_visual()
@@ -234,11 +240,28 @@ func set_wall_vertical(vertical: bool) -> void:
 	if building_type_id != "wall":
 		return
 	_wall_vertical = vertical
+	_wall_mask = WallTexture.mask_from_vertical(vertical)
 	_apply_wall_orientation()
 
 
 func is_wall_vertical() -> bool:
 	return _wall_vertical
+
+
+func set_wall_mask(mask: int) -> void:
+	if building_type_id != "wall":
+		return
+	_wall_mask = WallTexture.normalize_mask(mask, _wall_vertical)
+	_wall_vertical = WallTexture.vertical_from_mask(_wall_mask)
+	_apply_wall_orientation()
+
+
+func get_wall_mask() -> int:
+	if building_type_id != "wall":
+		return 0
+	if _wall_mask == 0:
+		return WallTexture.mask_from_vertical(_wall_vertical)
+	return _wall_mask
 
 
 func notify_world_placed() -> void:
@@ -306,6 +329,14 @@ func _apply_sprite_transform() -> void:
 	if damage_overlay != null:
 		damage_overlay.offset = sprite.offset
 		damage_overlay.scale = sprite.scale
+	if building_type_id == "wall" and WallTexture.is_junction_mask(get_wall_mask()):
+		# Keep arm/post draw offsets in sync when depth shifts.
+		var draw_offset := sprite.offset
+		for arm in _wall_arm_sprites:
+			if arm.visible:
+				arm.offset = draw_offset
+		if _wall_post_sprite != null and _wall_post_sprite.visible:
+			_wall_post_sprite.offset = draw_offset
 	_refresh_ground_shadow()
 
 
@@ -373,6 +404,11 @@ func _setup_texture() -> void:
 func _apply_wall_orientation() -> void:
 	if building_type_id != "wall" or sprite == null:
 		return
+	if _wall_mask == 0:
+		_wall_mask = WallTexture.mask_from_vertical(_wall_vertical)
+	else:
+		_wall_mask = WallTexture.normalize_mask(_wall_mask, _wall_vertical)
+		_wall_vertical = WallTexture.vertical_from_mask(_wall_mask)
 	sprite.rotation_degrees = 0.0
 	sprite.position = Vector2.ZERO
 	var wall_scale := float(_definition.get("visual_scale", 1.0))
@@ -389,7 +425,86 @@ func _apply_wall_orientation() -> void:
 		damage_overlay.texture = sprite.texture
 		damage_overlay.offset = sprite.offset
 		damage_overlay.scale = sprite.scale
+	_setup_wall_junction_layers()
 	_setup_collision()
+
+
+func _ensure_wall_junction_nodes() -> void:
+	if _wall_post_sprite == null:
+		_wall_post_sprite = Sprite2D.new()
+		_wall_post_sprite.name = "WallCornerPost"
+		_wall_post_sprite.centered = true
+		_wall_post_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+		_wall_post_sprite.z_index = 1
+		add_child(_wall_post_sprite)
+	while _wall_arm_sprites.size() < 4:
+		var arm := Sprite2D.new()
+		arm.name = "WallArm%d" % _wall_arm_sprites.size()
+		arm.centered = true
+		arm.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+		arm.visible = false
+		add_child(arm)
+		_wall_arm_sprites.append(arm)
+
+
+func _clear_wall_junction_layers() -> void:
+	if _wall_post_sprite != null:
+		_wall_post_sprite.visible = false
+	for arm in _wall_arm_sprites:
+		arm.visible = false
+	if sprite != null:
+		sprite.visible = true
+
+
+func _setup_wall_junction_layers() -> void:
+	if building_type_id != "wall":
+		return
+	_ensure_wall_junction_nodes()
+	var mask := get_wall_mask()
+	if not WallTexture.is_junction_mask(mask):
+		_clear_wall_junction_layers()
+		return
+
+	# Hide the baked single-sprite junction; layer mitered arms + a shared post.
+	# Arms are nudged outward so terracotta roofs meet the post instead of crossing.
+	sprite.visible = false
+	if damage_overlay != null:
+		damage_overlay.visible = false
+
+	var phase := _resolve_visual_phase()
+	var draw_offset := _sprite_draw_offset()
+	var bits: Array[int] = []
+	for dir_bit in WallTexture.all_dir_bits():
+		if mask & dir_bit:
+			bits.append(dir_bit)
+
+	# Sort arms by screen Y so lower (south) arms draw first.
+	bits.sort_custom(func(a: int, b: int) -> bool:
+		return WallTexture.arm_outset(a).y < WallTexture.arm_outset(b).y
+	)
+
+	for i in _wall_arm_sprites.size():
+		var arm := _wall_arm_sprites[i]
+		if i >= bits.size():
+			arm.visible = false
+			continue
+		var dir_bit: int = bits[i]
+		arm.texture = WallTexture.get_arm_texture(dir_bit, phase)
+		arm.scale = Vector2(_visual_scale, _visual_scale)
+		arm.offset = draw_offset
+		arm.position = WallTexture.arm_outset(dir_bit)
+		arm.modulate = sprite.modulate if sprite != null else Color.WHITE
+		arm.z_index = i
+		arm.visible = arm.texture != null
+
+	if _wall_post_sprite != null:
+		_wall_post_sprite.texture = WallTexture.get_corner_post_texture(phase)
+		_wall_post_sprite.scale = Vector2(_visual_scale, _visual_scale)
+		_wall_post_sprite.offset = draw_offset
+		_wall_post_sprite.position = Vector2.ZERO
+		_wall_post_sprite.modulate = sprite.modulate if sprite != null else Color.WHITE
+		_wall_post_sprite.z_index = 8
+		_wall_post_sprite.visible = _wall_post_sprite.texture != null
 
 
 func _resolve_visual_phase() -> String:
@@ -405,7 +520,10 @@ func _resolve_visual_phase() -> String:
 
 func _texture_path_for_phase(phase: String) -> String:
 	if building_type_id == "wall":
-		return WallTexture.get_texture_path(_wall_vertical, phase)
+		var mask := get_wall_mask()
+		if mask == WallTexture.MASK_STRAIGHT_SE or mask == WallTexture.MASK_STRAIGHT_SW:
+			return WallTexture.get_texture_path(_wall_vertical, phase)
+		return WallTexture.get_junction_texture_path(mask, phase)
 	var base_path: String = _definition.get("texture", "")
 	if base_path.is_empty():
 		return ""
@@ -424,7 +542,7 @@ func _apply_phase_texture(force: bool = false) -> void:
 
 	var texture: Texture2D = null
 	if building_type_id == "wall":
-		texture = WallTexture.get_texture(_wall_vertical, phase)
+		texture = WallTexture.get_texture_for_mask(get_wall_mask(), phase)
 	else:
 		var path := _texture_path_for_phase(phase)
 		if path.is_empty() or not ResourceLoader.exists(path):
@@ -440,6 +558,8 @@ func _apply_phase_texture(force: bool = false) -> void:
 	sprite.rotation_degrees = 0.0
 	sprite.position = Vector2.ZERO
 	_apply_sprite_transform()
+	if building_type_id == "wall":
+		_setup_wall_junction_layers()
 
 	if damage_overlay != null:
 		damage_overlay.visible = false
@@ -463,12 +583,26 @@ func _setup_collision() -> void:
 	if collision_shape == null:
 		return
 	if building_type_id == "wall":
-		var shape := RectangleShape2D.new()
-		shape.size = _get_collision_body_size()
-		collision_shape.shape = shape
-		collision_shape.position = get_collision_center() - global_position
-		# Align the box with the painted iso diagonal so segments meet end-to-end.
-		collision_shape.rotation = WallTexture.get_axis_direction(_wall_vertical).angle()
+		var mask := get_wall_mask()
+		var multi_axis := WallTexture.has_se_axis(mask) and WallTexture.has_sw_axis(mask)
+		if multi_axis:
+			var convex := ConvexPolygonShape2D.new()
+			var outline := WallTexture.get_block_outline_for_mask(get_collision_center(), mask)
+			var local_pts: PackedVector2Array = PackedVector2Array()
+			var origin := global_position
+			for p in outline:
+				local_pts.append(p - origin)
+			convex.points = local_pts
+			collision_shape.shape = convex
+			collision_shape.position = Vector2.ZERO
+			collision_shape.rotation = 0.0
+		else:
+			var shape := RectangleShape2D.new()
+			shape.size = _get_collision_body_size()
+			collision_shape.shape = shape
+			collision_shape.position = get_collision_center() - global_position
+			# Align the box with the painted iso diagonal so segments meet end-to-end.
+			collision_shape.rotation = WallTexture.get_axis_direction(_wall_vertical).angle()
 	else:
 		# Iso diamond matching the visual ground footprint (avoids AABB corner ghosts).
 		var convex := ConvexPolygonShape2D.new()
@@ -899,6 +1033,13 @@ func get_interaction_center() -> Vector2:
 
 func get_interaction_half_size() -> Vector2:
 	if building_type_id == "wall":
+		var mask := get_wall_mask()
+		if WallTexture.has_se_axis(mask) and WallTexture.has_sw_axis(mask):
+			# Cover both diagonal arms for approach / click helpers.
+			return Vector2(
+				WallTexture.get_block_half_length(),
+				WallTexture.get_block_half_length() * 0.65
+			)
 		# Axis-aligned bounds that cover the oriented block (used for approach points).
 		return Vector2(
 			WallTexture.get_block_half_length(),
@@ -1435,7 +1576,7 @@ func get_nav_block_outline() -> PackedVector2Array:
 		return PackedVector2Array()
 
 	if building_type_id == "wall":
-		return WallTexture.get_block_outline(get_collision_center(), _wall_vertical)
+		return WallTexture.get_block_outline_for_mask(get_collision_center(), get_wall_mask())
 
 	var center := get_interaction_center()
 	var half := get_interaction_half_size()
@@ -1451,6 +1592,8 @@ func _destroy() -> void:
 	building_state = BuildingState.DESTROYED
 	_active_attackers = 0
 	apply_cycle_visuals(false, true)
+	if building_type_id == "wall":
+		_notify_wall_neighbors_retile()
 	var job_manager := get_tree().get_first_node_in_group("job_manager")
 	if job_manager is JobManager:
 		(job_manager as JobManager).on_building_destroyed(self)
@@ -1492,6 +1635,9 @@ func _destroy() -> void:
 	CombatEffects.spawn_building_destruction(get_parent(), self)
 	if sprite != null:
 		sprite.visible = false
+	_clear_wall_junction_layers()
+	if sprite != null:
+		sprite.visible = false
 	if damage_overlay != null:
 		damage_overlay.visible = false
 	if _ground_shadow != null:
@@ -1500,6 +1646,17 @@ func _destroy() -> void:
 	destroyed.emit()
 	_request_nav_rebuild()
 	queue_free()
+
+
+func _notify_wall_neighbors_retile() -> void:
+	var origin := WallTexture.snap_position(get_anchor_position())
+	var cells: Array[Vector2] = [origin]
+	for dir_bit in WallTexture.all_dir_bits():
+		cells.append(WallTexture.snap_position(origin + WallTexture.dir_offset(dir_bit)))
+	var build_manager := get_tree().get_first_node_in_group("build_manager")
+	if build_manager != null and build_manager.has_method("retile_walls_at"):
+		# Defer so this wall is gone from the tree before neighbor masks recompute.
+		build_manager.call_deferred("retile_walls_at", cells)
 
 
 func _request_nav_rebuild() -> void:

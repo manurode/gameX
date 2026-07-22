@@ -303,6 +303,7 @@ func spawn_starter_walls(count: int) -> void:
 		Vector2i(1, -2),
 	]
 	var placed := 0
+	var wall_cells: Array[Vector2] = []
 	for offset in offsets:
 		if placed >= count:
 			break
@@ -314,7 +315,10 @@ func spawn_starter_walls(count: int) -> void:
 			1.0
 		)
 		building.set_wall_vertical(offset.x != 0 and abs(offset.x) >= abs(offset.y))
+		wall_cells.append(building.get_anchor_position())
 		placed += 1
+	if build_manager != null and build_manager.has_method("retile_walls_at"):
+		build_manager.call("retile_walls_at", wall_cells)
 	rebuild_navigation()
 
 

@@ -59,6 +59,7 @@ func setup(
 	_resource_manager = resource_manager
 	_selection_manager = selection_manager
 	_job_manager = job_manager
+	add_to_group("build_manager")
 	_create_ghost()
 
 
@@ -260,7 +261,12 @@ func _try_place_building(world_pos: Vector2) -> void:
 	_place_single_building(world_pos, false)
 
 
-func _place_single_building(world_pos: Vector2, vertical: bool, charge_resources: bool = true) -> Building:
+func _place_single_building(
+	world_pos: Vector2,
+	vertical: bool,
+	charge_resources: bool = true,
+	retile_walls: bool = true
+) -> Building:
 	if not _is_construction_allowed():
 		return null
 	var consume_free := false
@@ -283,6 +289,8 @@ func _place_single_building(world_pos: Vector2, vertical: bool, charge_resources
 	building.place_at(world_pos)
 	if selected_building_type == "wall":
 		building.notify_world_placed()
+		if retile_walls:
+			retile_walls_at([world_pos])
 	if consume_free:
 		_consume_free_placements(selected_building_type, 1)
 		_finish_free_only_if_spent(selected_building_type)
@@ -301,14 +309,23 @@ func _place_wall_polyline(end_pos: Vector2) -> void:
 	var valid_segments: Array[Dictionary] = []
 	var occupied_keys: Dictionary = {}
 	for segment in segments:
-		var key := WallTexture.segment_key(segment["pos"], segment["vertical"])
+		var key := WallTexture.cell_key(segment["pos"])
 		if occupied_keys.has(key):
+			continue
+		# Existing wall at this cell: keep it and retile after (corner / T upgrade).
+		if _find_wall_at(segment["pos"]) != null:
+			occupied_keys[key] = true
 			continue
 		if _is_valid_wall_segment(segment["pos"], segment["vertical"], occupied_keys):
 			occupied_keys[key] = true
 			valid_segments.append(segment)
 
 	if valid_segments.is_empty():
+		# Still retile so snapping onto an existing wall upgrades junctions.
+		var touch_cells: Array[Vector2] = []
+		for segment in segments:
+			touch_cells.append(segment["pos"])
+		retile_walls_at(touch_cells)
 		return
 
 	var affordable := _max_affordable_wall_segments(valid_segments.size())
@@ -334,8 +351,13 @@ func _place_wall_polyline(end_pos: Vector2) -> void:
 	if free_to_use > 0:
 		_consume_free_placements("wall", free_to_use)
 
+	var placed_cells: Array[Vector2] = []
 	for segment in valid_segments:
-		_place_single_building(segment["pos"], segment["vertical"], false)
+		_place_single_building(segment["pos"], segment["vertical"], false, false)
+		placed_cells.append(segment["pos"])
+	for segment in segments:
+		placed_cells.append(segment["pos"])
+	retile_walls_at(placed_cells)
 
 	_finish_free_only_if_spent("wall")
 
@@ -396,8 +418,8 @@ func _trim_wall_corners_beyond(mouse_pos: Vector2) -> void:
 
 
 func _compute_wall_polyline_segments(end_pos: Vector2) -> Array[Dictionary]:
-	## Polyline points are segment centers. At a turn both orientations share the
-	## corner lattice point so the end pillars form a corner post (no empty gap).
+	## Polyline points are segment centers. Turns share one lattice cell — retile
+	## swaps that cell to a corner/junction sprite instead of stacking two straights.
 	var points: Array[Vector2] = []
 	for corner in _wall_corners:
 		points.append(corner)
@@ -429,7 +451,7 @@ func _compute_wall_polyline_segments(end_pos: Vector2) -> Array[Dictionary]:
 			vertical = _wall_leg_vertical == 1
 		var leg := _compute_straight_wall_segments(points[i], points[i + 1], vertical)
 		for segment in leg:
-			var key := WallTexture.segment_key(segment["pos"], segment["vertical"])
+			var key := WallTexture.cell_key(segment["pos"])
 			if seen.has(key):
 				continue
 			seen[key] = true
@@ -531,7 +553,7 @@ func _get_wall_corner_anchors() -> Array[Vector2]:
 		var other := node as Building
 		if other.building_type_id != "wall" or other.building_state == Building.BuildingState.DESTROYED:
 			continue
-		var origin := WallTexture.snap_position(other.global_position)
+		var origin := WallTexture.snap_position(other.get_anchor_position())
 		var candidates: Array[Vector2] = [
 			origin,
 			WallTexture.snap_position(origin + se_step),
@@ -554,21 +576,35 @@ func _update_wall_preview_polyline(end_pos: Vector2) -> void:
 	_ensure_wall_ghost_count(segments.size())
 
 	var occupied_keys: Dictionary = {}
+	var pending_cells: Dictionary = {}
+	for segment in segments:
+		pending_cells[WallTexture.cell_key(segment["pos"])] = true
 	var any_valid := false
 	var affordable_left := _max_affordable_wall_segments(segments.size())
 
 	for i in segments.size():
 		var segment: Dictionary = segments[i]
 		var ghost := _wall_ghost_sprites[i]
+		var key := WallTexture.cell_key(segment["pos"])
+		var existing := _find_wall_at(segment["pos"])
+
+		# Don't stack a translucent ghost on top of a finished wall — that was the
+		# messy "double corner" look. Existing cells still count as valid (retile).
+		if existing != null:
+			ghost.visible = false
+			any_valid = true
+			continue
+
 		ghost.global_position = segment["pos"]
 		ghost.rotation_degrees = 0.0
-		ghost.texture = WallTexture.get_texture(segment["vertical"], "plot")
+		var preview_mask := _preview_wall_mask_at(segment["pos"], pending_cells, segment["vertical"])
+		# Prefer complete art at ghost alpha — plot foundations look broken at corners.
+		ghost.texture = WallTexture.get_texture_for_mask(preview_mask, "complete")
 		if ghost.texture != null:
 			ghost.offset = Vector2(0.0, -ghost.texture.get_height() * 0.5 + 48.0)
 		ghost.scale = Vector2.ONE * BuildingDatabase.get_visual_scale("wall")
 		ghost.visible = true
 
-		var key := WallTexture.segment_key(segment["pos"], segment["vertical"])
 		var segment_valid := false
 		if not occupied_keys.has(key) and affordable_left > 0:
 			segment_valid = _is_valid_wall_segment(segment["pos"], segment["vertical"], occupied_keys)
@@ -632,7 +668,7 @@ func _is_valid_wall_segment(
 	if _ground_layer.is_water_at(world_pos):
 		return false
 
-	var key := WallTexture.segment_key(world_pos, vertical)
+	var key := WallTexture.cell_key(world_pos)
 	if pending_keys.has(key):
 		return false
 
@@ -704,24 +740,92 @@ func _wall_conflicts_with_existing(
 	other: Building,
 	_spacing: float
 ) -> bool:
-	var other_pos := WallTexture.snap_position(other.global_position)
-	var other_vertical := other.is_wall_vertical()
+	var other_pos := WallTexture.snap_position(other.get_anchor_position())
 	var dist := snap.distance_to(other_pos)
 	var step_len := WallTexture.get_segment_step(vertical).length()
 
-	# Exact same anchor + same orientation = duplicate segment.
-	if dist < 1.0 and other_vertical == vertical:
+	# One wall building per lattice cell — never stack SE+SW sprites.
+	if dist < 1.0:
 		return true
 
-	# Same orientation too close along the run — overlapping chain pieces.
-	if other_vertical == vertical:
-		if dist < step_len * 0.85 and _is_near_axis(snap - other_pos, WallTexture.get_segment_step(vertical)):
+	var self_mask := WallTexture.mask_from_vertical(vertical)
+	var other_mask := other.get_wall_mask()
+	# Too close along a shared axis — overlapping chain pieces.
+	if WallTexture.has_se_axis(self_mask) and WallTexture.has_se_axis(other_mask):
+		if dist < step_len * 0.85 and _is_near_axis(snap - other_pos, WallTexture.get_segment_step(false)):
 			return true
-		return false
-
-	# Perpendicular at the same (or nearly same) anchor = corner post — allowed.
-	# Farther perpendicular walls never block each other.
+	if WallTexture.has_sw_axis(self_mask) and WallTexture.has_sw_axis(other_mask):
+		if dist < step_len * 0.85 and _is_near_axis(snap - other_pos, WallTexture.get_segment_step(true)):
+			return true
 	return false
+
+
+func _find_wall_at(world_pos: Vector2) -> Building:
+	var snap := WallTexture.snap_position(world_pos)
+	for node in get_tree().get_nodes_in_group("buildings"):
+		if not (node is Building):
+			continue
+		var other := node as Building
+		if other.building_type_id != "wall":
+			continue
+		if other.building_state == Building.BuildingState.DESTROYED:
+			continue
+		if WallTexture.snap_position(other.get_anchor_position()).distance_squared_to(snap) < 1.0:
+			return other
+	return null
+
+
+func _collect_wall_cells(extra_pending: Dictionary = {}) -> Dictionary:
+	## cell_key -> true for existing walls plus optional pending preview cells.
+	var cells: Dictionary = extra_pending.duplicate()
+	for node in get_tree().get_nodes_in_group("buildings"):
+		if not (node is Building):
+			continue
+		var other := node as Building
+		if other.building_type_id != "wall":
+			continue
+		if other.building_state == Building.BuildingState.DESTROYED:
+			continue
+		cells[WallTexture.cell_key(other.get_anchor_position())] = true
+	return cells
+
+
+func _compute_wall_mask_at(world_pos: Vector2, occupied_cells: Dictionary, fallback_vertical: bool) -> int:
+	var snap := WallTexture.snap_position(world_pos)
+	var mask := 0
+	for dir_bit in WallTexture.all_dir_bits():
+		var neighbor := WallTexture.snap_position(snap + WallTexture.dir_offset(dir_bit))
+		if occupied_cells.has(WallTexture.cell_key(neighbor)):
+			mask |= dir_bit
+	return WallTexture.normalize_mask(mask, fallback_vertical)
+
+
+func _preview_wall_mask_at(world_pos: Vector2, pending_cells: Dictionary, fallback_vertical: bool) -> int:
+	return _compute_wall_mask_at(world_pos, _collect_wall_cells(pending_cells), fallback_vertical)
+
+
+func retile_walls_at(cells: Array) -> void:
+	## Recompute junction sprites for the given cells and their lattice neighbors.
+	var occupied := _collect_wall_cells()
+	var targets: Dictionary = {}
+	for cell in cells:
+		if typeof(cell) != TYPE_VECTOR2 and typeof(cell) != TYPE_VECTOR2I:
+			continue
+		var snap := WallTexture.snap_position(Vector2(cell))
+		targets[WallTexture.cell_key(snap)] = snap
+		for dir_bit in WallTexture.all_dir_bits():
+			var neighbor := WallTexture.snap_position(snap + WallTexture.dir_offset(dir_bit))
+			targets[WallTexture.cell_key(neighbor)] = neighbor
+
+	for key in targets.keys():
+		var pos: Vector2 = targets[key]
+		var wall := _find_wall_at(pos)
+		if wall == null:
+			continue
+		var mask := _compute_wall_mask_at(pos, occupied, wall.is_wall_vertical())
+		if wall.get_wall_mask() != mask:
+			wall.set_wall_mask(mask)
+	_wall_anchor_cache_frame = -1
 
 
 func _is_valid_placement(world_pos: Vector2) -> bool:
