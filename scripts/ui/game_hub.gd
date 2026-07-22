@@ -837,7 +837,7 @@ func _rebuild_market_buttons(show_market: bool) -> void:
 
 
 func _format_market_offer_compact(offer: Dictionary) -> String:
-	const SHORT := {"wood": "mad", "gold": "oro", "food": "com"}
+	const SHORT := {"wood": "madera", "gold": "oro", "food": "comida"}
 	var from_key: String = str(offer.get("from", ""))
 	var to_key: String = str(offer.get("to", ""))
 	return "%d %s → %d %s" % [

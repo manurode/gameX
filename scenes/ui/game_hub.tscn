@@ -12,20 +12,20 @@ bg_color = Color(0.07, 0.055, 0.04, 0.96)
 border_width_top = 2
 border_color = Color(0.72, 0.58, 0.32, 1)
 
-[node name="GameHub" type="PanelContainer"]
+[node name="GameHub" type="PanelContainer" unique_id=1403926958]
 custom_minimum_size = Vector2(0, 176)
 theme_override_styles/panel = SubResource("StyleBoxFlat_hub")
 script = ExtResource("1_hub")
 
-[node name="MarginContainer" type="MarginContainer" parent="."]
+[node name="MarginContainer" type="MarginContainer" parent="." unique_id=586328432]
 layout_mode = 2
 mouse_filter = 2
 
-[node name="HBoxContainer" type="HBoxContainer" parent="MarginContainer"]
+[node name="HBoxContainer" type="HBoxContainer" parent="MarginContainer" unique_id=723311960]
 layout_mode = 2
 theme_override_constants/separation = 16
 
-[node name="LeftColumn" type="VBoxContainer" parent="MarginContainer/HBoxContainer"]
+[node name="LeftColumn" type="VBoxContainer" parent="MarginContainer/HBoxContainer" unique_id=1443565712]
 custom_minimum_size = Vector2(248, 0)
 layout_mode = 2
 size_flags_horizontal = 0
@@ -33,34 +33,34 @@ size_flags_vertical = 4
 theme_override_constants/separation = 8
 alignment = 1
 
-[node name="ResourcesBox" type="VBoxContainer" parent="MarginContainer/HBoxContainer/LeftColumn"]
+[node name="ResourcesBox" type="VBoxContainer" parent="MarginContainer/HBoxContainer/LeftColumn" unique_id=1617469040]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 4
 
-[node name="ResourcesTitle" type="Label" parent="MarginContainer/HBoxContainer/LeftColumn/ResourcesBox"]
+[node name="ResourcesTitle" type="Label" parent="MarginContainer/HBoxContainer/LeftColumn/ResourcesBox" unique_id=1502412826]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.75, 0.68, 0.48, 1)
 theme_override_font_sizes/font_size = 12
 text = "RECURSOS"
 horizontal_alignment = 1
 
-[node name="CurfewSlot" type="VBoxContainer" parent="MarginContainer/HBoxContainer/LeftColumn"]
+[node name="CurfewSlot" type="VBoxContainer" parent="MarginContainer/HBoxContainer/LeftColumn" unique_id=1823159235]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 0
 
-[node name="Separator1" type="VSeparator" parent="MarginContainer/HBoxContainer"]
+[node name="Separator1" type="VSeparator" parent="MarginContainer/HBoxContainer" unique_id=2018404421]
 layout_mode = 2
 size_flags_horizontal = 0
 
-[node name="CenterArea" type="Control" parent="MarginContainer/HBoxContainer"]
+[node name="CenterArea" type="Control" parent="MarginContainer/HBoxContainer" unique_id=277767586]
 clip_contents = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 
-[node name="BuildMode" type="HBoxContainer" parent="MarginContainer/HBoxContainer/CenterArea"]
+[node name="BuildMode" type="HBoxContainer" parent="MarginContainer/HBoxContainer/CenterArea" unique_id=8216432]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -70,14 +70,14 @@ grow_vertical = 2
 theme_override_constants/separation = 8
 alignment = 1
 
-[node name="BuildRow" type="HBoxContainer" parent="MarginContainer/HBoxContainer/CenterArea/BuildMode"]
+[node name="BuildRow" type="HBoxContainer" parent="MarginContainer/HBoxContainer/CenterArea/BuildMode" unique_id=1827489632]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 4
 theme_override_constants/separation = 8
 alignment = 1
 
-[node name="SelectionMode" type="HBoxContainer" parent="MarginContainer/HBoxContainer/CenterArea"]
+[node name="SelectionMode" type="HBoxContainer" parent="MarginContainer/HBoxContainer/CenterArea" unique_id=1440803845]
 visible = false
 clip_contents = true
 layout_mode = 1
@@ -89,18 +89,18 @@ grow_vertical = 2
 theme_override_constants/separation = 12
 alignment = 1
 
-[node name="Separator2" type="VSeparator" parent="MarginContainer/HBoxContainer"]
+[node name="Separator2" type="VSeparator" parent="MarginContainer/HBoxContainer" unique_id=1478058760]
 layout_mode = 2
 size_flags_horizontal = 0
 
-[node name="RightColumn" type="VBoxContainer" parent="MarginContainer/HBoxContainer"]
+[node name="RightColumn" type="VBoxContainer" parent="MarginContainer/HBoxContainer" unique_id=728284484]
 custom_minimum_size = Vector2(188, 0)
 layout_mode = 2
 size_flags_horizontal = 0
 size_flags_vertical = 4
 alignment = 1
 
-[node name="Minimap" type="Control" parent="MarginContainer/HBoxContainer/RightColumn"]
+[node name="Minimap" type="Control" parent="MarginContainer/HBoxContainer/RightColumn" unique_id=1455270014]
 custom_minimum_size = Vector2(188, 148)
 layout_mode = 2
 size_flags_horizontal = 4
