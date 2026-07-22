@@ -21,3 +21,5 @@ assets/_downloads/
 .vscode/
 *.swp
 *~
+
+/output
