@@ -124,6 +124,7 @@ const DEFINITIONS: Dictionary = {
 		"attack_side_sheet": "res://assets/tilesets/mediterranean/Characters/mage/chr_mage_attack_side.png",
 		"death_up_sheet": "res://assets/tilesets/mediterranean/Characters/mage/chr_mage_death_back.png",
 		"death_down_sheet": "res://assets/tilesets/mediterranean/Characters/mage/chr_mage_death.png",
+		"invert_up_flip": true,
 	},
 	"enemy": {
 		"name": "Monstruo",
