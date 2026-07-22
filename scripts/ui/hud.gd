@@ -1,7 +1,8 @@
 extends CanvasLayer
 
 const MENU_SCENE := "res://scenes/ui/main_menu.tscn"
-## HUD was authored for this SubViewport size; scale chrome to match larger buffers.
+## HUD was authored for this SubViewport size; grow chrome via font/metrics
+## (not Control.scale) so text stays sharp on larger buffers.
 const HUD_DESIGN_SIZE := Vector2(1280.0, 720.0)
 
 @onready var help_label: Label = $TopLeft/MarginContainer/CyclePanel/VBoxContainer/HelpLabel
@@ -60,36 +61,133 @@ func _apply_hud_scale() -> void:
 		1.0,
 		2.75
 	)
-	var s := Vector2(_ui_scale, _ui_scale)
-
+	# Never use Control.scale for chrome: it upscales glyph atlases and blurs text.
+	# Resize fonts/metrics instead so glyphs rasterize at the final pixel size.
 	if _top_left != null:
-		_top_left.scale = s
-	# SelectionBox uses raw pixel coords from the drag — never scale it.
+		_top_left.scale = Vector2.ONE
 	if _selection_box != null:
 		_selection_box.scale = Vector2.ONE
-
 	if _event_banner != null:
-		_event_banner.scale = s
+		_event_banner.scale = Vector2.ONE
 	if _foresight_panel != null:
-		_foresight_panel.scale = s
-		# Keep top-right chrome pinned after scale.
-		_foresight_panel.pivot_offset = Vector2(_foresight_panel.size.x, 0.0)
-
-	_scale_overlay_panel(_boon_overlay, s)
-	_scale_overlay_panel(_debug_boon_overlay, s)
-	_scale_overlay_panel(_debug_day_overlay, s)
-	_scale_overlay_panel(_end_overlay, s)
+		_foresight_panel.scale = Vector2.ONE
+	_reset_overlay_panel_scale(_boon_overlay)
+	_reset_overlay_panel_scale(_debug_boon_overlay)
+	_reset_overlay_panel_scale(_debug_day_overlay)
+	_reset_overlay_panel_scale(_end_overlay)
+	_apply_chrome_metrics()
 
 
-func _scale_overlay_panel(overlay: Control, s: Vector2) -> void:
-	if overlay == null:
-		return
-	# Child 0 is the full-rect dimmer; child 1 is the centered dialog panel.
-	if overlay.get_child_count() < 2:
+func _reset_overlay_panel_scale(overlay: Control) -> void:
+	if overlay == null or overlay.get_child_count() < 2:
 		return
 	var panel := overlay.get_child(1) as Control
 	if panel != null:
-		panel.scale = s
+		panel.scale = Vector2.ONE
+
+
+func _fs(base: int) -> int:
+	return maxi(1, int(round(float(base) * _ui_scale)))
+
+
+func _px(base: float) -> float:
+	return base * _ui_scale
+
+
+func _apply_chrome_metrics() -> void:
+	if _top_left != null:
+		_top_left.offset_right = _px(720.0)
+		_top_left.offset_bottom = _px(110.0)
+		var top_margin := _top_left.get_node_or_null("MarginContainer") as MarginContainer
+		if top_margin != null:
+			top_margin.add_theme_constant_override("margin_left", _fs(16))
+			top_margin.add_theme_constant_override("margin_top", _fs(12))
+		if cycle_button != null:
+			cycle_button.custom_minimum_size = Vector2(_px(180.0), 0.0)
+			cycle_button.add_theme_font_size_override("font_size", _fs(15))
+		if help_label != null:
+			help_label.add_theme_font_size_override("font_size", _fs(13))
+		if cycle_panel != null:
+			cycle_panel.add_theme_stylebox_override("panel", _make_info_panel_style())
+
+	if _event_banner != null:
+		_event_banner.offset_left = -_px(280.0)
+		_event_banner.offset_right = _px(280.0)
+		_event_banner.offset_top = _px(72.0)
+		_event_banner.offset_bottom = _px(128.0)
+		var banner_style := StyleBoxFlat.new()
+		banner_style.bg_color = Color(0.08, 0.06, 0.05, 0.92)
+		banner_style.border_color = Color(0.85, 0.55, 0.25, 1.0)
+		banner_style.set_border_width_all(maxi(1, _fs(2)))
+		banner_style.set_corner_radius_all(_fs(6))
+		banner_style.set_content_margin_all(_fs(10))
+		_event_banner.add_theme_stylebox_override("panel", banner_style)
+	if _event_banner_label != null:
+		_event_banner_label.add_theme_font_size_override("font_size", _fs(17))
+
+	if _foresight_panel != null:
+		_foresight_panel.offset_left = -_px(12.0)
+		_foresight_panel.offset_top = _px(10.0)
+		_foresight_panel.offset_right = -_px(12.0)
+		_foresight_panel.offset_bottom = _px(10.0)
+		_foresight_panel.add_theme_stylebox_override("panel", _make_info_panel_style())
+	if _foresight_label != null:
+		_foresight_label.add_theme_font_size_override("font_size", _fs(14))
+	if _foresight_hint != null:
+		_foresight_hint.add_theme_font_size_override("font_size", _fs(13))
+
+	_apply_centered_panel_metrics(_boon_overlay, 220.0, 160.0, 16, [
+		{"path": [0, 0], "size": 20},
+		{"path": [0, 1], "size": 12},
+	])
+	_apply_centered_panel_metrics(_debug_boon_overlay, 280.0, 240.0, 14, [
+		{"path": [0, 0, 0], "size": 18},
+		{"path": [0, 1], "size": 11},
+	])
+	_apply_centered_panel_metrics(_debug_day_overlay, 260.0, 220.0, 14, [
+		{"path": [0, 0, 0], "size": 18},
+		{"path": [0, 1], "size": 11},
+	])
+	_apply_centered_panel_metrics(_end_overlay, 240.0, 140.0, 18, [])
+	if _end_title != null:
+		_end_title.add_theme_font_size_override("font_size", _fs(28))
+	if _end_body != null:
+		_end_body.add_theme_font_size_override("font_size", _fs(14))
+
+
+func _apply_centered_panel_metrics(
+	overlay: Control,
+	half_w: float,
+	half_h: float,
+	content_margin: int,
+	font_nodes: Array
+) -> void:
+	if overlay == null or overlay.get_child_count() < 2:
+		return
+	var panel := overlay.get_child(1) as Control
+	if panel == null:
+		return
+	panel.offset_left = -_px(half_w)
+	panel.offset_right = _px(half_w)
+	panel.offset_top = -_px(half_h)
+	panel.offset_bottom = _px(half_h)
+	var style := panel.get_theme_stylebox("panel") as StyleBoxFlat
+	if style != null:
+		var scaled := style.duplicate() as StyleBoxFlat
+		scaled.set_border_width_all(maxi(1, _fs(2)))
+		scaled.set_corner_radius_all(_fs(8))
+		scaled.set_content_margin_all(_fs(content_margin))
+		panel.add_theme_stylebox_override("panel", scaled)
+	for entry in font_nodes:
+		var node: Node = panel
+		var ok := true
+		for idx in entry["path"]:
+			if node == null or idx >= node.get_child_count():
+				ok = false
+				break
+			node = node.get_child(idx)
+		if ok and node is Label:
+			(node as Label).add_theme_font_size_override("font_size", _fs(int(entry["size"])))
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -201,12 +299,12 @@ func _make_info_panel_style() -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.09, 0.07, 0.055, 0.94)
 	style.border_color = Color(0.72, 0.58, 0.32, 1.0)
-	style.set_border_width_all(2)
-	style.set_corner_radius_all(8)
+	style.set_border_width_all(maxi(1, _fs(2)))
+	style.set_corner_radius_all(_fs(8))
 	style.shadow_color = Color(0, 0, 0, 0.4)
-	style.shadow_size = 8
-	style.shadow_offset = Vector2(0, 3)
-	style.set_content_margin_all(8)
+	style.shadow_size = _fs(8)
+	style.shadow_offset = Vector2(0, _px(3.0))
+	style.set_content_margin_all(_fs(8))
 	return style
 
 

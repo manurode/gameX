@@ -14,7 +14,7 @@ config/name="Nightfall"
 config/description="Sobrevive 20 noches en tu asentamiento. RTS isométrico mediterráneo."
 run/main_scene="res://scenes/ui/main_menu.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
-config/icon="res://icon.svg"
+config/icon="res://icon.png"
 
 [autoload]
 
@@ -27,6 +27,12 @@ window/size/viewport_width=1920
 window/size/viewport_height=1080
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
+
+[gui]
+
+theme/default_font_multichannel_signed_distance_field=true
+theme/default_font_subpixel_positioning=0
+theme/default_font_hinting=1
 
 [input]
 
