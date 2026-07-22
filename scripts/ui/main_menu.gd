@@ -26,6 +26,7 @@ var _upgrades_screen: Control
 var _title_label: Label
 var _cta_label: Label
 var _fragments_label: Label
+var _record_label: Label
 var _shop_list: VBoxContainer
 var _difficulty_button: Button
 var _difficulty_hint: Label
@@ -160,7 +161,7 @@ func _build_title_screen() -> void:
 
 	var tagline := Label.new()
 	tagline.text = (
-		"Defiende tu Centro Urbano. Sobrevive %d noches."
+		"Defiende tu Ciudadela. Sobrevive %d noches."
 		% BalanceConfig.WIN_NIGHTS
 	)
 	tagline.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -258,6 +259,15 @@ func _build_setup_screen() -> void:
 	subtitle.add_theme_color_override("font_color", COL_MUTED)
 	vbox.add_child(subtitle)
 
+	_record_label = Label.new()
+	_record_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_record_label.add_theme_font_size_override("font_size", 14)
+	_record_label.add_theme_color_override("font_color", COL_GOLD_SOFT)
+	_record_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.55))
+	_record_label.add_theme_constant_override("shadow_offset_x", 1)
+	_record_label.add_theme_constant_override("shadow_offset_y", 1)
+	vbox.add_child(_record_label)
+
 	vbox.add_child(_make_gold_rule(0.0))
 
 	var start_btn := _make_primary_button("Empezar", Vector2(0, 52))
@@ -293,6 +303,7 @@ func _build_setup_screen() -> void:
 	vbox.add_child(back)
 
 	_refresh_fragments_label()
+	_refresh_record_label()
 
 
 # ---------------------------------------------------------------------------
@@ -383,6 +394,7 @@ func _show_screen(screen: Screen) -> void:
 	_upgrades_screen.visible = screen == Screen.UPGRADES
 	if screen == Screen.SETUP:
 		_refresh_fragments_label()
+		_refresh_record_label()
 		_difficulty_hint.text = ""
 	if screen == Screen.UPGRADES:
 		_refresh_shop()
@@ -439,6 +451,14 @@ func _refresh_fragments_label() -> void:
 		var shop_frags := _upgrades_screen.find_child("ShopFragments", true, false) as Label
 		if shop_frags != null:
 			shop_frags.text = "Fragmentos: %d" % MetaProgression.fragments
+
+
+func _refresh_record_label() -> void:
+	if _record_label == null:
+		return
+	var text := MetaProgression.get_record_display_text()
+	_record_label.text = text
+	_record_label.visible = not text.is_empty()
 
 
 func _refresh_shop() -> void:

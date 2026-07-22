@@ -3,10 +3,16 @@ extends RefCounted
 
 const DEFAULT_MAP_SIZE := Vector2i(64, 64)
 const BASE_MAP_AREA := 64 * 64
-## Land disk around the Centro Urbano where water is forbidden (scaled for 64×64).
+## Land disk around the Ciudadela where water is forbidden (scaled for 64×64).
 ## Slightly larger than the settlement so starter units do not spawn into lakes.
 const BASE_TOWN_CLEAR_RADIUS := 9.5
 const BASE_CONTENT_CLEAR_RADIUS := 9.0
+## Open plaza south of the town (+cell Y = screen-front). Keeps lake/forest/mountain
+## sprites from drawing over the Ciudadela. Sides and north stay unrestricted.
+const BASE_FRONT_CLEAR_HALF_WIDTH := 11.0
+const BASE_FRONT_CLEAR_DEPTH := 18.0
+## Extra cells a tall lake/forest/mountain sprite reaches north (-Y) from its origin.
+const BASE_LARGE_PROP_VISUAL_NORTH := 5.0
 const BASE_TERRAIN_FREQUENCY := 0.055
 ## One forest = one large sprite covering many cells (same pattern as mountains).
 const BASE_TREE_COUNT := 5
@@ -97,9 +103,11 @@ func generate(requested_seed: int = 0) -> Dictionary:
 	for y in map_size.y:
 		for x in map_size.x:
 			var cell := Vector2i(x, y)
-			var distance_to_town := Vector2(cell - town_center_cell).length()
 			var water_value := terrain_noise.get_noise_2d(float(x), float(y))
-			var is_water := distance_to_town > _get_town_clear_radius() and water_value > WATER_THRESHOLD
+			var is_water := (
+				not _is_town_water_forbidden(cell, town_center_cell)
+				and water_value > WATER_THRESHOLD
+			)
 			# Placeholder grass; Wang codes resolved after water topology is final.
 			# water_set is the non-walkable mask; lake sprites provide the visuals.
 			ground_tiles[_cell_index(cell)] = GRASS_A
@@ -113,11 +121,11 @@ func generate(requested_seed: int = 0) -> Dictionary:
 	_prune_tiny_water_clusters(ground_tiles, water_cells, water_set)
 	# Keep large lake sprites from hanging off the map edge.
 	_clear_edge_water(ground_tiles, water_cells, water_set)
-	# Keep the settlement spawn yard clear even if connectivity fill added water.
+	# Keep the settlement spawn yard + front plaza clear even if connectivity fill added water.
 	_clear_water_near_town(town_center_cell, ground_tiles, water_cells, water_set)
 	_prune_tiny_water_clusters(ground_tiles, water_cells, water_set)
 	var lake_placements := _generate_lake_placements(
-		ground_tiles, water_cells, water_set, rng
+		ground_tiles, water_cells, water_set, rng, town_center_cell
 	)
 	# Recompute reachability after water may have been trimmed for lake coverage.
 	reachable_set = _get_reachable_ground(town_center_cell, water_set)
@@ -240,12 +248,15 @@ func _generate_lake_placements(
 	ground_tiles: Array[int],
 	water_cells: Array[Vector2i],
 	water_set: Dictionary,
-	rng: RandomNumberGenerator
+	rng: RandomNumberGenerator,
+	town_center: Vector2i
 ) -> Array[Dictionary]:
 	var placements: Array[Dictionary] = []
 	for cluster in _water_clusters(water_cells):
 		placements.append_array(
-			_cover_cluster_with_lakes(cluster, ground_tiles, water_cells, water_set, rng)
+			_cover_cluster_with_lakes(
+				cluster, ground_tiles, water_cells, water_set, rng, town_center
+			)
 		)
 	return placements
 
@@ -256,12 +267,11 @@ func _clear_water_near_town(
 	water_cells: Array[Vector2i],
 	water_set: Dictionary
 ) -> void:
-	## Guarantee a walkable land disk around the settlement after topology passes.
-	var clear_radius := _get_town_clear_radius()
+	## Guarantee a walkable land disk + front plaza after topology passes.
 	var to_clear: Array[Vector2i] = []
 	for cell_variant in water_set.keys():
 		var cell: Vector2i = cell_variant
-		if Vector2(cell - town_center).length() <= clear_radius:
+		if _is_town_water_forbidden(cell, town_center):
 			to_clear.append(cell)
 	for cell in to_clear:
 		_set_cell_as_ground(cell, ground_tiles, water_cells, water_set)
@@ -333,7 +343,8 @@ func _cover_cluster_with_lakes(
 	ground_tiles: Array[int],
 	water_cells: Array[Vector2i],
 	water_set: Dictionary,
-	rng: RandomNumberGenerator
+	rng: RandomNumberGenerator,
+	town_center: Vector2i
 ) -> Array[Dictionary]:
 	var placements: Array[Dictionary] = []
 	if cluster.is_empty():
@@ -345,7 +356,7 @@ func _cover_cluster_with_lakes(
 
 	var lake_centers: Array[Vector2i] = []
 	while not uncovered.is_empty():
-		var seed_cell := _pick_lake_seed(uncovered, lake_centers, rng)
+		var seed_cell := _pick_lake_seed(uncovered, lake_centers, rng, town_center)
 		if seed_cell.x < 0:
 			# No valid non-overlapping / in-bounds seed left — drop leftover water.
 			break
@@ -373,14 +384,21 @@ func _cover_cluster_with_lakes(
 func _pick_lake_seed(
 	uncovered: Dictionary,
 	existing_centers: Array[Vector2i],
-	rng: RandomNumberGenerator
+	rng: RandomNumberGenerator,
+	town_center: Vector2i
 ) -> Vector2i:
 	## Prefer a cell near the centroid that keeps the full lake sprite on the map
-	## and away from other lake shorelines.
+	## and away from other lake shorelines / the town front plaza.
 	var candidates: Array[Vector2i] = []
 	for cell_variant in uncovered.keys():
 		var cell: Vector2i = cell_variant
 		if not _is_large_prop_inset(cell):
+			continue
+		if _large_prop_hits_town_front(
+			cell,
+			town_center,
+			maxf(LAKE_COVER_RADIUS, _get_large_prop_visual_north())
+		):
 			continue
 		var too_close := false
 		for other in existing_centers:
@@ -456,6 +474,8 @@ func _append_random_placements(
 	var attempts := 0
 	var footprint: Array = template.get("footprint", [Vector2i.ZERO])
 	var edge_margin: int = int(template.get("edge_margin", LARGE_PROP_EDGE_MARGIN))
+	var kind: String = str(template.get("kind", ""))
+	var blocks_front := kind == "wood" or kind == "gold_mountain"
 	var max_attempts := count * (140 if footprint.size() > 1 else 80)
 	while placed < count and attempts < max_attempts:
 		attempts += 1
@@ -469,6 +489,8 @@ func _append_random_placements(
 			rng.randi_range(margin, max_y)
 		)
 		if Vector2(cell - town_center).length() <= _get_content_clear_radius():
+			continue
+		if blocks_front and _footprint_hits_town_front(cell, footprint, town_center):
 			continue
 		if not _can_place_footprint(cell, footprint, water_set, reachable_set, occupied):
 			continue
@@ -620,6 +642,67 @@ func _get_town_clear_radius() -> float:
 
 func _get_content_clear_radius() -> float:
 	return BASE_CONTENT_CLEAR_RADIUS * float(map_size.x) / 64.0
+
+
+func _get_front_clear_half_width() -> float:
+	return BASE_FRONT_CLEAR_HALF_WIDTH * float(map_size.x) / 64.0
+
+
+func _get_front_clear_depth() -> float:
+	return BASE_FRONT_CLEAR_DEPTH * float(map_size.x) / 64.0
+
+
+func _get_large_prop_visual_north() -> float:
+	return BASE_LARGE_PROP_VISUAL_NORTH * float(map_size.x) / 64.0
+
+
+func _is_in_town_front_apron(cell: Vector2i, town_center: Vector2i) -> bool:
+	## Rectangular plaza directly south of the Ciudadela (+Y = screen-front).
+	## No restriction to the sides or behind the building.
+	var dy := float(cell.y - town_center.y)
+	if dy <= 0.0 or dy > _get_front_clear_depth():
+		return false
+	return absf(float(cell.x - town_center.x)) <= _get_front_clear_half_width()
+
+
+func _is_town_water_forbidden(cell: Vector2i, town_center: Vector2i) -> bool:
+	if Vector2(cell - town_center).length() <= _get_town_clear_radius():
+		return true
+	return _is_in_town_front_apron(cell, town_center)
+
+
+func _large_prop_hits_town_front(
+	origin: Vector2i,
+	town_center: Vector2i,
+	extra_north_reach: float = -1.0
+) -> bool:
+	## True when a large sprite planted at origin would visually enter the front plaza.
+	## Accounts for how far the art reaches toward the town (-Y) from its plant cell.
+	var north_reach := (
+		extra_north_reach if extra_north_reach >= 0.0 else _get_large_prop_visual_north()
+	)
+	var half_w := _get_front_clear_half_width()
+	var depth := _get_front_clear_depth()
+	# Northern tip of the sprite in cell space.
+	var north_y := float(origin.y) - north_reach
+	var south_y := float(origin.y) + north_reach * 0.35
+	if south_y <= float(town_center.y) or north_y > float(town_center.y) + depth:
+		return false
+	return absf(float(origin.x - town_center.x)) <= half_w + north_reach * 0.5
+
+
+func _footprint_hits_town_front(
+	origin: Vector2i,
+	footprint: Array,
+	town_center: Vector2i
+) -> bool:
+	if _large_prop_hits_town_front(origin, town_center):
+		return true
+	for offset_variant in footprint:
+		var offset: Vector2i = offset_variant
+		if _is_in_town_front_apron(origin + offset, town_center):
+			return true
+	return false
 
 
 func _scaled_count(base_count: int) -> int:

@@ -142,6 +142,10 @@ const UNLOCKS := {
 
 var fragments: int = 0
 var unlocked: Dictionary = {}
+## Best nights survived in a single run.
+var best_nights: int = 0
+## Times the player completed a full WIN_NIGHTS run.
+var wins: int = 0
 
 
 func _ready() -> void:
@@ -153,6 +157,8 @@ func load_save() -> void:
 	if cfg.load(SAVE_PATH) != OK:
 		return
 	fragments = int(cfg.get_value("meta", "fragments", 0))
+	best_nights = int(cfg.get_value("meta", "best_nights", 0))
+	wins = int(cfg.get_value("meta", "wins", 0))
 	var unlocked_ids: Array = cfg.get_value("meta", "unlocked", [])
 	unlocked.clear()
 	for id in unlocked_ids:
@@ -164,6 +170,8 @@ func load_save() -> void:
 func save() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("meta", "fragments", fragments)
+	cfg.set_value("meta", "best_nights", best_nights)
+	cfg.set_value("meta", "wins", wins)
 	cfg.set_value("meta", "unlocked", unlocked.keys())
 	cfg.save(SAVE_PATH)
 
@@ -194,13 +202,27 @@ func award_run_rewards(nights_survived: int, victory: bool) -> int:
 	var nights := nights_survived
 	if victory:
 		nights = maxi(nights, BalanceConfig.WIN_NIGHTS)
+	best_nights = maxi(best_nights, nights)
+	if victory:
+		wins += 1
 	var reward := BalanceConfig.meta_fragments_for_nights(nights)
 	if reward <= 0:
+		# Still persist records even when the run yields no fragments.
+		save()
 		return 0
 	fragments += reward
 	save()
 	fragments_changed.emit(fragments)
 	return reward
+
+
+## Text for the campaign setup screen: nights record, or wins after beating WIN_NIGHTS.
+func get_record_display_text() -> String:
+	if best_nights >= BalanceConfig.WIN_NIGHTS or wins > 0:
+		return "Partidas ganadas: %d" % wins
+	if best_nights > 0:
+		return "Récord de supervivencia - %d noches" % best_nights
+	return ""
 
 
 func get_start_wood_bonus() -> int:
