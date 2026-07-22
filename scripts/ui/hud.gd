@@ -1,10 +1,14 @@
 extends CanvasLayer
 
 const MENU_SCENE := "res://scenes/ui/main_menu.tscn"
+## HUD was authored for this SubViewport size; scale chrome to match larger buffers.
+const HUD_DESIGN_SIZE := Vector2(1280.0, 720.0)
 
 @onready var help_label: Label = $TopLeft/MarginContainer/CyclePanel/VBoxContainer/HelpLabel
 @onready var cycle_button: Button = $TopLeft/MarginContainer/CyclePanel/VBoxContainer/CycleButton
 @onready var cycle_panel: PanelContainer = $TopLeft/MarginContainer/CyclePanel
+@onready var _top_left: Control = $TopLeft
+@onready var _selection_box: Control = $SelectionBox
 
 var game_hub: PanelContainer
 var minimap: Control
@@ -30,6 +34,7 @@ var _foresight_panel: PanelContainer
 var _foresight_label: Label
 var _foresight_hint: Label
 var _last_cycle_ui_seconds := -1
+var _ui_scale := 1.0
 
 
 func _ready() -> void:
@@ -42,6 +47,49 @@ func _ready() -> void:
 	_create_debug_day_overlay()
 	_create_end_overlay()
 	_create_foresight_label()
+	get_viewport().size_changed.connect(_apply_hud_scale)
+	call_deferred("_apply_hud_scale")
+
+
+func _apply_hud_scale() -> void:
+	var vp_size := get_viewport().get_visible_rect().size
+	if vp_size.x < 2.0 or vp_size.y < 2.0:
+		return
+	_ui_scale = clampf(
+		minf(vp_size.x / HUD_DESIGN_SIZE.x, vp_size.y / HUD_DESIGN_SIZE.y),
+		1.0,
+		2.75
+	)
+	var s := Vector2(_ui_scale, _ui_scale)
+
+	if _top_left != null:
+		_top_left.scale = s
+	# SelectionBox uses raw pixel coords from the drag — never scale it.
+	if _selection_box != null:
+		_selection_box.scale = Vector2.ONE
+
+	if _event_banner != null:
+		_event_banner.scale = s
+	if _foresight_panel != null:
+		_foresight_panel.scale = s
+		# Keep top-right chrome pinned after scale.
+		_foresight_panel.pivot_offset = Vector2(_foresight_panel.size.x, 0.0)
+
+	_scale_overlay_panel(_boon_overlay, s)
+	_scale_overlay_panel(_debug_boon_overlay, s)
+	_scale_overlay_panel(_debug_day_overlay, s)
+	_scale_overlay_panel(_end_overlay, s)
+
+
+func _scale_overlay_panel(overlay: Control, s: Vector2) -> void:
+	if overlay == null:
+		return
+	# Child 0 is the full-rect dimmer; child 1 is the centered dialog panel.
+	if overlay.get_child_count() < 2:
+		return
+	var panel := overlay.get_child(1) as Control
+	if panel != null:
+		panel.scale = s
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -80,9 +128,9 @@ func _resolve_hub_nodes() -> void:
 		game_hub = main.get_node_or_null("Layout/GameHub") as PanelContainer
 	if game_hub != null:
 		minimap = game_hub.get_node_or_null("MarginContainer/HBoxContainer/RightColumn/Minimap")
-	if minimap == null:
+	if minimap == null and game_hub != null:
 		minimap = game_hub.get_node_or_null("MarginContainer/HBoxContainer/CommandArea/RightColumn/Minimap")
-	if minimap == null:
+	if minimap == null and game_hub != null:
 		minimap = game_hub.get_node_or_null("MarginContainer/HBoxContainer/CommandArea/Minimap")
 
 
@@ -176,14 +224,14 @@ func _style_cycle_panel() -> void:
 	var empty := StyleBoxEmpty.new()
 	for style_name in ["normal", "hover", "pressed", "disabled", "focus"]:
 		cycle_button.add_theme_stylebox_override(style_name, empty)
-	cycle_button.add_theme_font_size_override("font_size", 12)
+	cycle_button.add_theme_font_size_override("font_size", 15)
 	cycle_button.add_theme_color_override("font_color", Color(0.9, 0.86, 0.74))
 	cycle_button.add_theme_color_override("font_disabled_color", Color(0.9, 0.86, 0.74))
 	cycle_button.add_theme_color_override("font_hover_color", Color(0.9, 0.86, 0.74))
 	cycle_button.add_theme_color_override("font_pressed_color", Color(0.9, 0.86, 0.74))
 	if help_label != null:
 		help_label.add_theme_color_override("font_color", Color(0.78, 0.74, 0.64))
-		help_label.add_theme_font_size_override("font_size", 11)
+		help_label.add_theme_font_size_override("font_size", 13)
 
 
 func _create_event_banner() -> void:
@@ -205,7 +253,7 @@ func _create_event_banner() -> void:
 	_event_banner_label = Label.new()
 	_event_banner_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_event_banner_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_event_banner_label.add_theme_font_size_override("font_size", 15)
+	_event_banner_label.add_theme_font_size_override("font_size", 17)
 	_event_banner_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.7))
 	_event_banner.add_child(_event_banner_label)
 	add_child(_event_banner)
@@ -236,7 +284,7 @@ func _create_foresight_label() -> void:
 
 	_foresight_label = Label.new()
 	_foresight_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_foresight_label.add_theme_font_size_override("font_size", 12)
+	_foresight_label.add_theme_font_size_override("font_size", 14)
 	_foresight_label.add_theme_color_override("font_color", Color(0.9, 0.86, 0.74))
 	_foresight_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_foresight_label.size_flags_horizontal = Control.SIZE_SHRINK_END
@@ -244,13 +292,21 @@ func _create_foresight_label() -> void:
 
 	_foresight_hint = Label.new()
 	_foresight_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_foresight_hint.add_theme_font_size_override("font_size", 11)
+	_foresight_hint.add_theme_font_size_override("font_size", 13)
 	_foresight_hint.add_theme_color_override("font_color", Color(0.78, 0.74, 0.64))
 	_foresight_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_foresight_hint.size_flags_horizontal = Control.SIZE_SHRINK_END
 	vbox.add_child(_foresight_hint)
 
 	add_child(_foresight_panel)
+	_foresight_panel.resized.connect(_update_foresight_pivot)
+	_update_foresight_pivot()
+
+
+func _update_foresight_pivot() -> void:
+	if _foresight_panel == null:
+		return
+	_foresight_panel.pivot_offset = Vector2(_foresight_panel.size.x, 0.0)
 
 
 func _create_boon_overlay() -> void:

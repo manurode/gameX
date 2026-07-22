@@ -8,13 +8,12 @@ const BUILD_ORDER: Array[String] = [
 const TEX_WOOD := "res://assets/tilesets/tiny_tiles/UI/Icons/UI_icon_resources_wood_clear.png"
 const TEX_GOLD := "res://assets/tilesets/tiny_tiles/UI/Icons/UI_icon_resources_gold.png"
 const TEX_FOOD := "res://assets/tilesets/tiny_tiles/UI/Icons/UI_icon_resources_food.png"
-const TEX_HAMMER := "res://assets/tilesets/tiny_tiles/UI/Icons/UI_icon_hammer.png"
 
 const ICON_VARIANT_SIZE := 128
-const SLOT_SIZE := Vector2(66, 80)
-const ICON_SIZE := Vector2(36, 30)
-const RESOURCE_ICON_SIZE := Vector2(28, 28)
-const ACTION_SLOT_SIZE := Vector2(64, 68)
+const SLOT_SIZE := Vector2(108, 132)
+const ICON_SIZE := Vector2(72, 60)
+const RESOURCE_ICON_SIZE := Vector2(30, 30)
+const ACTION_SLOT_SIZE := Vector2(88, 92)
 
 # Palette aligned with menu / dialog panels
 const COL_PANEL_INNER := Color(0.12, 0.1, 0.075, 0.9)
@@ -29,12 +28,11 @@ const COL_BTN_HOVER := Color(0.22, 0.17, 0.1, 0.98)
 const COL_BTN_PRESSED := Color(0.1, 0.08, 0.05, 1.0)
 const COL_BTN_DISABLED := Color(0.08, 0.07, 0.06, 0.85)
 
-@onready var _resources_box: VBoxContainer = $MarginContainer/HBoxContainer/ResourcesBox
+@onready var _resources_box: VBoxContainer = $MarginContainer/HBoxContainer/LeftColumn/ResourcesBox
+@onready var _curfew_slot: VBoxContainer = $MarginContainer/HBoxContainer/LeftColumn/CurfewSlot
 @onready var _build_mode: HBoxContainer = $MarginContainer/HBoxContainer/CenterArea/BuildMode
 @onready var _selection_mode: HBoxContainer = $MarginContainer/HBoxContainer/CenterArea/SelectionMode
-@onready var _build_tab_icon: TextureRect = $MarginContainer/HBoxContainer/CenterArea/BuildMode/TabColumn/BuildTabIcon
-@onready var _build_grid: GridContainer = $MarginContainer/HBoxContainer/CenterArea/BuildMode/BuildGrid
-@onready var _status_column: VBoxContainer = $MarginContainer/HBoxContainer/RightColumn/StatusColumn
+@onready var _build_row: HBoxContainer = $MarginContainer/HBoxContainer/CenterArea/BuildMode/BuildRow
 
 var _selection_info: VBoxContainer
 var _selection_icon: TextureRect
@@ -79,8 +77,6 @@ var _selected_building: Building = null
 
 
 func _ready() -> void:
-	if _build_tab_icon != null:
-		_build_tab_icon.texture = _make_icon_atlas(TEX_HAMMER)
 	_ensure_selection_ui()
 	_show_build_mode()
 
@@ -147,10 +143,10 @@ func _build_resource_rows() -> void:
 	_resources_box.add_child(resources_panel)
 
 	var panel_margin := MarginContainer.new()
-	panel_margin.add_theme_constant_override("margin_left", 8)
-	panel_margin.add_theme_constant_override("margin_right", 8)
-	panel_margin.add_theme_constant_override("margin_top", 6)
-	panel_margin.add_theme_constant_override("margin_bottom", 6)
+	panel_margin.add_theme_constant_override("margin_left", 10)
+	panel_margin.add_theme_constant_override("margin_right", 10)
+	panel_margin.add_theme_constant_override("margin_top", 8)
+	panel_margin.add_theme_constant_override("margin_bottom", 8)
 	resources_panel.add_child(panel_margin)
 
 	var panel_vbox := VBoxContainer.new()
@@ -163,12 +159,14 @@ func _build_resource_rows() -> void:
 	panel_vbox.add_child(resources_row)
 
 	for entry in entries:
-		var cell := HBoxContainer.new()
-		cell.add_theme_constant_override("separation", 3)
+		var cell := VBoxContainer.new()
+		cell.add_theme_constant_override("separation", 2)
+		cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		cell.alignment = BoxContainer.ALIGNMENT_CENTER
 
 		var icon := TextureRect.new()
 		icon.custom_minimum_size = RESOURCE_ICON_SIZE
+		icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		icon.texture = _make_icon_atlas(entry.texture)
@@ -176,7 +174,8 @@ func _build_resource_rows() -> void:
 
 		var amount := Label.new()
 		amount.text = "0"
-		amount.add_theme_font_size_override("font_size", 14)
+		amount.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		amount.add_theme_font_size_override("font_size", 16)
 		amount.add_theme_color_override("font_color", COL_GOLD)
 		amount.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
 		amount.add_theme_constant_override("shadow_offset_x", 1)
@@ -194,14 +193,14 @@ func _build_resource_rows() -> void:
 	_population_label = Label.new()
 	_population_label.text = "Pob: 0/5"
 	_population_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_population_label.add_theme_font_size_override("font_size", 11)
+	_population_label.add_theme_font_size_override("font_size", 12)
 	_population_label.add_theme_color_override("font_color", Color(0.75, 0.85, 0.95))
 	stats_col.add_child(_population_label)
 
 	_food_upkeep_label = Label.new()
 	_food_upkeep_label.text = "Consumo: 0/s"
 	_food_upkeep_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_food_upkeep_label.add_theme_font_size_override("font_size", 10)
+	_food_upkeep_label.add_theme_font_size_override("font_size", 11)
 	_food_upkeep_label.add_theme_color_override("font_color", Color(0.72, 0.82, 0.55))
 	stats_col.add_child(_food_upkeep_label)
 
@@ -213,47 +212,45 @@ func _build_resource_rows() -> void:
 	_gather_bonus_label = Label.new()
 	_gather_bonus_label.text = "Cosecha +20%"
 	_gather_bonus_label.visible = false
-	_gather_bonus_label.add_theme_font_size_override("font_size", 10)
+	_gather_bonus_label.add_theme_font_size_override("font_size", 11)
 	_gather_bonus_label.add_theme_color_override("font_color", Color(0.55, 0.92, 0.55))
 	bonus_row.add_child(_gather_bonus_label)
 
 	_production_double_label = Label.new()
 	_production_double_label.text = "Producción x2"
 	_production_double_label.visible = false
-	_production_double_label.add_theme_font_size_override("font_size", 10)
+	_production_double_label.add_theme_font_size_override("font_size", 11)
 	_production_double_label.add_theme_color_override("font_color", Color(0.95, 0.82, 0.35))
 	bonus_row.add_child(_production_double_label)
-
-
 func _ensure_selection_ui() -> void:
 	if _selection_mode == null or _selection_info != null:
 		return
 
 	var info_panel := PanelContainer.new()
 	info_panel.name = "InfoPanel"
-	info_panel.custom_minimum_size = Vector2(200, 0)
+	info_panel.custom_minimum_size = Vector2(240, 0)
 	info_panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	info_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	info_panel.add_theme_stylebox_override("panel", _make_inner_panel_style())
 	_selection_mode.add_child(info_panel)
 
 	var info_margin := MarginContainer.new()
-	info_margin.add_theme_constant_override("margin_left", 8)
-	info_margin.add_theme_constant_override("margin_right", 8)
-	info_margin.add_theme_constant_override("margin_top", 6)
-	info_margin.add_theme_constant_override("margin_bottom", 6)
+	info_margin.add_theme_constant_override("margin_left", 10)
+	info_margin.add_theme_constant_override("margin_right", 10)
+	info_margin.add_theme_constant_override("margin_top", 8)
+	info_margin.add_theme_constant_override("margin_bottom", 8)
 	info_panel.add_child(info_margin)
 
 	_selection_info = VBoxContainer.new()
-	_selection_info.add_theme_constant_override("separation", 4)
+	_selection_info.add_theme_constant_override("separation", 5)
 	info_margin.add_child(_selection_info)
 
 	var header := HBoxContainer.new()
-	header.add_theme_constant_override("separation", 8)
+	header.add_theme_constant_override("separation", 10)
 	_selection_info.add_child(header)
 
 	_selection_icon = TextureRect.new()
-	_selection_icon.custom_minimum_size = Vector2(44, 40)
+	_selection_icon.custom_minimum_size = Vector2(56, 50)
 	_selection_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_selection_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	header.add_child(_selection_icon)
@@ -264,14 +261,14 @@ func _ensure_selection_ui() -> void:
 	header.add_child(titles)
 
 	_selection_title = Label.new()
-	_selection_title.add_theme_font_size_override("font_size", 13)
+	_selection_title.add_theme_font_size_override("font_size", 16)
 	_selection_title.add_theme_color_override("font_color", COL_GOLD_SOFT)
 	_selection_title.clip_text = false
 	_selection_title.autowrap_mode = TextServer.AUTOWRAP_OFF
 	titles.add_child(_selection_title)
 
 	_selection_meta = Label.new()
-	_selection_meta.add_theme_font_size_override("font_size", 11)
+	_selection_meta.add_theme_font_size_override("font_size", 13)
 	_selection_meta.add_theme_color_override("font_color", COL_MUTED)
 	_selection_meta.autowrap_mode = TextServer.AUTOWRAP_OFF
 	titles.add_child(_selection_meta)
@@ -279,7 +276,7 @@ func _ensure_selection_ui() -> void:
 	# Fixed-height status slot under building info: never reflows ActionsPanel.
 	var status_slot := Control.new()
 	status_slot.name = "ProductionStatusSlot"
-	status_slot.custom_minimum_size = Vector2(0, 30)
+	status_slot.custom_minimum_size = Vector2(0, 36)
 	status_slot.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	status_slot.clip_contents = true
 	_selection_info.add_child(status_slot)
@@ -287,7 +284,7 @@ func _ensure_selection_ui() -> void:
 	_production_status_label = Label.new()
 	_production_status_label.name = "ProductionStatus"
 	_production_status_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_production_status_label.add_theme_font_size_override("font_size", 10)
+	_production_status_label.add_theme_font_size_override("font_size", 12)
 	_production_status_label.add_theme_color_override("font_color", Color(1.0, 0.78, 0.48, 0.0))
 	_production_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_production_status_label.vertical_alignment = VERTICAL_ALIGNMENT_TOP
@@ -304,20 +301,20 @@ func _ensure_selection_ui() -> void:
 	_selection_mode.add_child(_actions_panel)
 
 	var actions_margin := MarginContainer.new()
-	actions_margin.add_theme_constant_override("margin_left", 8)
-	actions_margin.add_theme_constant_override("margin_right", 8)
-	actions_margin.add_theme_constant_override("margin_top", 6)
-	actions_margin.add_theme_constant_override("margin_bottom", 6)
+	actions_margin.add_theme_constant_override("margin_left", 10)
+	actions_margin.add_theme_constant_override("margin_right", 10)
+	actions_margin.add_theme_constant_override("margin_top", 8)
+	actions_margin.add_theme_constant_override("margin_bottom", 8)
 	_actions_panel.add_child(actions_margin)
 
 	_production_box = VBoxContainer.new()
 	_production_box.name = "ProductionBox"
 	_production_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_production_box.add_theme_constant_override("separation", 4)
+	_production_box.add_theme_constant_override("separation", 5)
 	actions_margin.add_child(_production_box)
 
 	_production_title = Label.new()
-	_production_title.add_theme_font_size_override("font_size", 11)
+	_production_title.add_theme_font_size_override("font_size", 13)
 	_production_title.add_theme_color_override("font_color", COL_GOLD_SOFT)
 	_production_title.clip_text = true
 	_production_title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -325,36 +322,36 @@ func _ensure_selection_ui() -> void:
 
 	_selection_actions = HBoxContainer.new()
 	_selection_actions.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_selection_actions.add_theme_constant_override("separation", 8)
+	_selection_actions.add_theme_constant_override("separation", 10)
 	_production_box.add_child(_selection_actions)
 
 	_production_items_box = HBoxContainer.new()
 	_production_items_box.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	_production_items_box.add_theme_constant_override("separation", 4)
+	_production_items_box.add_theme_constant_override("separation", 6)
 	_selection_actions.add_child(_production_items_box)
 
 	_market_box = VBoxContainer.new()
 	_market_box.visible = false
 	_market_box.clip_contents = true
 	_market_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_market_box.add_theme_constant_override("separation", 3)
+	_market_box.add_theme_constant_override("separation", 4)
 	_selection_actions.add_child(_market_box)
 
 	_market_title = Label.new()
 	_market_title.text = "MERCADO"
-	_market_title.add_theme_font_size_override("font_size", 11)
+	_market_title.add_theme_font_size_override("font_size", 13)
 	_market_title.add_theme_color_override("font_color", COL_GOLD_SOFT)
 	_market_box.add_child(_market_title)
 
 	_market_items_box = GridContainer.new()
 	_market_items_box.columns = 2
 	_market_items_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_market_items_box.add_theme_constant_override("h_separation", 4)
-	_market_items_box.add_theme_constant_override("v_separation", 3)
+	_market_items_box.add_theme_constant_override("h_separation", 6)
+	_market_items_box.add_theme_constant_override("v_separation", 4)
 	_market_box.add_child(_market_items_box)
 
 	_market_limit_label = Label.new()
-	_market_limit_label.add_theme_font_size_override("font_size", 10)
+	_market_limit_label.add_theme_font_size_override("font_size", 12)
 	_market_limit_label.add_theme_color_override("font_color", Color(0.65, 0.74, 0.82))
 	_market_box.add_child(_market_limit_label)
 
@@ -367,15 +364,17 @@ func _ensure_selection_ui() -> void:
 
 
 func _build_command_grid() -> void:
+	if _build_row == null:
+		return
 	for i in BUILD_ORDER.size():
 		var type_id: String = BUILD_ORDER[i]
 		var slot := _create_build_slot(type_id)
-		_build_grid.add_child(slot)
+		_build_row.add_child(slot)
 		_build_slots[type_id] = slot
 
 
 func _build_curfew_button() -> void:
-	if _status_column == null:
+	if _curfew_slot == null:
 		return
 	_curfew_button = Button.new()
 	_curfew_button.text = "Toque de queda"
@@ -387,13 +386,14 @@ func _build_curfew_button() -> void:
 	)
 	_curfew_button.focus_mode = Control.FOCUS_NONE
 	_curfew_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	_curfew_button.custom_minimum_size = Vector2(118, 30)
-	_curfew_button.add_theme_font_size_override("font_size", 11)
+	_curfew_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_curfew_button.custom_minimum_size = Vector2(0, 34)
+	_curfew_button.clip_text = true
+	_curfew_button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_curfew_button.add_theme_font_size_override("font_size", 13)
 	_style_dialog_button(_curfew_button)
 	_curfew_button.pressed.connect(_on_curfew_button_pressed)
-	_status_column.add_child(_curfew_button)
-	_status_column.move_child(_curfew_button, 0)
-
+	_curfew_slot.add_child(_curfew_button)
 
 func _on_curfew_button_pressed() -> void:
 	if _curfew_manager != null:
@@ -408,7 +408,7 @@ func _refresh_curfew_button() -> void:
 	if _curfew_button == null or _curfew_manager == null:
 		return
 	var active := _curfew_manager.is_active
-	_curfew_button.text = "Toque de queda: ON" if active else "Toque de queda"
+	_curfew_button.text = "Toque queda: ON" if active else "Toque de queda"
 	if active:
 		_curfew_button.add_theme_color_override("font_color", COL_GOLD)
 	else:
@@ -419,6 +419,8 @@ func _create_build_slot(type_id: String) -> Button:
 	var def := BuildingDatabase.get_definition(type_id)
 	var button := Button.new()
 	button.custom_minimum_size = SLOT_SIZE
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	button.flat = true
 	button.focus_mode = Control.FOCUS_NONE
 	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -434,22 +436,24 @@ func _create_build_slot(type_id: String) -> Button:
 	var content := MarginContainer.new()
 	content.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	content.add_theme_constant_override("margin_left", 2)
-	content.add_theme_constant_override("margin_top", 1)
-	content.add_theme_constant_override("margin_right", 2)
-	content.add_theme_constant_override("margin_bottom", 1)
+	content.add_theme_constant_override("margin_left", 6)
+	content.add_theme_constant_override("margin_top", 8)
+	content.add_theme_constant_override("margin_right", 6)
+	content.add_theme_constant_override("margin_bottom", 6)
 	button.add_child(content)
 
 	var vbox := VBoxContainer.new()
 	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 1)
+	vbox.add_theme_constant_override("separation", 6)
 	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	vbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	content.add_child(vbox)
 
 	var icon := TextureRect.new()
 	icon.custom_minimum_size = ICON_SIZE
-	icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+	icon.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	icon.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	icon.texture = _get_building_icon(type_id)
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -458,10 +462,11 @@ func _create_build_slot(type_id: String) -> Button:
 	var name_label := Label.new()
 	name_label.text = def.get("name", type_id)
 	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_label.add_theme_font_size_override("font_size", 9)
+	name_label.add_theme_font_size_override("font_size", 13)
 	name_label.add_theme_color_override("font_color", COL_CREAM)
 	name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	name_label.clip_text = true
+	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	vbox.add_child(name_label)
 
 	var cost := BuildingDatabase.get_cost(type_id)
@@ -480,8 +485,8 @@ func _create_slot_style() -> StyleBoxFlat:
 	style.bg_color = COL_BTN
 	style.border_color = COL_BORDER_DIM
 	style.set_border_width_all(1)
-	style.set_corner_radius_all(6)
-	style.set_content_margin_all(2)
+	style.set_corner_radius_all(8)
+	style.set_content_margin_all(4)
 	return style
 
 
@@ -767,7 +772,7 @@ func _rebuild_production_item_buttons(items: Array[String]) -> void:
 		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 		button.clip_contents = true
 		_style_dialog_button(button, true)
-		button.add_theme_font_size_override("font_size", 11)
+		button.add_theme_font_size_override("font_size", 13)
 
 		var unit_name: String = def.get("name", item_id)
 		if _has_production_double():
@@ -820,11 +825,11 @@ func _rebuild_market_buttons(show_market: bool) -> void:
 		]
 		button.focus_mode = Control.FOCUS_NONE
 		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-		button.custom_minimum_size = Vector2(118, 26)
+		button.custom_minimum_size = Vector2(140, 32)
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		button.clip_text = true
 		button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-		button.add_theme_font_size_override("font_size", 10)
+		button.add_theme_font_size_override("font_size", 12)
 		_style_dialog_button(button, true)
 		button.pressed.connect(_on_market_exchange_pressed.bind(from_key, to_key))
 		_market_items_box.add_child(button)
@@ -1080,8 +1085,6 @@ func _show_build_mode() -> void:
 	if _selection_mode != null:
 		_selection_mode.visible = false
 	_set_production_status_message("")
-	if _build_tab_icon != null:
-		_build_tab_icon.texture = _make_icon_atlas(TEX_HAMMER)
 
 
 func _show_selection_mode() -> void:

@@ -1,8 +1,9 @@
-[gd_scene format=3 uid="uid://cmain001"]
+[gd_scene load_steps=5 format=3 uid="uid://cmain001"]
 
 [ext_resource type="PackedScene" uid="uid://cworld001" path="res://scenes/world/game_world.tscn" id="1_world"]
 [ext_resource type="PackedScene" uid="uid://chud001" path="res://scenes/ui/hud.tscn" id="2_hud"]
 [ext_resource type="PackedScene" uid="uid://gamehub001" path="res://scenes/ui/game_hub.tscn" id="3_hub"]
+[ext_resource type="Script" path="res://scripts/ui/main.gd" id="4_main"]
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -11,6 +12,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+script = ExtResource("4_main")
 
 [node name="Layout" type="VBoxContainer" parent="."]
 layout_mode = 1
@@ -31,6 +33,7 @@ mouse_filter = 0
 [node name="SubViewport" type="SubViewport" parent="Layout/WorldView"]
 handle_input_locally = true
 size = Vector2i(1280, 620)
+msaa_2d = 2
 render_target_update_mode = 4
 
 [node name="GameWorld" parent="Layout/WorldView/SubViewport" instance=ExtResource("1_world")]

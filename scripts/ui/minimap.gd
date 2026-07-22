@@ -1,7 +1,7 @@
 extends Control
 
-const MAP_PADDING := 3.0
-const MINIMAP_SIZE := Vector2(112, 88)
+const MAP_PADDING := 4.0
+const MINIMAP_SIZE := Vector2(188, 148)
 
 const FRAME_BG := Color(0.12, 0.1, 0.075, 0.9)
 const FRAME_BORDER := Color(0.72, 0.58, 0.32, 1.0)
