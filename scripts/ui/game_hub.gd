@@ -299,7 +299,7 @@ func _ensure_selection_ui() -> void:
 	_actions_panel.name = "ActionsPanel"
 	_actions_panel.clip_contents = true
 	_actions_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_actions_panel.size_flags_vertical = Control.SIZE_SHRINK_END
+	_actions_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_actions_panel.add_theme_stylebox_override("panel", _make_inner_panel_style())
 	_selection_mode.add_child(_actions_panel)
 
