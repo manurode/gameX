@@ -10,6 +10,13 @@ const MAP_SIZE_SMALL := Vector2i(16, 16)
 var map_size_preset: MapSizePreset = MapSizePreset.MEDIUM
 
 
+func _ready() -> void:
+	# Maximized windowed: title bar + close button, stays above the Windows taskbar.
+	# Avoids borderless/fullscreen covering the HUD without an in-game quit menu.
+	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_BORDERLESS, false)
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_MAXIMIZED)
+
+
 func get_map_size() -> Vector2i:
 	match map_size_preset:
 		MapSizePreset.MEDIUM:

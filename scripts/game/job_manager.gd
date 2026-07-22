@@ -338,6 +338,9 @@ func _can_auto_build(villager: Unit) -> bool:
 		return false
 	if villager.construction_target != null or villager.repair_target != null:
 		return false
+	var curfew := get_tree().get_first_node_in_group("curfew_manager")
+	if curfew is CurfewManager and (curfew as CurfewManager).is_active:
+		return false
 	return true
 
 
@@ -430,6 +433,9 @@ func _is_eligible_idle_civilian(unit: Unit) -> bool:
 	if unit.garrisoned_building != null or unit.garrison_approach_target != null:
 		return false
 	if unit.construction_target != null or unit.repair_target != null:
+		return false
+	var curfew := get_tree().get_first_node_in_group("curfew_manager")
+	if curfew is CurfewManager and (curfew as CurfewManager).is_active:
 		return false
 	return true
 

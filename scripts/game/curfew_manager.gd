@@ -56,13 +56,6 @@ func find_nearest_shelter(villager: Unit) -> Building:
 func send_villager_to_shelter(villager: Unit) -> void:
 	if not _is_villager(villager) or villager.garrisoned_building != null:
 		return
-	if villager._unit_state == Unit.UnitState.RECRUITING:
-		return
-	# Don't yank builders off active construction/repair — player orders must stick.
-	if villager._unit_state in [Unit.UnitState.CONSTRUCTING, Unit.UnitState.REPAIRING]:
-		return
-	if villager.construction_target != null or villager.repair_target != null:
-		return
 
 	var building := find_nearest_shelter(villager)
 	if building == null:
@@ -75,6 +68,7 @@ func send_villager_to_shelter(villager: Unit) -> void:
 	):
 		return
 
+	# Drop gather/build/recruit/combat work and head indoors.
 	villager.approach_garrison(building)
 
 

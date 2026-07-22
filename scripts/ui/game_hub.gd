@@ -380,7 +380,7 @@ func _build_curfew_button() -> void:
 	_curfew_button.text = "Toque de queda"
 	_curfew_button.tooltip_text = (
 		"Toque de queda\n"
-		+ "Los aldeanos buscan refugio en el edificio más cercano con espacio.\n"
+		+ "Los aldeanos dejan cualquier tarea y buscan refugio en el edificio más cercano con espacio.\n"
 		+ "Los soldados permanecen fuera.\n\n"
 		+ "Desactivado: los aldeanos siguen con sus tareas."
 	)
