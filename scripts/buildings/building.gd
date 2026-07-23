@@ -194,13 +194,15 @@ func _set_night_light_energy(target_energy: float, enable: bool, instant: bool =
 	if _night_light_tween != null and _night_light_tween.is_valid():
 		_night_light_tween.kill()
 		_night_light_tween = null
-	if enable:
-		_night_light.enabled = true
 	if instant:
 		_night_light.energy = target_energy
-		if not enable:
-			_night_light.enabled = false
+		_night_light.enabled = enable
 		return
+	if enable:
+		# Seed energy before enable so MIX never wakes the lighting path at 0 (black flash).
+		if not _night_light.enabled:
+			_night_light.energy = target_energy * DayNightManager.LIGHT_COLD_START_FACTOR
+		_night_light.enabled = true
 	var turning_on := target_energy > _night_light.energy + 0.01
 	var duration := DayNightManager.LIGHT_ON_SECONDS if turning_on else DayNightManager.TRANSITION_SECONDS
 	var ease_type := Tween.EASE_OUT if turning_on else Tween.EASE_IN_OUT

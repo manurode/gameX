@@ -18,8 +18,9 @@ const FOG_NIGHT_COLOR := Color(0.07, 0.08, 0.14)
 const TRANSITION_SECONDS := 1.5
 ## Lights ramp up faster than ambient darkens so settlements never go black first.
 const LIGHT_ON_SECONDS := 0.75
-## Partial energy during dusk so pockets stay lit through the nightfall dip.
-const DUSK_LIGHT_FACTOR := 0.55
+## MIX lights must never enable at energy 0 — that flashes sprites black for a frame.
+## Used when dusk→night ignites local lights for the first time.
+const LIGHT_COLD_START_FACTOR := 0.85
 const LIGHT_TEXTURE_SIZE := 256
 
 var current_phase: CyclePhase = CyclePhase.DAY
@@ -133,8 +134,9 @@ func set_phase(phase: CyclePhase) -> void:
 	seconds_remaining = _get_phase_duration(phase)
 	var keep_daylight := _should_keep_daylight()
 	var is_night := phase == CyclePhase.NIGHT and not keep_daylight
-	_animate_visuals()
+	# Lights first so MIX sources are warm before ambient starts shifting.
 	_update_cycle_entity_visuals(_resolve_night_light_factor())
+	_animate_visuals()
 	if _water_animator != null and _water_animator.has_method("set_night_mode"):
 		_water_animator.call("set_night_mode", is_night)
 	cycle_changed.emit(current_phase)
@@ -143,13 +145,10 @@ func set_phase(phase: CyclePhase) -> void:
 func _resolve_night_light_factor() -> float:
 	if _should_keep_daylight():
 		return 0.0
-	match current_phase:
-		CyclePhase.DUSK:
-			return DUSK_LIGHT_FACTOR
-		CyclePhase.NIGHT:
-			return 1.0
-		_:
-			return 0.0
+	# Dusk is only the global CanvasModulate tint — local lights belong to night.
+	if current_phase == CyclePhase.NIGHT:
+		return 1.0
+	return 0.0
 
 
 func is_night() -> bool:
