@@ -6,19 +6,21 @@ import argparse
 from collections import deque
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 
 CURSORS = {
     "default": "cursor_default_src.png",
     "gather_wood": "cursor_saw_src.png",
-    "gather_gold": "cursor_pickaxe_src.png",
+    "gather_gold": "cursor_pickaxe_straight_src.png",
     "gather_food": "cursor_hoe_src.png",
     "build": "cursor_hammer_src.png",
     "attack": "cursor_sword_src.png",
 }
 OUTPUT_SIZE = 48
+CONTENT_SIZE = 38
 PADDING = 2
+ROTATIONS: dict[str, float] = {}
 
 
 def _is_background_candidate(pixel: tuple[int, int, int, int]) -> bool:
@@ -80,14 +82,20 @@ def _remove_checkerboard(image: Image.Image) -> Image.Image:
     return rgba
 
 
-def _crop_and_resize(image: Image.Image) -> Image.Image:
+def _crop_and_resize(image: Image.Image, action: str) -> Image.Image:
+    rotation = ROTATIONS.get(action, 0.0)
+    if rotation:
+        image = image.rotate(
+            rotation,
+            resample=Image.Resampling.BICUBIC,
+            expand=True,
+        )
     alpha = image.getchannel("A")
     bbox = alpha.getbbox()
     if bbox is None:
         raise ValueError("source became fully transparent")
     cropped = image.crop(bbox)
-    available = OUTPUT_SIZE - PADDING * 2
-    scale = min(available / cropped.width, available / cropped.height)
+    scale = min(CONTENT_SIZE / cropped.width, CONTENT_SIZE / cropped.height)
     resized = cropped.resize(
         (max(1, round(cropped.width * scale)), max(1, round(cropped.height * scale))),
         Image.Resampling.LANCZOS,
@@ -107,6 +115,24 @@ def _make_preview(outputs: list[tuple[str, Image.Image]], destination: Path) -> 
     preview.save(destination)
 
 
+def _make_forbidden_cursor(image: Image.Image) -> Image.Image:
+    scale = 4
+    large = image.resize(
+        (OUTPUT_SIZE * scale, OUTPUT_SIZE * scale),
+        Image.Resampling.LANCZOS,
+    )
+    draw = ImageDraw.Draw(large)
+    ring = (215, 50, 42, 255)
+    shadow = (74, 28, 24, 255)
+    bounds = tuple(value * scale for value in (5, 5, 43, 43))
+    draw.ellipse(bounds, outline=shadow, width=5 * scale)
+    draw.ellipse(bounds, outline=ring, width=3 * scale)
+    slash = tuple(value * scale for value in (10, 38, 38, 10))
+    draw.line(slash, fill=shadow, width=6 * scale)
+    draw.line(slash, fill=ring, width=4 * scale)
+    return large.resize((OUTPUT_SIZE, OUTPUT_SIZE), Image.Resampling.LANCZOS)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("source_dir", type=Path)
@@ -121,10 +147,14 @@ def main() -> None:
     outputs: list[tuple[str, Image.Image]] = []
     for action, source_name in CURSORS.items():
         source = args.source_dir / source_name
-        image = _crop_and_resize(_remove_checkerboard(Image.open(source)))
+        image = _crop_and_resize(_remove_checkerboard(Image.open(source)), action)
         image.save(args.output_dir / f"cursor_{action}.png", optimize=True)
         outputs.append((action, image))
 
+    build_image = dict(outputs)["build"]
+    forbidden = _make_forbidden_cursor(build_image)
+    forbidden.save(args.output_dir / "cursor_build_forbidden.png", optimize=True)
+    outputs.append(("build_forbidden", forbidden))
     _make_preview(outputs, args.output_dir / "_preview.png")
 
 

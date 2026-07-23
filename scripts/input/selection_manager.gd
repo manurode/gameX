@@ -12,6 +12,7 @@ const CURSOR_GATHER_WOOD: StringName = &"gather_wood"
 const CURSOR_GATHER_GOLD: StringName = &"gather_gold"
 const CURSOR_GATHER_FOOD: StringName = &"gather_food"
 const CURSOR_BUILD: StringName = &"build"
+const CURSOR_BUILD_FORBIDDEN: StringName = &"build_forbidden"
 const CURSOR_ATTACK: StringName = &"attack"
 
 var selected_units: Array[Unit] = []
@@ -46,7 +47,7 @@ func get_cursor_action_at(screen_point: Vector2) -> StringName:
 
 	var building := _pick_building_at(world_point)
 	if building != null and _can_build_or_repair(building):
-		return CURSOR_BUILD
+		return CURSOR_BUILD if _is_construction_allowed() else CURSOR_BUILD_FORBIDDEN
 
 	var resource_node := _pick_resource_node_at(world_point)
 	if resource_node != null and _can_gather_resource(resource_node):
@@ -111,6 +112,9 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 		# so resource pick radii don't swallow construction/repair orders.
 		var target_building := _pick_building_at(world_point)
 		if target_building != null and _should_prefer_building_command(target_building):
+			if not _is_construction_allowed():
+				get_viewport().set_input_as_handled()
+				return
 			_handle_building_command(target_building, world_point, event.shift_pressed)
 			get_viewport().set_input_as_handled()
 			return
@@ -761,6 +765,14 @@ func _is_spawn_mode_active() -> bool:
 
 func _is_placement_mode_active() -> bool:
 	return _is_build_mode_active() or _is_spawn_mode_active()
+
+
+func _is_construction_allowed() -> bool:
+	var manager := get_tree().get_first_node_in_group("day_night_manager")
+	return (
+		not manager is DayNightManager
+		or (manager as DayNightManager).is_construction_allowed()
+	)
 
 
 func _is_pointer_over_ui(screen_pos: Vector2) -> bool:

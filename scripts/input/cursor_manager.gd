@@ -6,6 +6,7 @@ const CURSOR_TEXTURES: Dictionary = {
 	&"gather_gold": preload("res://assets/ui/cursors/cursor_gather_gold.png"),
 	&"gather_food": preload("res://assets/ui/cursors/cursor_gather_food.png"),
 	&"build": preload("res://assets/ui/cursors/cursor_build.png"),
+	&"build_forbidden": preload("res://assets/ui/cursors/cursor_build_forbidden.png"),
 	&"attack": preload("res://assets/ui/cursors/cursor_attack.png"),
 }
 const HOTSPOT := Vector2(2.0, 2.0)
