@@ -349,15 +349,20 @@ static func get_cost(type_id: String) -> Dictionary:
 	}
 
 
+## Repair costs this fraction of the proportional construction cost (0.5 = 50% cheaper).
+const REPAIR_COST_FACTOR := 0.5
+
+
 static func get_repair_cost(type_id: String, current_hp: int, max_hp: int) -> Dictionary:
 	if max_hp <= 0 or current_hp >= max_hp:
 		return {"wood": 0, "gold": 0, "food": 0}
 	var base_cost := get_cost(type_id)
 	var missing_ratio := 1.0 - float(current_hp) / float(max_hp)
+	var scale := missing_ratio * REPAIR_COST_FACTOR
 	return {
-		"wood": int(round(float(base_cost.get("wood", 0)) * missing_ratio)),
-		"gold": int(round(float(base_cost.get("gold", 0)) * missing_ratio)),
-		"food": int(round(float(base_cost.get("food", 0)) * missing_ratio)),
+		"wood": int(round(float(base_cost.get("wood", 0)) * scale)),
+		"gold": int(round(float(base_cost.get("gold", 0)) * scale)),
+		"food": int(round(float(base_cost.get("food", 0)) * scale)),
 	}
 
 
