@@ -3,7 +3,7 @@ extends RefCounted
 
 ## Long climb: early exits are short; a full clear is a deep meta-powered run.
 ## Opening goal: first day can afford lumber + mill + house, with a thin wall buffer.
-## Ignoring either wood or food still collapses the run; military stays gold-gated.
+## Ignoring either wood or food still collapses the run; military stays gold + villager gated.
 const PHASE_DURATIONS := {
 	"day": 55.0,
 	"dusk": 12.0,
@@ -39,7 +39,7 @@ const STARVATION_WORK_MULTIPLIER := 0.5
 const STARVATION_DAMAGE_PER_SECOND := 2.0
 
 const SQUAD_SIZE := 1
-const SQUAD_FOOD_COST := 100
+## Military units cost gold + 1 villager (no food to train).
 const SQUAD_GOLD_COST := 40
 const SQUAD_TRAIN_TIME := 6.0
 

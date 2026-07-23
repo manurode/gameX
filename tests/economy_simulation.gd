@@ -78,6 +78,10 @@ func _test_balance_data() -> void:
 	assert(BuildingDatabase.get_definition("tower").automatic_defense)
 	assert(EquipmentDatabase.get_definition("knight_squad").squad_size == 1)
 	assert(EquipmentDatabase.get_definition("archer_squad").squad_size == 1)
+	assert(int(EquipmentDatabase.get_definition("knight_squad").cost.get("food", 0)) == 0)
+	assert(int(EquipmentDatabase.get_definition("archer_squad").cost.get("food", 0)) == 0)
+	assert(int(EquipmentDatabase.get_definition("mage_squad").cost.get("food", 0)) == 0)
+	assert(not str(EquipmentDatabase.get_definition("knight_squad").get("transforms_to", "")).is_empty())
 	# Opening must afford both gather buildings + a house without waiting on income.
 	var open_wood := (
 		int(BuildingDatabase.get_definition("lumber_camp").wood)
@@ -164,9 +168,9 @@ func _simulate_ten_cycles() -> void:
 		gold += float(miners) * BalanceConfig.GOLD_PER_SECOND * cycle_len
 		food -= float(villagers) * BalanceConfig.VILLAGER_FOOD_PER_SECOND * cycle_len
 		food -= float(squads) * BalanceConfig.SQUAD_FOOD_PER_SECOND_AT_NIGHT * night_len
-		if cycle >= 3 and food >= BalanceConfig.SQUAD_FOOD_COST and gold >= BalanceConfig.SQUAD_GOLD_COST:
-			food -= BalanceConfig.SQUAD_FOOD_COST
+		if cycle >= 3 and villagers > 1 and gold >= BalanceConfig.SQUAD_GOLD_COST:
 			gold -= BalanceConfig.SQUAD_GOLD_COST
+			villagers -= 1
 			squads += 1
 		print("Ciclo %d: madera=%d oro=%d comida=%d aldeanos=%d escuadras=%d" % [
 			cycle, floori(wood), floori(gold), floori(food), villagers, squads

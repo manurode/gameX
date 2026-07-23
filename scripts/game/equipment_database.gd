@@ -12,7 +12,7 @@ const DEFINITIONS: Dictionary = {
 	"knight_squad": {
 		"name": "Caballero",
 		"train_time": BalanceConfig.SQUAD_TRAIN_TIME,
-		"cost": {"wood": 0, "gold": BalanceConfig.SQUAD_GOLD_COST, "food": BalanceConfig.SQUAD_FOOD_COST},
+		"cost": {"wood": 0, "gold": BalanceConfig.SQUAD_GOLD_COST, "food": 0},
 		"building_types": ["stable"],
 		"transforms_to": "knight",
 		"squad_size": BalanceConfig.SQUAD_SIZE,
@@ -20,7 +20,7 @@ const DEFINITIONS: Dictionary = {
 	"archer_squad": {
 		"name": "Arquero",
 		"train_time": BalanceConfig.SQUAD_TRAIN_TIME,
-		"cost": {"wood": 0, "gold": BalanceConfig.SQUAD_GOLD_COST, "food": BalanceConfig.SQUAD_FOOD_COST},
+		"cost": {"wood": 0, "gold": BalanceConfig.SQUAD_GOLD_COST, "food": 0},
 		"building_types": ["barracks"],
 		"transforms_to": "archer",
 		"squad_size": BalanceConfig.SQUAD_SIZE,
@@ -28,7 +28,7 @@ const DEFINITIONS: Dictionary = {
 	"mage_squad": {
 		"name": "Mago",
 		"train_time": BalanceConfig.SQUAD_TRAIN_TIME,
-		"cost": {"wood": 0, "gold": BalanceConfig.SQUAD_GOLD_COST + 10, "food": BalanceConfig.SQUAD_FOOD_COST},
+		"cost": {"wood": 0, "gold": BalanceConfig.SQUAD_GOLD_COST + 10, "food": 0},
 		"building_types": ["arcanum"],
 		"transforms_to": "mage",
 		"squad_size": BalanceConfig.SQUAD_SIZE,

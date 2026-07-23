@@ -545,7 +545,7 @@ func _make_icon_atlas(texture_path: String, variant_index: int = 0) -> AtlasText
 	return atlas
 
 
-func _format_cost_tooltip(name: String, cost: Dictionary, duration: float = 0.0) -> String:
+func _format_cost_parts(cost: Dictionary, include_villager: bool = false) -> PackedStringArray:
 	var parts: PackedStringArray = []
 	if cost.get("wood", 0) > 0:
 		parts.append("%d madera" % cost.wood)
@@ -553,6 +553,13 @@ func _format_cost_tooltip(name: String, cost: Dictionary, duration: float = 0.0)
 		parts.append("%d oro" % cost.gold)
 	if cost.get("food", 0) > 0:
 		parts.append("%d comida" % cost.food)
+	if include_villager:
+		parts.append("1 aldeano")
+	return parts
+
+
+func _format_cost_tooltip(name: String, cost: Dictionary, duration: float = 0.0) -> String:
+	var parts := _format_cost_parts(cost)
 	var details := " · ".join(parts) if not parts.is_empty() else "Gratis"
 	if duration > 0.0:
 		details += " · %.0f s" % duration
@@ -759,13 +766,8 @@ func _rebuild_production_item_buttons(items: Array[String]) -> void:
 	for item_id in items:
 		var def := EquipmentDatabase.get_definition(item_id)
 		var cost: Dictionary = def.get("cost", {})
-		var cost_parts: PackedStringArray = []
-		if cost.get("wood", 0) > 0:
-			cost_parts.append("%d madera" % cost.wood)
-		if cost.get("gold", 0) > 0:
-			cost_parts.append("%d oro" % cost.gold)
-		if cost.get("food", 0) > 0:
-			cost_parts.append("%d comida" % cost.food)
+		var consumes_villager := not str(def.get("transforms_to", "")).is_empty()
+		var cost_parts := _format_cost_parts(cost, consumes_villager)
 		var cost_text := ", ".join(cost_parts) if not cost_parts.is_empty() else "Gratis"
 
 		var button := Button.new()
