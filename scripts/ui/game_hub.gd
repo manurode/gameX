@@ -778,12 +778,9 @@ func _rebuild_production_item_buttons(items: Array[String]) -> void:
 		button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		_style_dialog_button(button, true)
 		button.add_theme_font_size_override("font_size", 13)
-		var normal_style: StyleBoxFlat = button.get_theme_stylebox("normal") as StyleBoxFlat
-		button.set_meta("style", normal_style)
 		button.text = unit_name
 		button.set_meta("unit_name", unit_name)
 		button.set_meta("item_id", item_id)
-		button.set_meta("tooltip_slot", slot)
 		button.pressed.connect(_on_production_pressed.bind(item_id))
 		# Fixed bottom padding so text does not jump when the bar appears.
 		var style_names := ["normal", "hover", "pressed", "disabled"]
@@ -795,8 +792,8 @@ func _rebuild_production_item_buttons(items: Array[String]) -> void:
 		button.add_child(progress_bar)
 		button.set_meta("progress_bar", progress_bar)
 		slot.add_child(button)
-		slot.tooltip_text = _format_production_tooltip(
-			item_id,
+		_apply_production_tooltip(
+			button,
 			{"can_produce": true, "missing_resources": false, "missing_population": false}
 		)
 		_production_items_box.add_child(slot)
@@ -926,10 +923,6 @@ func _get_production_availability(item_id: String) -> Dictionary:
 	)
 
 
-func _get_production_tooltip_target(button: Button) -> Control:
-	return button.get_meta("tooltip_slot", button) as Control
-
-
 func _format_production_cost_line(cost: Dictionary, include_villager: bool, show_have: bool) -> String:
 	var parts: PackedStringArray = []
 	var wood_needed: int = cost.get("wood", 0)
@@ -988,12 +981,11 @@ func _format_production_tooltip(item_id: String, availability: Dictionary) -> St
 
 
 func _apply_production_tooltip(button: Button, availability: Dictionary, override_text: String = "") -> void:
-	var target := _get_production_tooltip_target(button)
 	if not override_text.is_empty():
-		target.tooltip_text = override_text
+		button.tooltip_text = override_text
 		return
 	var item_id: String = button.get_meta("item_id", "")
-	target.tooltip_text = _format_production_tooltip(item_id, availability)
+	button.tooltip_text = _format_production_tooltip(item_id, availability)
 
 
 func _format_production_block_subtitle(availability: Dictionary) -> String:
@@ -1020,16 +1012,15 @@ func _build_production_button_text(unit_name: String, availability: Dictionary, 
 
 
 func _apply_production_button_style(button: Button, can_produce: bool) -> void:
-	if not button.has_meta("style"):
+	var normal: StyleBoxFlat = button.get_theme_stylebox("normal") as StyleBoxFlat
+	if normal == null:
 		return
-	var style: StyleBoxFlat = button.get_meta("style")
 	if can_produce:
-		style.border_color = COL_BORDER_DIM
-		style.bg_color = COL_BTN
+		normal.border_color = COL_BORDER_DIM
+		normal.bg_color = COL_BTN
 	else:
-		style.border_color = Color(0.25, 0.22, 0.18, 1.0)
-		style.bg_color = COL_BTN_DISABLED
-	_apply_slot_style(button, style)
+		normal.border_color = Color(0.25, 0.22, 0.18, 1.0)
+		normal.bg_color = COL_BTN_DISABLED
 
 
 func _update_production_status_labels() -> void:
@@ -1049,13 +1040,6 @@ func _update_production_status_labels() -> void:
 		var availability := _get_production_availability(item_id)
 		var can_produce: bool = availability.get("can_produce", true)
 
-		button.disabled = not can_produce
-		button.mouse_filter = (
-			Control.MOUSE_FILTER_STOP if can_produce else Control.MOUSE_FILTER_IGNORE
-		)
-		button.mouse_default_cursor_shape = (
-			Control.CURSOR_POINTING_HAND if can_produce else Control.CURSOR_ARROW
-		)
 		_apply_production_button_style(button, can_produce)
 		button.text = _build_production_button_text(unit_name, availability, queued_count)
 
@@ -1064,7 +1048,7 @@ func _update_production_status_labels() -> void:
 		elif can_produce:
 			button.add_theme_color_override("font_color", COL_CREAM)
 		else:
-			button.remove_theme_color_override("font_color")
+			button.add_theme_color_override("font_color", Color(0.55, 0.52, 0.45, 1.0))
 
 		_apply_production_tooltip(button, availability)
 
