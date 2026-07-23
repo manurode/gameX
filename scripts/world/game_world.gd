@@ -10,6 +10,7 @@ extends Node2D
 @onready var units: Node2D = $YSortWorld
 @onready var buildings: Node2D = $YSortWorld
 @onready var selection_manager: Node = $SelectionManager
+@onready var cursor_manager: Node = $CursorManager
 @onready var build_manager: Node = $BuildManager
 @onready var unit_spawn_manager: Node = $UnitSpawnManager
 @onready var resource_manager: ResourceManager = $ResourceManager
@@ -76,6 +77,7 @@ func on_ground_ready(ground: TinyTilesMap) -> void:
 	build_manager.build_mode_changed.connect(_on_build_mode_changed)
 	unit_spawn_manager.spawn_mode_changed.connect(_on_spawn_mode_changed)
 	selection_manager.setup(buildings, resource_manager)
+	cursor_manager.setup(selection_manager)
 	day_night_manager.setup(day_night_modulate, water_animator)
 	night_wave_manager.setup(day_night_manager, units, ground)
 	run_boon_manager.setup(day_night_manager, self, curfew_manager, resource_manager)

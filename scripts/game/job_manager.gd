@@ -104,10 +104,6 @@ func assign_villagers_to_resource(villagers: Array, resource_node: ResourceNode)
 	if resource_node == null or not resource_node.has_resources():
 		return false
 
-	var building := find_gather_building_for_resource(resource_node)
-	if building == null:
-		return false
-
 	var assigned := false
 	for unit in villagers:
 		if not unit is Unit:
@@ -115,7 +111,8 @@ func assign_villagers_to_resource(villagers: Array, resource_node: ResourceNode)
 		var villager := unit as Unit
 		if not villager.is_civilian or not villager.can_gather:
 			continue
-		if not _can_assign_to_building(villager, building):
+		var building := find_gather_building_for_resource(resource_node, villager)
+		if building == null:
 			continue
 		_return_buildings.erase(villager)
 		_assign_villager_to_resource(villager, building, resource_node)
@@ -123,7 +120,27 @@ func assign_villagers_to_resource(villagers: Array, resource_node: ResourceNode)
 	return assigned
 
 
-func find_gather_building_for_resource(resource_node: ResourceNode) -> Building:
+func can_assign_villagers_to_resource(villagers: Array, resource_node: ResourceNode) -> bool:
+	if resource_node == null or not resource_node.has_resources():
+		return false
+	for item in villagers:
+		if not item is Unit:
+			continue
+		var villager := item as Unit
+		if (
+			is_instance_valid(villager)
+			and villager.is_civilian
+			and villager.can_gather
+			and find_gather_building_for_resource(resource_node, villager) != null
+		):
+			return true
+	return false
+
+
+func find_gather_building_for_resource(
+	resource_node: ResourceNode,
+	villager: Unit = null
+) -> Building:
 	var gather_type := resource_node.get_resource_key()
 	if gather_type.is_empty():
 		return null
@@ -140,6 +157,8 @@ func find_gather_building_for_resource(resource_node: ResourceNode) -> Building:
 		if BuildingDatabase.get_gather_type(building.building_type_id) != gather_type:
 			continue
 		if not _building_covers_resource(building, resource_node):
+			continue
+		if villager != null and not _can_assign_to_building(villager, building):
 			continue
 		var dist := building.global_position.distance_squared_to(resource_node.global_position)
 		if dist < best_dist:
@@ -377,8 +396,13 @@ func _try_assign_nearby_construction(villager: Unit) -> bool:
 func _can_assign_to_building(villager: Unit, building: Building) -> bool:
 	if not is_instance_valid(building) or building.building_state != Building.BuildingState.ACTIVE:
 		return false
+	if building.team_id != villager.team_id:
+		return false
 	var workers: Array = _building_workers.get(building, [])
-	return workers.size() < BuildingDatabase.get_max_workers(building.building_type_id)
+	return (
+		workers.has(villager)
+		or workers.size() < BuildingDatabase.get_max_workers(building.building_type_id)
+	)
 
 
 func _assign_villager_to_resource(villager: Unit, building: Building, resource_node: ResourceNode) -> void:

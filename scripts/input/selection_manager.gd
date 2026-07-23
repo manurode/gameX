@@ -7,6 +7,12 @@ signal resource_selection_changed(selected_resource: ResourceNode)
 const DRAG_THRESHOLD := 6.0
 const UNIT_COLLISION_MASK := 2
 const GARRISON_ATTACK_PICK_RADIUS := 80.0
+const CURSOR_DEFAULT: StringName = &"default"
+const CURSOR_GATHER_WOOD: StringName = &"gather_wood"
+const CURSOR_GATHER_GOLD: StringName = &"gather_gold"
+const CURSOR_GATHER_FOOD: StringName = &"gather_food"
+const CURSOR_BUILD: StringName = &"build"
+const CURSOR_ATTACK: StringName = &"attack"
 
 var selected_units: Array[Unit] = []
 var selected_building: Building = null
@@ -25,6 +31,36 @@ var _resource_manager: ResourceManager
 func setup(buildings_container: Node2D, resource_manager: ResourceManager) -> void:
 	_buildings_container = buildings_container
 	_resource_manager = resource_manager
+
+
+func get_cursor_action_at(screen_point: Vector2) -> StringName:
+	if _is_placement_mode_active() or _is_pointer_over_ui(screen_point):
+		return CURSOR_DEFAULT
+
+	var world_point := _screen_to_world(screen_point)
+	if _can_selected_garrison_attack_at(world_point):
+		return CURSOR_ATTACK
+
+	if _pick_attackable_unit_at(world_point) != null:
+		return CURSOR_ATTACK
+
+	var building := _pick_building_at(world_point)
+	if building != null and _can_build_or_repair(building):
+		return CURSOR_BUILD
+
+	var resource_node := _pick_resource_node_at(world_point)
+	if resource_node != null and _can_gather_resource(resource_node):
+		match resource_node.get_resource_key():
+			"wood":
+				return CURSOR_GATHER_WOOD
+			"gold":
+				return CURSOR_GATHER_GOLD
+			"food":
+				return CURSOR_GATHER_FOOD
+
+	if building != null and _can_attack_building(building):
+		return CURSOR_ATTACK
+	return CURSOR_DEFAULT
 
 
 func _ready() -> void:
@@ -143,16 +179,22 @@ func _handle_building_command(building: Building, world_point: Vector2, force_at
 		if unit.garrisoned_building == building:
 			continue
 
-		if unit.can_attack:
-			var should_attack := force_attack or building.is_hostile_to(unit) or building.has_enemy_garrison(unit)
-
-			if should_attack and building.building_state == Building.BuildingState.ACTIVE:
+		var should_attack := (
+			force_attack
+			or building.is_hostile_to(unit)
+			or building.has_enemy_garrison(unit)
+		)
+		if should_attack and building.building_state == Building.BuildingState.ACTIVE:
+			if unit.can_attack:
 				unit.attack_target_building_node(building)
-			elif building.building_state == Building.BuildingState.ACTIVE:
+			continue
+
+		if unit.can_attack:
+			if building.building_state == Building.BuildingState.ACTIVE:
 				unit.move_to(building.get_approach_point(unit.global_position))
 			else:
 				unit.move_to(world_point)
-		elif unit.can_build and building.can_be_repaired():
+		elif unit.can_build and building.can_be_repaired() and _can_afford_repair(building):
 			unit.assign_repair(building)
 		elif unit.can_build:
 			if building.building_state == Building.BuildingState.CONSTRUCTING:
@@ -170,6 +212,8 @@ func _should_prefer_building_command(building: Building) -> bool:
 				return true
 		return false
 	if not building.can_be_repaired():
+		return false
+	if not _can_afford_repair(building):
 		return false
 	for unit in selected_units:
 		if is_instance_valid(unit) and unit.can_build and not unit.can_attack:
@@ -281,7 +325,7 @@ func _expand_selection_to_squads() -> void:
 
 func _attack_selected_units(target: Unit) -> void:
 	for unit in selected_units:
-		if is_instance_valid(unit):
+		if is_instance_valid(unit) and unit.can_attack:
 			unit.attack_target_unit(target)
 
 
@@ -367,10 +411,85 @@ func _pick_attackable_unit_at(world_point: Vector2) -> Unit:
 		return null
 
 	for selected in selected_units:
-		if is_instance_valid(selected) and selected.is_hostile_to(unit):
+		if is_instance_valid(selected) and selected.can_attack and selected.is_hostile_to(unit):
 			return unit
 
 	return null
+
+
+func _can_build_or_repair(building: Building) -> bool:
+	if building.building_state == Building.BuildingState.CONSTRUCTING:
+		for unit in selected_units:
+			if is_instance_valid(unit) and unit.can_build:
+				return true
+		return false
+	if not building.can_be_repaired():
+		return false
+	if not _can_afford_repair(building):
+		return false
+	for unit in selected_units:
+		# Building commands prioritize combat-capable units as attackers.
+		if is_instance_valid(unit) and unit.can_build and not unit.can_attack:
+			return true
+	return false
+
+
+func _can_afford_repair(building: Building) -> bool:
+	return (
+		building.repair_paid
+		or (
+			_resource_manager != null
+			and _resource_manager.can_afford(building.get_repair_cost())
+		)
+	)
+
+
+func _can_gather_resource(resource_node: ResourceNode) -> bool:
+	var job_manager := get_tree().get_first_node_in_group("job_manager")
+	if not job_manager is JobManager:
+		return false
+	return (job_manager as JobManager).can_assign_villagers_to_resource(
+		selected_units,
+		resource_node
+	)
+
+
+func _can_attack_building(building: Building) -> bool:
+	if building.building_state != Building.BuildingState.ACTIVE:
+		return false
+	for unit in selected_units:
+		if not is_instance_valid(unit) or not unit.can_attack:
+			continue
+		if building.is_hostile_to(unit) or building.has_enemy_garrison(unit):
+			return true
+	return false
+
+
+func _can_selected_garrison_attack_at(world_point: Vector2) -> bool:
+	if selected_building == null or not is_instance_valid(selected_building):
+		return false
+	if not selected_building.can_garrison or not selected_building.is_garrison_occupied():
+		return false
+	if _pick_hostile_unit_for_building(world_point, selected_building) != null:
+		return true
+	var target := _pick_building_at(world_point)
+	if target == null or target == selected_building:
+		return false
+	return _can_garrison_attack_building(selected_building, target)
+
+
+func _can_garrison_attack_building(attacker: Building, target: Building) -> bool:
+	if (
+		attacker.get_attack_point().distance_to(target.get_attack_point())
+		> attacker.get_garrison_attack_range()
+	):
+		return false
+	if Team.are_hostile(attacker.team_id, target.team_id):
+		return true
+	for unit in target.garrisoned_units:
+		if is_instance_valid(unit) and Team.are_hostile(unit.team_id, attacker.team_id):
+			return true
+	return false
 
 
 func select_building(building: Building) -> void:
@@ -537,13 +656,7 @@ func _try_garrison_building_command(world_point: Vector2) -> bool:
 
 	var target_building := _pick_building_at(world_point)
 	if target_building != null and target_building != selected_building:
-		var is_hostile := Team.are_hostile(selected_building.team_id, target_building.team_id)
-		var has_enemy_garrison := false
-		for garrisoned in target_building.garrisoned_units:
-			if is_instance_valid(garrisoned) and Team.are_hostile(garrisoned.team_id, selected_building.team_id):
-				has_enemy_garrison = true
-				break
-		if is_hostile or has_enemy_garrison:
+		if _can_garrison_attack_building(selected_building, target_building):
 			selected_building.order_garrison_attack_building(target_building)
 			return true
 
@@ -552,18 +665,27 @@ func _try_garrison_building_command(world_point: Vector2) -> bool:
 
 func _pick_hostile_unit_for_building(world_point: Vector2, building: Building) -> Unit:
 	var direct := _pick_unit_in_group(world_point, "units")
-	if direct != null and not direct._is_dying and Team.are_hostile(building.team_id, direct.team_id):
+	var attack_range := building.get_garrison_attack_range()
+	var origin := building.get_attack_point()
+	if (
+		direct != null
+		and not direct._is_dying
+		and Team.are_hostile(building.team_id, direct.team_id)
+		and origin.distance_to(direct.get_sprite_center()) <= attack_range
+	):
 		return direct
 
 	var best_unit: Unit = null
 	var best_distance := INF
-	var attack_range := building.get_garrison_attack_range()
-	var origin := building.get_attack_point()
 	for node in get_tree().get_nodes_in_group("units"):
 		if not node is Unit:
 			continue
 		var unit := node as Unit
-		if unit._is_dying or not Team.are_hostile(building.team_id, unit.team_id):
+		if (
+			unit._is_dying
+			or unit.garrisoned_building != null
+			or not Team.are_hostile(building.team_id, unit.team_id)
+		):
 			continue
 		var click_distance := unit.get_sprite_center().distance_to(world_point)
 		if click_distance > GARRISON_ATTACK_PICK_RADIUS:
@@ -642,6 +764,14 @@ func _is_placement_mode_active() -> bool:
 
 
 func _is_pointer_over_ui(screen_pos: Vector2) -> bool:
+	var hovered_control := get_viewport().gui_get_hovered_control()
+	if (
+		hovered_control != null
+		and hovered_control.visible
+		and hovered_control.mouse_filter != Control.MOUSE_FILTER_IGNORE
+	):
+		return true
+
 	var hud := get_node_or_null("/root/Main/Layout/WorldView/SubViewport/HUD")
 	if hud == null:
 		return false
