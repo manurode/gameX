@@ -583,6 +583,8 @@ func _on_resources_changed(wood: int, gold: int, food: int) -> void:
 func _on_population_changed(pop: int, cap: int) -> void:
 	if _population_label != null:
 		_population_label.text = "Pob: %d/%d" % [pop, cap]
+	if _selection_mode != null and _selection_mode.visible:
+		_update_production_status_labels()
 
 
 func _on_food_upkeep_changed(upkeep: float) -> void:
@@ -771,15 +773,16 @@ func _rebuild_production_item_buttons(items: Array[String]) -> void:
 		button.focus_mode = Control.FOCUS_NONE
 		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 		button.clip_contents = true
+		button.clip_text = true
+		button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		_style_dialog_button(button, true)
 		button.add_theme_font_size_override("font_size", 13)
+		var normal_style: StyleBoxFlat = button.get_theme_stylebox("normal") as StyleBoxFlat
+		button.set_meta("style", normal_style)
 
 		var unit_name: String = def.get("name", item_id)
-		if _has_production_double():
-			button.text = "%s\nx2" % unit_name
-			button.add_theme_color_override("font_color", Color(0.95, 0.82, 0.35))
-		else:
-			button.text = unit_name
+		button.text = unit_name
+		button.set_meta("unit_name", unit_name)
 		button.tooltip_text = "%s · %.0f s%s" % [
 			cost_text,
 			def.get("train_time", 0.0),
@@ -907,6 +910,58 @@ func _on_market_trades_changed(_trades_remaining: int) -> void:
 		_refresh_selection_panel()
 
 
+func _get_production_output_count() -> int:
+	if _run_boon_manager != null:
+		return _run_boon_manager.get_production_output_count()
+	return 1
+
+
+func _get_production_availability(item_id: String) -> Dictionary:
+	if _production_manager == null or _selected_building == null:
+		return {"can_produce": true, "missing_resources": false, "missing_population": false, "other_block": ""}
+	return _production_manager.get_production_availability(
+		_selected_building,
+		item_id,
+		_get_production_output_count()
+	)
+
+
+func _format_production_block_subtitle(availability: Dictionary) -> String:
+	if availability.get("missing_resources", false) and availability.get("missing_population", false):
+		return "Sin recursos y falta alojamiento"
+	if availability.get("missing_resources", false):
+		return "Sin recursos"
+	if availability.get("missing_population", false):
+		return "Falta alojamiento"
+	return ""
+
+
+func _build_production_button_text(unit_name: String, availability: Dictionary, queued_count: int) -> String:
+	var subtitle := ""
+	if not availability.get("can_produce", true):
+		subtitle = _format_production_block_subtitle(availability)
+	elif _has_production_double():
+		subtitle = "x2"
+	elif queued_count > 0:
+		subtitle = "(x%d)" % queued_count
+	if subtitle.is_empty():
+		return unit_name
+	return "%s\n%s" % [unit_name, subtitle]
+
+
+func _apply_production_button_style(button: Button, can_produce: bool) -> void:
+	if not button.has_meta("style"):
+		return
+	var style: StyleBoxFlat = button.get_meta("style")
+	if can_produce:
+		style.border_color = COL_BORDER_DIM
+		style.bg_color = COL_BTN
+	else:
+		style.border_color = Color(0.25, 0.22, 0.18, 1.0)
+		style.bg_color = COL_BTN_DISABLED
+	_apply_slot_style(button, style)
+
+
 func _update_production_status_labels() -> void:
 	if _selected_building == null or _production_manager == null:
 		return
@@ -920,15 +975,31 @@ func _update_production_status_labels() -> void:
 			continue
 		var def := EquipmentDatabase.get_definition(item_id)
 		var queued_count: int = queue_counts.get(item_id, 0)
-		var unit_name: String = def.get("name", item_id)
-		if double_active:
-			button.text = "%s\nx2" % unit_name
+		var unit_name: String = button.get_meta("unit_name", def.get("name", item_id))
+		var availability := _get_production_availability(item_id)
+		var can_produce: bool = availability.get("can_produce", true)
+		var block_subtitle := _format_production_block_subtitle(availability)
+
+		button.disabled = not can_produce
+		button.mouse_default_cursor_shape = (
+			Control.CURSOR_POINTING_HAND if can_produce else Control.CURSOR_ARROW
+		)
+		_apply_production_button_style(button, can_produce)
+		button.text = _build_production_button_text(unit_name, availability, queued_count)
+
+		if can_produce and double_active:
 			button.add_theme_color_override("font_color", Color(0.95, 0.82, 0.35))
-		else:
-			button.text = unit_name
+		elif can_produce:
 			button.add_theme_color_override("font_color", COL_CREAM)
-		if queued_count > 0:
-			button.text += "\n(x%d)" % queued_count
+		else:
+			button.remove_theme_color_override("font_color")
+
+		button.set_meta("block_tooltip", block_subtitle)
+		if not block_subtitle.is_empty():
+			var base_tooltip: String = button.get_meta("base_tooltip", "")
+			button.tooltip_text = "%s\n%s" % [base_tooltip, block_subtitle]
+		elif button.has_meta("base_tooltip"):
+			button.tooltip_text = button.get_meta("base_tooltip")
 
 	_update_production_progress_label()
 
@@ -1007,6 +1078,10 @@ func _set_production_button_progress(button: Button, ratio: float, active: bool,
 		bar.modulate.a = 1.0 if active else 0.35
 	if active and not status_tooltip.is_empty():
 		button.tooltip_text = status_tooltip
+		return
+	var block_tooltip: String = button.get_meta("block_tooltip", "")
+	if not block_tooltip.is_empty() and button.has_meta("base_tooltip"):
+		button.tooltip_text = "%s\n%s" % [button.get_meta("base_tooltip"), block_tooltip]
 	elif button.has_meta("base_tooltip"):
 		button.tooltip_text = button.get_meta("base_tooltip")
 
@@ -1066,12 +1141,29 @@ func _update_production_progress_label() -> void:
 func _on_production_pressed(item_id: String) -> void:
 	if _production_manager == null or _selected_building == null:
 		return
+	var availability := _get_production_availability(item_id)
+	if not availability.get("can_produce", true):
+		var reason := _production_manager.get_enqueue_block_reason(
+			_selected_building,
+			item_id,
+			_get_production_output_count()
+		)
+		if reason.is_empty():
+			reason = "No se puede producir ahora"
+		_production_feedback_text = reason
+		_production_feedback_timer = 3.5
+		_update_production_status_labels()
+		return
 	if _production_manager.enqueue(_selected_building, item_id):
 		_production_feedback_text = ""
 		_production_feedback_timer = 0.0
 		_update_production_status_labels()
 		return
-	var reason := _production_manager.get_enqueue_block_reason(_selected_building, item_id)
+	var reason := _production_manager.get_enqueue_block_reason(
+		_selected_building,
+		item_id,
+		_get_production_output_count()
+	)
 	if reason.is_empty():
 		reason = "No se puede producir ahora"
 	_production_feedback_text = reason

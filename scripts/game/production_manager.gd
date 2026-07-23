@@ -66,32 +66,72 @@ func unregister_producer(building: Building) -> void:
 	_pending_recruitment.erase(building)
 
 
-func get_enqueue_block_reason(building: Building, item_id: String, batch_count: int = 1) -> String:
+func get_production_availability(
+	building: Building,
+	item_id: String,
+	output_count: int = 1
+) -> Dictionary:
+	var result := {
+		"can_produce": true,
+		"missing_resources": false,
+		"missing_population": false,
+		"other_block": "",
+	}
 	if not is_instance_valid(building) or building.building_state != Building.BuildingState.ACTIVE:
-		return "El edificio no está activo"
+		result.can_produce = false
+		result.other_block = "El edificio no está activo"
+		return result
 	if not EquipmentDatabase.can_produce_at(building.building_type_id, item_id):
-		return "No se puede producir aquí"
+		result.can_produce = false
+		result.other_block = "No se puede producir aquí"
+		return result
 	var def := EquipmentDatabase.get_definition(item_id)
 	if def.is_empty():
-		return "Unidad desconocida"
-	var squad_size: int = def.get("squad_size", 1)
-	var reserved_needed := maxi(0, squad_size - 1) * batch_count
-	if reserved_needed > 0:
-		if _population_manager == null:
-			return "No hay gestor de población"
-		if not _population_manager.can_reserve_population(reserved_needed):
-			var free_slots := maxi(
-				0,
-				_population_manager.population_cap
-				- _population_manager.population
-				- _population_manager.reserved_population
-			)
-			return "No hay suficiente población (faltan %d, libres %d)" % [reserved_needed, free_slots]
+		result.can_produce = false
+		result.other_block = "Unidad desconocida"
+		return result
+
+	var cost: Dictionary = def.get("cost", {})
+	if _resource_manager == null or not _resource_manager.can_afford(cost):
+		result.missing_resources = true
+		result.can_produce = false
+
+	var transforms_to: String = def.get("transforms_to", "")
+	if transforms_to.is_empty():
+		if _population_manager != null \
+				and not _population_manager.can_reserve_population(maxi(1, output_count)):
+			result.missing_population = true
+			result.can_produce = false
+	else:
+		var squad_size: int = def.get("squad_size", 1)
+		var reserved_needed := maxi(0, squad_size - 1) * output_count
+		if reserved_needed > 0:
+			if _population_manager == null:
+				result.can_produce = false
+				result.other_block = "No hay gestor de población"
+				return result
+			if not _population_manager.can_reserve_population(reserved_needed):
+				result.missing_population = true
+				result.can_produce = false
+
+	return result
+
+
+func get_enqueue_block_reason(building: Building, item_id: String, output_count: int = 1) -> String:
+	var availability := get_production_availability(building, item_id, output_count)
+	if not availability.other_block.is_empty():
+		return availability.other_block
+	if availability.missing_resources and availability.missing_population:
+		return "Faltan recursos y espacio de población"
+	if availability.missing_resources:
+		return "Recursos insuficientes"
+	if availability.missing_population:
+		return "Falta espacio de población — construye casas"
 	return ""
 
 
 func enqueue(building: Building, item_id: String, batch_count: int = 1) -> bool:
-	if not get_enqueue_block_reason(building, item_id, batch_count).is_empty():
+	if not get_production_availability(building, item_id, batch_count).can_produce:
 		return false
 
 	var def := EquipmentDatabase.get_definition(item_id)
