@@ -763,13 +763,14 @@ func _rebuild_production_item_buttons(items: Array[String]) -> void:
 
 	for item_id in items:
 		var def := EquipmentDatabase.get_definition(item_id)
-		var cost: Dictionary = def.get("cost", {})
-		var consumes_villager := not str(def.get("transforms_to", "")).is_empty()
-		var cost_parts := _format_cost_parts(cost, consumes_villager)
-		var cost_text := ", ".join(cost_parts) if not cost_parts.is_empty() else "Gratis"
+		var unit_name: String = def.get("name", item_id)
+
+		var slot := Control.new()
+		slot.custom_minimum_size = ACTION_SLOT_SIZE
+		slot.mouse_filter = Control.MOUSE_FILTER_STOP
 
 		var button := Button.new()
-		button.custom_minimum_size = ACTION_SLOT_SIZE
+		button.set_anchors_preset(Control.PRESET_FULL_RECT)
 		button.focus_mode = Control.FOCUS_NONE
 		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 		button.clip_contents = true
@@ -779,15 +780,10 @@ func _rebuild_production_item_buttons(items: Array[String]) -> void:
 		button.add_theme_font_size_override("font_size", 13)
 		var normal_style: StyleBoxFlat = button.get_theme_stylebox("normal") as StyleBoxFlat
 		button.set_meta("style", normal_style)
-
-		var unit_name: String = def.get("name", item_id)
 		button.text = unit_name
 		button.set_meta("unit_name", unit_name)
-		button.tooltip_text = "%s · %.0f s%s" % [
-			cost_text,
-			def.get("train_time", 0.0),
-			" · genera 2 unidades" if _has_production_double() else "",
-		]
+		button.set_meta("item_id", item_id)
+		button.set_meta("tooltip_slot", slot)
 		button.pressed.connect(_on_production_pressed.bind(item_id))
 		# Fixed bottom padding so text does not jump when the bar appears.
 		var style_names := ["normal", "hover", "pressed", "disabled"]
@@ -798,8 +794,12 @@ func _rebuild_production_item_buttons(items: Array[String]) -> void:
 		var progress_bar := _create_production_progress_bar()
 		button.add_child(progress_bar)
 		button.set_meta("progress_bar", progress_bar)
-		button.set_meta("base_tooltip", button.tooltip_text)
-		_production_items_box.add_child(button)
+		slot.add_child(button)
+		slot.tooltip_text = _format_production_tooltip(
+			item_id,
+			{"can_produce": true, "missing_resources": false, "missing_population": false}
+		)
+		_production_items_box.add_child(slot)
 		_production_item_buttons[item_id] = button
 
 
@@ -926,6 +926,76 @@ func _get_production_availability(item_id: String) -> Dictionary:
 	)
 
 
+func _get_production_tooltip_target(button: Button) -> Control:
+	return button.get_meta("tooltip_slot", button) as Control
+
+
+func _format_production_cost_line(cost: Dictionary, include_villager: bool, show_have: bool) -> String:
+	var parts: PackedStringArray = []
+	var wood_needed: int = cost.get("wood", 0)
+	if wood_needed > 0:
+		if show_have and _resource_manager != null:
+			parts.append("%d/%d madera" % [_resource_manager.wood, wood_needed])
+		else:
+			parts.append("%d madera" % wood_needed)
+	var gold_needed: int = cost.get("gold", 0)
+	if gold_needed > 0:
+		if show_have and _resource_manager != null:
+			parts.append("%d/%d oro" % [_resource_manager.gold, gold_needed])
+		else:
+			parts.append("%d oro" % gold_needed)
+	var food_needed: int = cost.get("food", 0)
+	if food_needed > 0:
+		if show_have and _resource_manager != null:
+			parts.append("%d/%d comida" % [_resource_manager.food, food_needed])
+		else:
+			parts.append("%d comida" % food_needed)
+	if include_villager:
+		parts.append("1 aldeano")
+	return " · ".join(parts) if not parts.is_empty() else "Gratis"
+
+
+func _format_production_tooltip(item_id: String, availability: Dictionary) -> String:
+	var def := EquipmentDatabase.get_definition(item_id)
+	if def.is_empty():
+		return ""
+	var unit_name: String = def.get("name", item_id)
+	var cost: Dictionary = def.get("cost", {})
+	var consumes_villager := not str(def.get("transforms_to", "")).is_empty()
+	var missing_resources: bool = availability.get("missing_resources", false)
+	var show_have: bool = missing_resources and not bool(availability.get("can_produce", true))
+	var cost_line := _format_production_cost_line(cost, consumes_villager, show_have)
+	var train_time: float = def.get("train_time", 0.0)
+	var details := cost_line
+	if train_time > 0.0:
+		details += " · %.0f s" % train_time
+	if _has_production_double():
+		details += " · genera 2 unidades"
+
+	var lines: PackedStringArray = ["%s\n%s" % [unit_name, details]]
+	var block_subtitle := _format_production_block_subtitle(availability)
+	if not block_subtitle.is_empty():
+		lines.append(block_subtitle)
+	if availability.get("missing_population", false) and _population_manager != null:
+		var output_count := _get_production_output_count()
+		var free_slots := maxi(
+			0,
+			_population_manager.population_cap
+			- _population_manager.population
+			- _population_manager.reserved_population
+		)
+	return "\n".join(lines)
+
+
+func _apply_production_tooltip(button: Button, availability: Dictionary, override_text: String = "") -> void:
+	var target := _get_production_tooltip_target(button)
+	if not override_text.is_empty():
+		target.tooltip_text = override_text
+		return
+	var item_id: String = button.get_meta("item_id", "")
+	target.tooltip_text = _format_production_tooltip(item_id, availability)
+
+
 func _format_production_block_subtitle(availability: Dictionary) -> String:
 	if availability.get("missing_resources", false) and availability.get("missing_population", false):
 		return "Sin recursos y falta alojamiento"
@@ -978,9 +1048,11 @@ func _update_production_status_labels() -> void:
 		var unit_name: String = button.get_meta("unit_name", def.get("name", item_id))
 		var availability := _get_production_availability(item_id)
 		var can_produce: bool = availability.get("can_produce", true)
-		var block_subtitle := _format_production_block_subtitle(availability)
 
 		button.disabled = not can_produce
+		button.mouse_filter = (
+			Control.MOUSE_FILTER_STOP if can_produce else Control.MOUSE_FILTER_IGNORE
+		)
 		button.mouse_default_cursor_shape = (
 			Control.CURSOR_POINTING_HAND if can_produce else Control.CURSOR_ARROW
 		)
@@ -994,12 +1066,7 @@ func _update_production_status_labels() -> void:
 		else:
 			button.remove_theme_color_override("font_color")
 
-		button.set_meta("block_tooltip", block_subtitle)
-		if not block_subtitle.is_empty():
-			var base_tooltip: String = button.get_meta("base_tooltip", "")
-			button.tooltip_text = "%s\n%s" % [base_tooltip, block_subtitle]
-		elif button.has_meta("base_tooltip"):
-			button.tooltip_text = button.get_meta("base_tooltip")
+		_apply_production_tooltip(button, availability)
 
 	_update_production_progress_label()
 
@@ -1077,13 +1144,16 @@ func _set_production_button_progress(button: Button, ratio: float, active: bool,
 		bar.value = ratio if active else 0.0
 		bar.modulate.a = 1.0 if active else 0.35
 	if active and not status_tooltip.is_empty():
-		button.tooltip_text = status_tooltip
+		var item_id: String = button.get_meta("item_id", "")
+		var availability := _get_production_availability(item_id)
+		var cost_tooltip := _format_production_tooltip(item_id, availability)
+		if not cost_tooltip.is_empty():
+			_apply_production_tooltip(button, availability, "%s\n%s" % [cost_tooltip, status_tooltip])
+		else:
+			_apply_production_tooltip(button, availability, status_tooltip)
 		return
-	var block_tooltip: String = button.get_meta("block_tooltip", "")
-	if not block_tooltip.is_empty() and button.has_meta("base_tooltip"):
-		button.tooltip_text = "%s\n%s" % [button.get_meta("base_tooltip"), block_tooltip]
-	elif button.has_meta("base_tooltip"):
-		button.tooltip_text = button.get_meta("base_tooltip")
+	var item_id: String = button.get_meta("item_id", "")
+	_apply_production_tooltip(button, _get_production_availability(item_id))
 
 
 func _clear_production_button_progress() -> void:
