@@ -15,6 +15,7 @@ const IDLE_REFRESH_SECONDS := 0.1
 var _selection_manager: Node
 var _current_action: StringName = &""
 var _last_mouse_position := Vector2.INF
+var _last_root_mouse_position := Vector2.INF
 var _idle_refresh_elapsed := 0.0
 
 
@@ -35,9 +36,15 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	# Track root mouse too: hub build slots live outside the world SubViewport.
 	var mouse_position := get_viewport().get_mouse_position()
-	if mouse_position != _last_mouse_position:
+	var root_mouse_position := get_tree().root.get_mouse_position()
+	if (
+		mouse_position != _last_mouse_position
+		or root_mouse_position != _last_root_mouse_position
+	):
 		_last_mouse_position = mouse_position
+		_last_root_mouse_position = root_mouse_position
 		_idle_refresh_elapsed = 0.0
 		_refresh_cursor()
 		return
@@ -67,4 +74,7 @@ func _apply_action(action: StringName) -> void:
 	if not CURSOR_TEXTURES.has(action):
 		action = &"default"
 	_current_action = action
-	Input.set_custom_mouse_cursor(CURSOR_TEXTURES[action], Input.CURSOR_ARROW, HOTSPOT)
+	var texture: Texture2D = CURSOR_TEXTURES[action]
+	Input.set_custom_mouse_cursor(texture, Input.CURSOR_ARROW, HOTSPOT)
+	var hand_texture: Texture2D = texture if action == &"build_forbidden" else CURSOR_TEXTURES[&"default"]
+	Input.set_custom_mouse_cursor(hand_texture, Input.CURSOR_POINTING_HAND, HOTSPOT)

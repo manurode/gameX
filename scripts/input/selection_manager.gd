@@ -35,7 +35,13 @@ func setup(buildings_container: Node2D, resource_manager: ResourceManager) -> vo
 
 
 func get_cursor_action_at(screen_point: Vector2) -> StringName:
-	if _is_placement_mode_active() or _is_pointer_over_ui(screen_point):
+	if not _is_construction_allowed() and _is_over_hub_build_slot(screen_point):
+		return CURSOR_BUILD_FORBIDDEN
+
+	if _is_build_mode_active():
+		return _get_build_mode_cursor_at(screen_point)
+
+	if _is_spawn_mode_active() or _is_pointer_over_ui(screen_point):
 		return CURSOR_DEFAULT
 
 	var world_point := _screen_to_world(screen_point)
@@ -773,6 +779,36 @@ func _is_construction_allowed() -> bool:
 		not manager is DayNightManager
 		or (manager as DayNightManager).is_construction_allowed()
 	)
+
+
+func _get_build_mode_cursor_at(screen_point: Vector2) -> StringName:
+	if _is_pointer_over_ui(screen_point):
+		return CURSOR_DEFAULT
+	if not _is_construction_allowed() and _pick_building_at(_screen_to_world(screen_point)) != null:
+		return CURSOR_BUILD_FORBIDDEN
+	return CURSOR_DEFAULT
+
+
+func _is_over_hub_build_slot(_screen_point: Vector2) -> bool:
+	# GameHub lives in the root viewport, outside the world SubViewport.
+	var build_row := _get_hub_build_row()
+	if build_row == null or not build_row.is_visible_in_tree():
+		return false
+	var root_mouse := get_tree().root.get_mouse_position()
+	for child in build_row.get_children():
+		if child is Button and (child as Button).is_visible_in_tree():
+			if (child as Control).get_global_rect().has_point(root_mouse):
+				return true
+	return false
+
+
+func _get_hub_build_row() -> HBoxContainer:
+	var hub := get_node_or_null("/root/Main/Layout/HubMargin/GameHub")
+	if hub == null:
+		hub = get_node_or_null("/root/Main/Layout/GameHub")
+	if hub == null:
+		return null
+	return hub.get_node_or_null("MarginContainer/HBoxContainer/CenterArea/BuildMode/BuildRow") as HBoxContainer
 
 
 func _is_pointer_over_ui(screen_pos: Vector2) -> bool:
