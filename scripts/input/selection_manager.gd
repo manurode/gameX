@@ -445,13 +445,12 @@ func _can_build_or_repair(building: Building) -> bool:
 
 
 func _can_afford_repair(building: Building) -> bool:
-	return (
-		building.repair_paid
-		or (
-			_resource_manager != null
-			and _resource_manager.can_afford(building.get_repair_cost())
-		)
-	)
+	if building.repair_paid:
+		return true
+	if _resource_manager == null:
+		return false
+	var full_cost := building.get_repair_cost()
+	return _resource_manager.has_any_cost(_resource_manager.get_partial_cost(full_cost))
 
 
 func _can_gather_resource(resource_node: ResourceNode) -> bool:

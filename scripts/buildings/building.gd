@@ -59,6 +59,7 @@ var _visual_scale: float = 1.0
 var _footprint := Vector2(70.0, 45.0)
 var _wall_vertical: bool = false
 var _repair_start_hp: int = 0
+var _repair_target_hp: int = 0
 var _repair_progress: float = 0.0
 var _last_visual_phase: String = ""
 var _night_light: PointLight2D
@@ -761,7 +762,7 @@ func get_repair_work_duration() -> float:
 		return 0.0
 	var missing_hp := max_hp - hp
 	if repair_in_progress:
-		missing_hp = max_hp - _repair_start_hp
+		missing_hp = maxi(1, _repair_target_hp - _repair_start_hp)
 	var ratio := float(maxi(1, missing_hp)) / float(maxi(1, max_hp))
 	var base_time := build_time_total if build_time_total > 0.0 else DEFAULT_REPAIR_TIME
 	return maxf(base_time * ratio, MIN_REPAIR_TIME)
@@ -786,11 +787,21 @@ func try_start_repair(resource_manager: ResourceManager) -> bool:
 				progress_bar.refresh_from_building()
 		return true
 
-	var cost := get_repair_cost()
-	if not resource_manager.can_afford(cost):
+	var full_cost := get_repair_cost()
+	var cost := resource_manager.get_partial_cost(full_cost)
+	if not resource_manager.has_any_cost(cost):
 		return false
 	if not resource_manager.spend(cost):
 		return false
+
+	var missing_hp := max_hp - hp
+	var paid_fraction := resource_manager.get_affordable_fraction(full_cost)
+	_repair_target_hp = hp
+	if missing_hp > 0 and paid_fraction > 0.0:
+		var restored_hp := int(floor(float(missing_hp) * paid_fraction))
+		_repair_target_hp = mini(hp + maxi(1, restored_hp), max_hp)
+	else:
+		_repair_target_hp = max_hp
 
 	repair_paid = true
 	repair_in_progress = true
@@ -806,18 +817,18 @@ func add_repair_progress(amount: float) -> void:
 	if not repair_in_progress or not needs_repair():
 		return
 
-	var missing_hp := max_hp - _repair_start_hp
-	if missing_hp <= 0:
+	var repairable_hp := _repair_target_hp - _repair_start_hp
+	if repairable_hp <= 0:
 		_complete_repair()
 		return
 
 	# Gradual HP fill (same idea as construction work), never jump to full in one tick.
 	_repair_progress = clampf(_repair_progress + minf(amount, 0.2), 0.0, 1.0)
-	hp = _repair_start_hp + int(floor(_repair_progress * float(missing_hp)))
-	hp = mini(hp, max_hp)
-	# Only snap to full when work is actually done (avoids 1-HP instant completes).
+	hp = _repair_start_hp + int(floor(_repair_progress * float(repairable_hp)))
+	hp = mini(hp, _repair_target_hp)
+	# Only snap to target when work is actually done (avoids 1-HP instant completes).
 	if _repair_progress >= 1.0:
-		hp = max_hp
+		hp = _repair_target_hp
 	health_changed.emit(hp, max_hp)
 	_update_visual_damage()
 	if progress_bar != null and progress_bar.has_method("refresh_from_building"):
@@ -828,13 +839,14 @@ func add_repair_progress(amount: float) -> void:
 
 
 func _complete_repair() -> void:
-	hp = max_hp
+	hp = _repair_target_hp if _repair_target_hp > 0 else max_hp
 	repair_in_progress = false
 	repair_paid = false
 	_repair_start_hp = 0
+	_repair_target_hp = 0
 	_repair_progress = 0.0
 	health_changed.emit(hp, max_hp)
-	_apply_phase_texture(true)
+	_update_visual_damage()
 	_notify_health_bar()
 	if progress_bar != null and progress_bar.has_method("refresh_from_building"):
 		progress_bar.refresh_from_building()
