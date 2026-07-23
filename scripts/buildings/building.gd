@@ -652,7 +652,8 @@ func _fire_automatic_defense_arrow(target_unit: Unit) -> void:
 	if target_unit == null or not is_instance_valid(target_unit):
 		return
 	var weapon_stats := get_weapon_stats()
-	var origin := get_attack_point()
+	# Spawn from the visual center so shots leave the tower/roof, not the plant point.
+	var origin := get_sprite_center()
 	var target_point := target_unit.get_sprite_center()
 	var dir := origin.direction_to(target_point)
 	if dir == Vector2.ZERO:
@@ -1034,7 +1035,10 @@ func get_melee_attack_point(from_position: Vector2 = Vector2.INF) -> Vector2:
 
 
 func get_attack_point() -> Vector2:
-	return get_sprite_center()
+	# Use the ground footprint, not the elevated sprite center. Tall buildings
+	# (Ciudadela, castillos, torres) otherwise get a huge north bias and almost
+	# no southern range when checking garrison / auto-defense attack distance.
+	return get_base_center()
 
 
 func get_selection_rect() -> Rect2:
