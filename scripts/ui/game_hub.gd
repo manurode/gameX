@@ -582,7 +582,7 @@ func _on_resources_changed(wood: int, gold: int, food: int) -> void:
 
 func _on_population_changed(pop: int, cap: int) -> void:
 	if _population_label != null:
-		_population_label.text = "Pob: %d/%d" % [pop, cap]
+		_population_label.text = "Población: %d/%d" % [pop, cap]
 	if _selection_mode != null and _selection_mode.visible:
 		_update_production_status_labels()
 
@@ -598,7 +598,7 @@ func _on_food_upkeep_changed(upkeep: float) -> void:
 		if job_manager is JobManager:
 			income = (job_manager as JobManager).get_food_income_per_second()
 		var net := income - upkeep
-		_food_upkeep_label.text = "%.2f/s  bal %+.2f" % [upkeep, net]
+		_food_upkeep_label.text = "Consumo alimento: %.2f/s | balance %+.2f" % [upkeep, net]
 	if upkeep <= 0.0:
 		_food_upkeep_label.add_theme_color_override("font_color", Color(0.72, 0.82, 0.55))
 	elif _population_manager.food_shortage_active:

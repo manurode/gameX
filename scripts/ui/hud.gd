@@ -14,6 +14,7 @@ const HUD_DESIGN_SIZE := Vector2(1280.0, 720.0)
 var game_hub: PanelContainer
 var minimap: Control
 var _build_manager: Node
+var _spawn_manager: Node
 var _day_night_manager: DayNightManager
 var _game_state_manager: GameStateManager
 var _run_boon_manager: RunBoonManager
@@ -31,11 +32,14 @@ var _debug_day_grid: GridContainer
 var _end_overlay: Control
 var _end_title: Label
 var _end_body: Label
+var _quit_overlay: Control
 var _foresight_panel: PanelContainer
 var _foresight_label: Label
 var _foresight_hint: Label
 var _last_cycle_ui_seconds := -1
 var _ui_scale := 1.0
+var _quit_menu_open := false
+var _hub_process_mode_before_quit := Node.PROCESS_MODE_INHERIT
 
 
 func _ready() -> void:
@@ -47,6 +51,7 @@ func _ready() -> void:
 	_create_debug_boon_overlay()
 	_create_debug_day_overlay()
 	_create_end_overlay()
+	_create_quit_overlay()
 	_create_foresight_label()
 	get_viewport().size_changed.connect(_apply_hud_scale)
 	call_deferred("_apply_hud_scale")
@@ -75,6 +80,7 @@ func _apply_hud_scale() -> void:
 	_reset_overlay_panel_scale(_debug_boon_overlay)
 	_reset_overlay_panel_scale(_debug_day_overlay)
 	_reset_overlay_panel_scale(_end_overlay)
+	_reset_overlay_panel_scale(_quit_overlay)
 	_apply_chrome_metrics()
 
 
@@ -153,6 +159,10 @@ func _apply_chrome_metrics() -> void:
 		_end_title.add_theme_font_size_override("font_size", _fs(28))
 	if _end_body != null:
 		_end_body.add_theme_font_size_override("font_size", _fs(14))
+	_apply_centered_panel_metrics(_quit_overlay, 220.0, 120.0, 18, [
+		{"path": [0, 0], "size": 22},
+		{"path": [0, 1], "size": 14},
+	])
 
 
 func _apply_centered_panel_metrics(
@@ -191,23 +201,49 @@ func _apply_centered_panel_metrics(
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if not (event is InputEventKey and event.pressed and not event.echo):
+		return
+	var key_event := event as InputEventKey
+	if key_event.keycode == KEY_ESCAPE:
+		if _try_handle_escape():
+			get_viewport().set_input_as_handled()
+		return
 	if not OS.is_debug_build():
 		return
-	if event is InputEventKey and event.pressed and not event.echo:
-		var key_event := event as InputEventKey
-		if key_event.keycode == KEY_F10:
-			_toggle_debug_boon_menu()
-			get_viewport().set_input_as_handled()
-		elif key_event.keycode == KEY_F11:
-			_toggle_debug_day_menu()
-			get_viewport().set_input_as_handled()
-		elif key_event.keycode == KEY_ESCAPE:
-			if _debug_day_overlay != null and _debug_day_overlay.visible:
-				_set_debug_day_menu_visible(false)
-				get_viewport().set_input_as_handled()
-			elif _debug_boon_overlay != null and _debug_boon_overlay.visible:
-				_set_debug_boon_menu_visible(false)
-				get_viewport().set_input_as_handled()
+	if key_event.keycode == KEY_F10:
+		_toggle_debug_boon_menu()
+		get_viewport().set_input_as_handled()
+	elif key_event.keycode == KEY_F11:
+		_toggle_debug_day_menu()
+		get_viewport().set_input_as_handled()
+
+
+## Esc reaches here only if build/spawn (and similar) did not claim it.
+func _try_handle_escape() -> bool:
+	if _quit_menu_open:
+		_close_quit_menu()
+		return true
+	if _debug_day_overlay != null and _debug_day_overlay.visible:
+		_set_debug_day_menu_visible(false)
+		return true
+	if _debug_boon_overlay != null and _debug_boon_overlay.visible:
+		_set_debug_boon_menu_visible(false)
+		return true
+	if _end_overlay != null and _end_overlay.visible:
+		return false
+	# Prefer existing Esc actions (cancel build/spawn) over the quit menu.
+	if _is_escape_reserved():
+		return false
+	_open_quit_menu()
+	return true
+
+
+func _is_escape_reserved() -> bool:
+	if _build_manager != null and bool(_build_manager.get("build_mode_active")):
+		return true
+	if _spawn_manager != null and bool(_spawn_manager.get("spawn_mode_active")):
+		return true
+	return false
 
 
 func _process(delta: float) -> void:
@@ -249,6 +285,7 @@ func setup(
 	market_manager: MarketManager = null
 ) -> void:
 	_build_manager = build_manager
+	_spawn_manager = spawn_manager
 	_day_night_manager = day_night_manager
 	_run_boon_manager = run_boon_manager
 	_game_state_manager = game_state_manager
@@ -737,6 +774,116 @@ func _create_end_overlay() -> void:
 	add_child(_end_overlay)
 
 
+func _create_quit_overlay() -> void:
+	_quit_overlay = Control.new()
+	_quit_overlay.visible = false
+	_quit_overlay.process_mode = Node.PROCESS_MODE_ALWAYS
+	_quit_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_quit_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	_quit_overlay.z_index = 30
+
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.65)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	_quit_overlay.add_child(dim)
+
+	var panel := PanelContainer.new()
+	panel.set_anchors_preset(Control.PRESET_CENTER)
+	panel.offset_left = -220.0
+	panel.offset_right = 220.0
+	panel.offset_top = -120.0
+	panel.offset_bottom = 120.0
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.08, 0.07, 0.06, 0.97)
+	style.border_color = Color(0.7, 0.55, 0.3, 1.0)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(8)
+	style.set_content_margin_all(18)
+	panel.add_theme_stylebox_override("panel", style)
+	_quit_overlay.add_child(panel)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 12)
+	panel.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "¿Salir de la partida?"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 22)
+	title.add_theme_color_override("font_color", Color(1.0, 0.9, 0.55))
+	vbox.add_child(title)
+
+	var body := Label.new()
+	body.text = "Volverás al menú principal.\nEl progreso de esta partida se perderá."
+	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.add_theme_font_size_override("font_size", 14)
+	body.add_theme_color_override("font_color", Color(0.85, 0.82, 0.72))
+	vbox.add_child(body)
+
+	var buttons := HBoxContainer.new()
+	buttons.add_theme_constant_override("separation", 10)
+	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
+	vbox.add_child(buttons)
+
+	var continue_button := Button.new()
+	continue_button.text = "Continuar"
+	continue_button.custom_minimum_size = Vector2(140, 36)
+	continue_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	continue_button.pressed.connect(_close_quit_menu)
+	buttons.add_child(continue_button)
+
+	var quit_button := Button.new()
+	quit_button.text = "Salir al menú"
+	quit_button.custom_minimum_size = Vector2(140, 36)
+	quit_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	quit_button.pressed.connect(_on_confirm_quit_to_menu)
+	buttons.add_child(quit_button)
+
+	add_child(_quit_overlay)
+
+
+func _open_quit_menu() -> void:
+	if _quit_overlay == null or _quit_menu_open:
+		return
+	if _end_overlay != null and _end_overlay.visible:
+		return
+	_resolve_hub_nodes()
+	_quit_menu_open = true
+	_quit_overlay.visible = true
+	_ensure_paused_input_chain()
+	if game_hub != null:
+		_hub_process_mode_before_quit = game_hub.process_mode
+		game_hub.process_mode = Node.PROCESS_MODE_DISABLED
+		game_hub.modulate = Color(0.45, 0.45, 0.45, 1.0)
+	get_tree().paused = true
+
+
+func _close_quit_menu() -> void:
+	if not _quit_menu_open:
+		return
+	_quit_menu_open = false
+	if _quit_overlay != null:
+		_quit_overlay.visible = false
+	if game_hub != null:
+		game_hub.process_mode = _hub_process_mode_before_quit
+		game_hub.modulate = Color.WHITE
+	# Do not unpause if the run already ended (victory/defeat keeps the tree paused).
+	if _end_overlay == null or not _end_overlay.visible:
+		get_tree().paused = false
+
+
+func _on_confirm_quit_to_menu() -> void:
+	_quit_menu_open = false
+	if _quit_overlay != null:
+		_quit_overlay.visible = false
+	if game_hub != null:
+		game_hub.process_mode = _hub_process_mode_before_quit
+		game_hub.modulate = Color.WHITE
+	_on_return_to_menu()
+
+
 func _show_banner(text: String, duration: float = 5.0) -> void:
 	if _event_banner == null or _event_banner_label == null:
 		return
@@ -750,6 +897,13 @@ func _on_game_over_legacy() -> void:
 
 
 func _on_run_ended(won: bool, nights_survived: int, fragments_earned: int) -> void:
+	if _quit_menu_open:
+		_quit_menu_open = false
+		if _quit_overlay != null:
+			_quit_overlay.visible = false
+		if game_hub != null:
+			game_hub.process_mode = _hub_process_mode_before_quit
+			game_hub.modulate = Color.WHITE
 	if _boon_overlay != null:
 		_boon_overlay.visible = false
 	if _debug_boon_overlay != null:
