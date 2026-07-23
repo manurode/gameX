@@ -93,9 +93,9 @@ func _ready() -> void:
 	_setup_night_light()
 	selection_indicator.visible = false
 	set_process(true)
-	var day_night := get_tree().get_first_node_in_group("day_night_manager")
-	if day_night != null and day_night.has_method("should_apply_night_visuals") and day_night.should_apply_night_visuals():
-		apply_cycle_visuals(true, true)
+	var day_night := get_tree().get_first_node_in_group("day_night_manager") as DayNightManager
+	if day_night != null:
+		apply_cycle_visuals(day_night.get_night_light_factor(), true)
 
 
 func get_occlusion_sprites() -> Array[Sprite2D]:
@@ -127,9 +127,10 @@ func configure(type_id: String, state: BuildingState = BuildingState.ACTIVE, pro
 	_refresh_night_light_params()
 
 
-func apply_cycle_visuals(is_night: bool, instant: bool = false) -> void:
+func apply_cycle_visuals(light_factor: float = 0.0, instant: bool = false) -> void:
+	var clamped_factor := clampf(light_factor, 0.0, 1.0)
 	if _ground_shadow != null:
-		_ground_shadow.modulate = Color(1, 1, 1, 0.65) if is_night else Color(1, 1, 1, 1)
+		_ground_shadow.modulate = Color(1, 1, 1, lerpf(1.0, 0.65, clamped_factor))
 	if _night_light == null:
 		return
 	if building_state == BuildingState.DESTROYED:
@@ -137,11 +138,11 @@ func apply_cycle_visuals(is_night: bool, instant: bool = false) -> void:
 		return
 	_refresh_night_light_params()
 	var target_energy := 0.0
-	if is_night:
-		target_energy = _base_light_energy
+	if clamped_factor > 0.01:
+		target_energy = _base_light_energy * clamped_factor
 		if building_state == BuildingState.CONSTRUCTING:
 			target_energy *= CONSTRUCTION_LIGHT_FACTOR
-	_set_night_light_energy(target_energy, is_night and target_energy > 0.01, instant)
+	_set_night_light_energy(target_energy, target_energy > 0.01, instant)
 
 
 func _setup_night_light() -> void:
@@ -200,9 +201,12 @@ func _set_night_light_energy(target_energy: float, enable: bool, instant: bool =
 		if not enable:
 			_night_light.enabled = false
 		return
+	var turning_on := target_energy > _night_light.energy + 0.01
+	var duration := DayNightManager.LIGHT_ON_SECONDS if turning_on else DayNightManager.TRANSITION_SECONDS
+	var ease_type := Tween.EASE_OUT if turning_on else Tween.EASE_IN_OUT
 	_night_light_tween = create_tween()
-	_night_light_tween.tween_property(_night_light, "energy", target_energy, DayNightManager.TRANSITION_SECONDS)\
-		.set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_SINE)
+	_night_light_tween.tween_property(_night_light, "energy", target_energy, duration)\
+		.set_ease(ease_type).set_trans(Tween.TRANS_SINE)
 	if not enable:
 		_night_light_tween.tween_callback(func() -> void:
 			if _night_light != null and _night_light.energy <= 0.01:
@@ -1363,9 +1367,9 @@ func _complete_construction() -> void:
 	construction_completed.emit()
 	_notify_building_ready()
 	_request_nav_rebuild()
-	var day_night := get_tree().get_first_node_in_group("day_night_manager")
-	if day_night != null and day_night.has_method("should_apply_night_visuals") and day_night.should_apply_night_visuals():
-		apply_cycle_visuals(true, true)
+	var day_night := get_tree().get_first_node_in_group("day_night_manager") as DayNightManager
+	if day_night != null:
+		apply_cycle_visuals(day_night.get_night_light_factor(), true)
 
 
 func _notify_building_ready() -> void:
@@ -1466,7 +1470,7 @@ func get_nav_block_outline() -> PackedVector2Array:
 func _destroy() -> void:
 	building_state = BuildingState.DESTROYED
 	_active_attackers = 0
-	apply_cycle_visuals(false, true)
+	apply_cycle_visuals(0.0, true)
 	var job_manager := get_tree().get_first_node_in_group("job_manager")
 	if job_manager is JobManager:
 		(job_manager as JobManager).on_building_destroyed(self)

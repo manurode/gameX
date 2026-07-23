@@ -48,7 +48,7 @@ func _ready() -> void:
 
 	var day_night := get_tree().get_first_node_in_group("day_night_manager")
 	if day_night != null and day_night.has_method("is_night") and day_night.call("is_night"):
-		apply_cycle_visuals(true, true)
+		apply_cycle_visuals(1.0, true)
 		# Hide immediately to avoid a one-frame flash before the first light check.
 		if not _has_enemy_night_vision():
 			_set_player_visible(false)
@@ -158,8 +158,8 @@ func get_attack_damage() -> int:
 	return base
 
 
-func apply_cycle_visuals(is_night: bool, instant: bool = false) -> void:
-	super.apply_cycle_visuals(is_night, instant)
+func apply_cycle_visuals(light_factor: float = 0.0, instant: bool = false) -> void:
+	super.apply_cycle_visuals(light_factor, instant)
 	_force_visibility_refresh()
 
 

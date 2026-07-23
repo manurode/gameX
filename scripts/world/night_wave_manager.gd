@@ -230,7 +230,7 @@ func _spawn_enemies(count: int, def: Dictionary) -> void:
 		enemy.configure_kind(_pick_kind(def))
 		_apply_night_stat_scaling(enemy, night_stat_mult)
 		if _day_night.is_night():
-			enemy.apply_cycle_visuals(true, true)
+			enemy.apply_cycle_visuals(1.0, true)
 		_spawned.append(enemy)
 
 

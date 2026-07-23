@@ -16,6 +16,10 @@ const DAWN_COLOR := Color(0.82, 0.74, 0.68)
 const NIGHT_COLOR := Color(0.12, 0.13, 0.22)
 const FOG_NIGHT_COLOR := Color(0.07, 0.08, 0.14)
 const TRANSITION_SECONDS := 1.5
+## Lights ramp up faster than ambient darkens so settlements never go black first.
+const LIGHT_ON_SECONDS := 0.75
+## Partial energy during dusk so pockets stay lit through the nightfall dip.
+const DUSK_LIGHT_FACTOR := 0.55
 const LIGHT_TEXTURE_SIZE := 256
 
 var current_phase: CyclePhase = CyclePhase.DAY
@@ -97,7 +101,7 @@ func reset_cycle() -> void:
 	current_phase = CyclePhase.DAY
 	seconds_remaining = _get_phase_duration(current_phase)
 	_animate_visuals()
-	_update_cycle_entity_visuals(false)
+	_update_cycle_entity_visuals(0.0)
 	cycle_changed.emit(current_phase)
 	cycle_started.emit(cycle_number)
 	phase_time_changed.emit(seconds_remaining)
@@ -130,10 +134,22 @@ func set_phase(phase: CyclePhase) -> void:
 	var keep_daylight := _should_keep_daylight()
 	var is_night := phase == CyclePhase.NIGHT and not keep_daylight
 	_animate_visuals()
-	_update_cycle_entity_visuals(is_night)
+	_update_cycle_entity_visuals(_resolve_night_light_factor())
 	if _water_animator != null and _water_animator.has_method("set_night_mode"):
 		_water_animator.call("set_night_mode", is_night)
 	cycle_changed.emit(current_phase)
+
+
+func _resolve_night_light_factor() -> float:
+	if _should_keep_daylight():
+		return 0.0
+	match current_phase:
+		CyclePhase.DUSK:
+			return DUSK_LIGHT_FACTOR
+		CyclePhase.NIGHT:
+			return 1.0
+		_:
+			return 0.0
 
 
 func is_night() -> bool:
@@ -142,6 +158,10 @@ func is_night() -> bool:
 
 func should_apply_night_visuals() -> bool:
 	return is_night() and not _should_keep_daylight()
+
+
+func get_night_light_factor() -> float:
+	return _resolve_night_light_factor()
 
 
 func _should_keep_daylight() -> bool:
@@ -237,10 +257,10 @@ func _animate_visuals() -> void:
 		.set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_SINE)
 
 
-func _update_cycle_entity_visuals(is_night: bool) -> void:
+func _update_cycle_entity_visuals(light_factor: float) -> void:
 	for node in get_tree().get_nodes_in_group("units"):
 		if node is Unit:
-			(node as Unit).apply_cycle_visuals(is_night)
+			(node as Unit).apply_cycle_visuals(light_factor)
 	for node in get_tree().get_nodes_in_group("buildings"):
 		if node is Building:
-			(node as Building).apply_cycle_visuals(is_night)
+			(node as Building).apply_cycle_visuals(light_factor)

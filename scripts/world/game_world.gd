@@ -364,8 +364,8 @@ func _spawn_starter_military(
 		unit.set_meta("meta_supplied", true)
 		population_manager.register_unit(unit)
 		register_player_unit(unit)
-		if day_night_manager.should_apply_night_visuals():
-			unit.apply_cycle_visuals(true, true)
+		if day_night_manager != null:
+			unit.apply_cycle_visuals(day_night_manager.get_night_light_factor(), true)
 
 
 func _spawn_bonus_military(
@@ -387,8 +387,8 @@ func _spawn_bonus_military(
 		unit.reset_navigation()
 		population_manager.register_unit(unit)
 		register_player_unit(unit)
-		if day_night_manager.should_apply_night_visuals():
-			unit.apply_cycle_visuals(true, true)
+		if day_night_manager != null:
+			unit.apply_cycle_visuals(day_night_manager.get_night_light_factor(), true)
 
 
 func repair_all_player_buildings() -> void:
@@ -442,8 +442,8 @@ func spawn_squad_members(
 			member.set_meta("squad_id", squad_id)
 		population_manager.register_unit(member)
 		register_player_unit(member)
-		if day_night_manager.should_apply_night_visuals():
-			member.apply_cycle_visuals(true, true)
+		if day_night_manager != null:
+			member.apply_cycle_visuals(day_night_manager.get_night_light_factor(), true)
 	population_manager.release_reserved_population(extra_count)
 
 

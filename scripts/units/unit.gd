@@ -159,9 +159,9 @@ func _ready() -> void:
 	animated_sprite.scale = Vector2(VISUAL_SCALE, VISUAL_SCALE)
 	animated_sprite.frame_changed.connect(_on_animation_frame_changed)
 	animated_sprite.animation_finished.connect(_on_animation_finished)
-	var day_night := get_tree().get_first_node_in_group("day_night_manager")
-	if day_night != null and day_night.has_method("should_apply_night_visuals") and day_night.should_apply_night_visuals():
-		apply_cycle_visuals(true, true)
+	var day_night := get_tree().get_first_node_in_group("day_night_manager") as DayNightManager
+	if day_night != null:
+		apply_cycle_visuals(day_night.get_night_light_factor(), true)
 	await get_tree().physics_frame
 	_setup_navigation_agent()
 
@@ -193,10 +193,11 @@ func is_hostile_to(other: Unit) -> bool:
 	return Team.are_hostile(team_id, other.team_id)
 
 
-func apply_cycle_visuals(is_night: bool, instant: bool = false) -> void:
+func apply_cycle_visuals(light_factor: float = 0.0, instant: bool = false) -> void:
+	var clamped_factor := clampf(light_factor, 0.0, 1.0)
 	if shadow_sprite != null:
-		shadow_sprite.modulate = Color(1, 1, 1, 0.65) if is_night else Color(1, 1, 1, 1)
-	_update_night_light(is_night, instant)
+		shadow_sprite.modulate = Color(1, 1, 1, lerpf(1.0, 0.65, clamped_factor))
+	_update_night_light(clamped_factor, instant)
 
 
 func _setup_night_light() -> void:
@@ -220,16 +221,16 @@ func _setup_night_light() -> void:
 	add_child(_night_light)
 
 
-func _update_night_light(is_night: bool, instant: bool = false) -> void:
+func _update_night_light(light_factor: float, instant: bool = false) -> void:
 	if is_enemy() or _night_light == null:
 		return
 	var should_light := (
-		is_night
+		light_factor > 0.01
 		and not _is_dying
 		and hp > 0
 		and garrisoned_building == null
 	)
-	var target_energy := NIGHT_LIGHT_ENERGY if should_light else 0.0
+	var target_energy := NIGHT_LIGHT_ENERGY * light_factor if should_light else 0.0
 	if _night_light_tween != null and _night_light_tween.is_valid():
 		_night_light_tween.kill()
 		_night_light_tween = null
@@ -240,9 +241,12 @@ func _update_night_light(is_night: bool, instant: bool = false) -> void:
 		if not should_light:
 			_night_light.enabled = false
 		return
+	var turning_on := target_energy > _night_light.energy + 0.01
+	var duration := DayNightManager.LIGHT_ON_SECONDS if turning_on else DayNightManager.TRANSITION_SECONDS
+	var ease_type := Tween.EASE_OUT if turning_on else Tween.EASE_IN_OUT
 	_night_light_tween = create_tween()
-	_night_light_tween.tween_property(_night_light, "energy", target_energy, DayNightManager.TRANSITION_SECONDS)\
-		.set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_SINE)
+	_night_light_tween.tween_property(_night_light, "energy", target_energy, duration)\
+		.set_ease(ease_type).set_trans(Tween.TRANS_SINE)
 	if not should_light:
 		_night_light_tween.tween_callback(func() -> void:
 			if _night_light != null and _night_light.energy <= 0.01:
@@ -848,7 +852,7 @@ func on_entered_garrison(building: Building) -> void:
 	_remove_from_selection()
 	attack_target = building.garrison_attack_target
 	_set_attack_target_building(building.garrison_attack_target_building)
-	_update_night_light(false, true)
+	_update_night_light(0.0, true)
 
 
 func on_exited_garrison(exit_position: Vector2) -> void:
@@ -864,9 +868,9 @@ func on_exited_garrison(exit_position: Vector2) -> void:
 	add_to_group("selectable_units")
 	_unit_state = UnitState.IDLE
 	_play_idle()
-	var day_night := get_tree().get_first_node_in_group("day_night_manager")
-	if day_night != null and day_night.has_method("should_apply_night_visuals") and day_night.should_apply_night_visuals():
-		_update_night_light(true, true)
+	var day_night := get_tree().get_first_node_in_group("day_night_manager") as DayNightManager
+	if day_night != null:
+		_update_night_light(day_night.get_night_light_factor(), true)
 
 
 func die_from_garrison_destruction() -> void:
@@ -1076,7 +1080,7 @@ func _die() -> void:
 	navigation_agent.target_position = global_position
 	if _occlusion_silhouette != null:
 		_occlusion_silhouette.set_active(false)
-	_update_night_light(false, true)
+	_update_night_light(0.0, true)
 
 	_play_death_sequence()
 
