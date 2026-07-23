@@ -5,14 +5,13 @@ const BUILD_ORDER: Array[String] = [
 	"mine", "stable", "barracks", "arcanum", "tower", "wall",
 ]
 
-const TEX_WOOD := "res://assets/tilesets/tiny_tiles/UI/Icons/UI_icon_resources_wood_clear.png"
-const TEX_GOLD := "res://assets/tilesets/tiny_tiles/UI/Icons/UI_icon_resources_gold.png"
-const TEX_FOOD := "res://assets/tilesets/tiny_tiles/UI/Icons/UI_icon_resources_food.png"
+const TEX_WOOD := "res://assets/ui/icons/icon_wood.png"
+const TEX_GOLD := "res://assets/ui/icons/icon_gold.png"
+const TEX_FOOD := "res://assets/ui/icons/icon_food.png"
 
-const ICON_VARIANT_SIZE := 128
 const SLOT_SIZE := Vector2(108, 132)
 const ICON_SIZE := Vector2(72, 60)
-const RESOURCE_ICON_SIZE := Vector2(30, 30)
+const RESOURCE_ICON_SIZE := Vector2(56, 56)
 const ACTION_SLOT_SIZE := Vector2(88, 92)
 
 # Palette aligned with menu / dialog panels
@@ -154,13 +153,13 @@ func _build_resource_rows() -> void:
 	panel_margin.add_child(panel_vbox)
 
 	var resources_row := HBoxContainer.new()
-	resources_row.add_theme_constant_override("separation", 10)
+	resources_row.add_theme_constant_override("separation", 14)
 	resources_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	panel_vbox.add_child(resources_row)
 
 	for entry in entries:
 		var cell := VBoxContainer.new()
-		cell.add_theme_constant_override("separation", 2)
+		cell.add_theme_constant_override("separation", 4)
 		cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		cell.alignment = BoxContainer.ALIGNMENT_CENTER
 
@@ -169,13 +168,15 @@ func _build_resource_rows() -> void:
 		icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		icon.texture = _make_icon_atlas(entry.texture)
+		# Same filter path as building icons in the hub.
+		icon.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+		icon.texture = load(entry.texture) as Texture2D
 		cell.add_child(icon)
 
 		var amount := Label.new()
 		amount.text = "0"
 		amount.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		amount.add_theme_font_size_override("font_size", 16)
+		amount.add_theme_font_size_override("font_size", 15)
 		amount.add_theme_color_override("font_color", COL_GOLD)
 		amount.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
 		amount.add_theme_constant_override("shadow_offset_x", 1)
@@ -253,6 +254,7 @@ func _ensure_selection_ui() -> void:
 	_selection_icon.custom_minimum_size = Vector2(56, 50)
 	_selection_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_selection_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_selection_icon.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	header.add_child(_selection_icon)
 
 	var titles := VBoxContainer.new()
@@ -455,6 +457,7 @@ func _create_build_slot(type_id: String) -> Button:
 	icon.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	icon.texture = _get_building_icon(type_id)
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	vbox.add_child(icon)
@@ -536,13 +539,6 @@ func _get_building_icon(type_id: String) -> Texture2D:
 	if texture_path.is_empty():
 		return null
 	return load(texture_path)
-
-
-func _make_icon_atlas(texture_path: String, variant_index: int = 0) -> AtlasTexture:
-	var atlas := AtlasTexture.new()
-	atlas.atlas = load(texture_path)
-	atlas.region = Rect2(variant_index * ICON_VARIANT_SIZE, 0, ICON_VARIANT_SIZE, ICON_VARIANT_SIZE)
-	return atlas
 
 
 func _format_cost_parts(cost: Dictionary, include_villager: bool = false) -> PackedStringArray:

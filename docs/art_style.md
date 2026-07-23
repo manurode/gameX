@@ -9,7 +9,7 @@ Visual reference for keeping assets consistent across the project.
 - Edificios, personajes, terreno isométrico y decoración mediterránea (estuco blanco, tejados terracota, verdes y agua turquesa)
 - PPU (Pixels Per Unit): **256**
 - Formato: PNG con transparencia
-- Iconos de UI de recursos: aún desde Tiny Tiles (`assets/tilesets/tiny_tiles/UI/`)
+- Iconos de UI de recursos: `assets/ui/icons/` (estilo Mediterranean Coastal, 256×256)
 
 Legacy: **Tiny Tiles** by odiurd ([itch.io](https://odiurd.itch.io/tiny-tiles)) — Free Pack, conservado como referencia / UI.
 
@@ -79,7 +79,7 @@ Proyecto: `textures/canvas_textures/default_texture_filter=0` (Linear).
 
 - Mediterranean Coastal (pack activo)
 - Age of Empires II (composición isométrica, profundidad)
-- Tiny Tiles (legacy / iconos UI)
+- Tiny Tiles (legacy)
 
 ## Checklist al añadir assets nuevos
 
