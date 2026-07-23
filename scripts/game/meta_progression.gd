@@ -2,8 +2,11 @@ extends Node
 
 signal fragments_changed(amount: int)
 signal unlocks_changed
+signal slots_changed
 
-const SAVE_PATH := "user://meta_progression.cfg"
+const SLOT_COUNT := 3
+const SAVE_PATH := "user://save_slots.cfg"
+const LEGACY_SAVE_PATH := "user://meta_progression.cfg"
 
 ## Permanent shop unlocks, ordered cheap → epic.
 ## Economy: victory = 50 frags; night 10 ≈ 9; night 15 ≈ 23.
@@ -145,40 +148,230 @@ const UNLOCKS := {
 	},
 }
 
+## Active slot index, or -1 when none is selected.
+var active_slot: int = -1
+## Slot metadata mirrors: { occupied, name, fragments, unlocked, best_nights, wins }
+var _slots: Array[Dictionary] = []
+
 var fragments: int = 0
 var unlocked: Dictionary = {}
 ## Best nights survived in a single run.
 var best_nights: int = 0
 ## Times the player completed a full WIN_NIGHTS run.
 var wins: int = 0
+var save_name: String = ""
 
 
 func _ready() -> void:
-	load_save()
+	_init_empty_slots()
+	load_all_slots()
 
 
-func load_save() -> void:
+func _init_empty_slots() -> void:
+	_slots.clear()
+	for i in SLOT_COUNT:
+		_slots.append(_make_empty_slot_data())
+
+
+func _make_empty_slot_data() -> Dictionary:
+	return {
+		"occupied": false,
+		"name": "",
+		"fragments": 0,
+		"unlocked": {},
+		"best_nights": 0,
+		"wins": 0,
+	}
+
+
+func load_all_slots() -> void:
+	_init_empty_slots()
 	var cfg := ConfigFile.new()
-	if cfg.load(SAVE_PATH) != OK:
+	if cfg.load(SAVE_PATH) == OK:
+		for i in SLOT_COUNT:
+			var section := "slot_%d" % i
+			if not cfg.has_section(section):
+				continue
+			if not bool(cfg.get_value(section, "occupied", false)):
+				continue
+			_slots[i] = {
+				"occupied": true,
+				"name": str(cfg.get_value(section, "name", "Partida %d" % (i + 1))),
+				"fragments": int(cfg.get_value(section, "fragments", 0)),
+				"unlocked": _unlocked_from_ids(cfg.get_value(section, "unlocked", [])),
+				"best_nights": int(cfg.get_value(section, "best_nights", 0)),
+				"wins": int(cfg.get_value(section, "wins", 0)),
+			}
+	else:
+		_migrate_legacy_save()
+	_clear_active_runtime()
+	slots_changed.emit()
+
+
+func _migrate_legacy_save() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(LEGACY_SAVE_PATH) != OK:
 		return
-	fragments = int(cfg.get_value("meta", "fragments", 0))
-	best_nights = int(cfg.get_value("meta", "best_nights", 0))
-	wins = int(cfg.get_value("meta", "wins", 0))
 	var unlocked_ids: Array = cfg.get_value("meta", "unlocked", [])
-	unlocked.clear()
+	_slots[0] = {
+		"occupied": true,
+		"name": "Partida 1",
+		"fragments": int(cfg.get_value("meta", "fragments", 0)),
+		"unlocked": _unlocked_from_ids(unlocked_ids),
+		"best_nights": int(cfg.get_value("meta", "best_nights", 0)),
+		"wins": int(cfg.get_value("meta", "wins", 0)),
+	}
+	_persist_all_slots()
+
+
+func _unlocked_from_ids(unlocked_ids: Array) -> Dictionary:
+	var result := {}
 	for id in unlocked_ids:
-		unlocked[str(id)] = true
+		result[str(id)] = true
+	return result
+
+
+func _persist_all_slots() -> void:
+	var cfg := ConfigFile.new()
+	for i in SLOT_COUNT:
+		var section := "slot_%d" % i
+		var data: Dictionary = _slots[i]
+		cfg.set_value(section, "occupied", bool(data.get("occupied", false)))
+		cfg.set_value(section, "name", str(data.get("name", "")))
+		cfg.set_value(section, "fragments", int(data.get("fragments", 0)))
+		cfg.set_value(section, "best_nights", int(data.get("best_nights", 0)))
+		cfg.set_value(section, "wins", int(data.get("wins", 0)))
+		var unlocked_dict: Dictionary = data.get("unlocked", {})
+		cfg.set_value(section, "unlocked", unlocked_dict.keys())
+	cfg.save(SAVE_PATH)
+
+
+func _clear_active_runtime() -> void:
+	active_slot = -1
+	save_name = ""
+	fragments = 0
+	unlocked.clear()
+	best_nights = 0
+	wins = 0
+
+
+func get_slot_count() -> int:
+	return SLOT_COUNT
+
+
+func is_slot_occupied(slot_index: int) -> bool:
+	if slot_index < 0 or slot_index >= SLOT_COUNT:
+		return false
+	return bool(_slots[slot_index].get("occupied", false))
+
+
+func get_slot_summary(slot_index: int) -> Dictionary:
+	if slot_index < 0 or slot_index >= SLOT_COUNT:
+		return _make_empty_slot_data()
+	var data: Dictionary = _slots[slot_index]
+	return {
+		"occupied": bool(data.get("occupied", false)),
+		"name": str(data.get("name", "")),
+		"fragments": int(data.get("fragments", 0)),
+		"best_nights": int(data.get("best_nights", 0)),
+		"wins": int(data.get("wins", 0)),
+	}
+
+
+func get_slot_record_text(slot_index: int) -> String:
+	var summary := get_slot_summary(slot_index)
+	if not summary.occupied:
+		return ""
+	var slot_best: int = summary.best_nights
+	var slot_wins: int = summary.wins
+	if slot_best >= BalanceConfig.WIN_NIGHTS or slot_wins > 0:
+		return "Partidas ganadas: %d" % slot_wins
+	if slot_best > 0:
+		return "Récord: %d noches" % slot_best
+	return "Sin récord aún"
+
+
+func select_slot(slot_index: int) -> bool:
+	if not is_slot_occupied(slot_index):
+		return false
+	_apply_slot_to_runtime(slot_index)
 	fragments_changed.emit(fragments)
 	unlocks_changed.emit()
+	return true
+
+
+func create_slot(slot_index: int, name: String) -> bool:
+	if slot_index < 0 or slot_index >= SLOT_COUNT:
+		return false
+	if is_slot_occupied(slot_index):
+		return false
+	var cleaned := name.strip_edges()
+	if cleaned.is_empty():
+		cleaned = "Partida %d" % (slot_index + 1)
+	_slots[slot_index] = {
+		"occupied": true,
+		"name": cleaned,
+		"fragments": 0,
+		"unlocked": {},
+		"best_nights": 0,
+		"wins": 0,
+	}
+	_persist_all_slots()
+	_apply_slot_to_runtime(slot_index)
+	slots_changed.emit()
+	fragments_changed.emit(fragments)
+	unlocks_changed.emit()
+	return true
+
+
+func delete_slot(slot_index: int) -> bool:
+	if not is_slot_occupied(slot_index):
+		return false
+	_slots[slot_index] = _make_empty_slot_data()
+	_persist_all_slots()
+	if active_slot == slot_index:
+		_clear_active_runtime()
+		fragments_changed.emit(fragments)
+		unlocks_changed.emit()
+	slots_changed.emit()
+	return true
+
+
+func _apply_slot_to_runtime(slot_index: int) -> void:
+	var data: Dictionary = _slots[slot_index]
+	active_slot = slot_index
+	save_name = str(data.get("name", ""))
+	fragments = int(data.get("fragments", 0))
+	best_nights = int(data.get("best_nights", 0))
+	wins = int(data.get("wins", 0))
+	unlocked = (data.get("unlocked", {}) as Dictionary).duplicate()
+
+
+func has_active_slot() -> bool:
+	return active_slot >= 0 and is_slot_occupied(active_slot)
+
+
+## Kept for compatibility; reloads all slots from disk.
+func load_save() -> void:
+	load_all_slots()
+	if has_active_slot():
+		_apply_slot_to_runtime(active_slot)
+		fragments_changed.emit(fragments)
+		unlocks_changed.emit()
 
 
 func save() -> void:
-	var cfg := ConfigFile.new()
-	cfg.set_value("meta", "fragments", fragments)
-	cfg.set_value("meta", "best_nights", best_nights)
-	cfg.set_value("meta", "wins", wins)
-	cfg.set_value("meta", "unlocked", unlocked.keys())
-	cfg.save(SAVE_PATH)
+	if not has_active_slot():
+		return
+	_slots[active_slot] = {
+		"occupied": true,
+		"name": save_name,
+		"fragments": fragments,
+		"unlocked": unlocked.duplicate(),
+		"best_nights": best_nights,
+		"wins": wins,
+	}
+	_persist_all_slots()
 
 
 func is_unlocked(id: String) -> bool:

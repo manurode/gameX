@@ -3,7 +3,7 @@ extends Control
 const GAME_SCENE := "res://scenes/main.tscn"
 const MENU_BG := preload("res://assets/ui/menu_nightfall_bg.png")
 
-enum Screen { TITLE, SETUP, UPGRADES }
+enum Screen { TITLE, SAVE_SLOTS, SETUP, UPGRADES }
 
 # Palette aligned with in-game wood / gold UI
 const COL_PANEL := Color(0.09, 0.07, 0.055, 0.94)
@@ -21,21 +21,30 @@ const COL_BTN_DISABLED := Color(0.08, 0.07, 0.06, 0.85)
 
 var _screen: Screen = Screen.TITLE
 var _title_screen: Control
+var _slots_screen: Control
 var _setup_screen: Control
 var _upgrades_screen: Control
 var _title_label: Label
 var _cta_label: Label
+var _save_name_label: Label
 var _fragments_label: Label
 var _record_label: Label
+var _slots_list: VBoxContainer
 var _shop_list: VBoxContainer
 var _difficulty_button: Button
 var _difficulty_hint: Label
 var _cta_pulse_t: float = 0.0
+## Slot currently showing the new-game name editor (-1 = none).
+var _naming_slot: int = -1
+var _delete_confirm: Control
+var _delete_confirm_label: Label
+var _pending_delete_slot: int = -1
 
 
 func _ready() -> void:
 	_build_atmosphere()
 	_build_title_screen()
+	_build_slots_screen()
 	_build_setup_screen()
 	_build_upgrades_screen()
 	_show_screen(Screen.TITLE)
@@ -44,6 +53,8 @@ func _ready() -> void:
 		MetaProgression.fragments_changed.connect(_on_fragments_changed)
 	if not MetaProgression.unlocks_changed.is_connected(_refresh_shop):
 		MetaProgression.unlocks_changed.connect(_refresh_shop)
+	if not MetaProgression.slots_changed.is_connected(_refresh_slots_list):
+		MetaProgression.slots_changed.connect(_refresh_slots_list)
 
 	call_deferred("_play_title_intro")
 
@@ -204,6 +215,331 @@ func _play_title_intro() -> void:
 
 
 # ---------------------------------------------------------------------------
+# Save slots screen
+# ---------------------------------------------------------------------------
+
+func _build_slots_screen() -> void:
+	_slots_screen = Control.new()
+	_slots_screen.name = "SlotsScreen"
+	_slots_screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_slots_screen.visible = false
+	add_child(_slots_screen)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_slots_screen.add_child(center)
+
+	var panel := _make_panel(Vector2(520, 0))
+	center.add_child(panel)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 28)
+	margin.add_theme_constant_override("margin_right", 28)
+	margin.add_theme_constant_override("margin_top", 24)
+	margin.add_theme_constant_override("margin_bottom", 24)
+	panel.add_child(margin)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 14)
+	margin.add_child(vbox)
+
+	var brand := Label.new()
+	brand.text = "Nightfall"
+	brand.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	brand.add_theme_font_size_override("font_size", 28)
+	brand.add_theme_color_override("font_color", COL_GOLD)
+	brand.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.6))
+	brand.add_theme_constant_override("shadow_offset_x", 1)
+	brand.add_theme_constant_override("shadow_offset_y", 2)
+	vbox.add_child(brand)
+
+	var subtitle := Label.new()
+	subtitle.text = "Elige una partida"
+	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	subtitle.add_theme_font_size_override("font_size", 13)
+	subtitle.add_theme_color_override("font_color", COL_MUTED)
+	vbox.add_child(subtitle)
+
+	vbox.add_child(_make_gold_rule(0.0))
+
+	_slots_list = VBoxContainer.new()
+	_slots_list.add_theme_constant_override("separation", 10)
+	vbox.add_child(_slots_list)
+
+	var back := _make_ghost_button("← Volver")
+	back.pressed.connect(_on_back_to_title)
+	vbox.add_child(back)
+
+	_build_delete_confirm_overlay()
+	_refresh_slots_list()
+
+
+func _build_delete_confirm_overlay() -> void:
+	_delete_confirm = Control.new()
+	_delete_confirm.name = "DeleteConfirm"
+	_delete_confirm.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_delete_confirm.visible = false
+	_delete_confirm.z_index = 10
+	_slots_screen.add_child(_delete_confirm)
+
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.55)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.gui_input.connect(_on_delete_confirm_dim_input)
+	_delete_confirm.add_child(dim)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_delete_confirm.add_child(center)
+
+	var panel := _make_panel(Vector2(420, 0))
+	center.add_child(panel)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 24)
+	margin.add_theme_constant_override("margin_right", 24)
+	margin.add_theme_constant_override("margin_top", 22)
+	margin.add_theme_constant_override("margin_bottom", 22)
+	panel.add_child(margin)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 14)
+	margin.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "¿Borrar partida?"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 20)
+	title.add_theme_color_override("font_color", COL_GOLD)
+	vbox.add_child(title)
+
+	_delete_confirm_label = Label.new()
+	_delete_confirm_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_delete_confirm_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_delete_confirm_label.add_theme_font_size_override("font_size", 13)
+	_delete_confirm_label.add_theme_color_override("font_color", COL_MUTED)
+	vbox.add_child(_delete_confirm_label)
+
+	var actions := HBoxContainer.new()
+	actions.add_theme_constant_override("separation", 10)
+	vbox.add_child(actions)
+
+	var cancel_btn := _make_secondary_button("Cancelar", Vector2(0, 44))
+	cancel_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cancel_btn.pressed.connect(_hide_delete_confirm)
+	actions.add_child(cancel_btn)
+
+	var confirm_btn := _make_primary_button("Borrar", Vector2(0, 44))
+	confirm_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	confirm_btn.add_theme_font_size_override("font_size", 16)
+	confirm_btn.pressed.connect(_on_confirm_delete_slot)
+	actions.add_child(confirm_btn)
+
+
+func _refresh_slots_list() -> void:
+	if _slots_list == null:
+		return
+	for child in _slots_list.get_children():
+		child.queue_free()
+
+	for i in MetaProgression.get_slot_count():
+		_slots_list.add_child(_make_slot_row(i))
+
+
+func _make_slot_row(slot_index: int) -> Control:
+	var summary := MetaProgression.get_slot_summary(slot_index)
+	var occupied: bool = summary.occupied
+
+	var row := PanelContainer.new()
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_theme_stylebox_override("panel", _make_inner_row_style())
+
+	var pad := MarginContainer.new()
+	pad.add_theme_constant_override("margin_left", 12)
+	pad.add_theme_constant_override("margin_right", 12)
+	pad.add_theme_constant_override("margin_top", 10)
+	pad.add_theme_constant_override("margin_bottom", 10)
+	row.add_child(pad)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	pad.add_child(vbox)
+
+	if _naming_slot == slot_index and not occupied:
+		var name_title := Label.new()
+		name_title.text = "Nombre de la partida"
+		name_title.add_theme_font_size_override("font_size", 12)
+		name_title.add_theme_color_override("font_color", COL_MUTED)
+		vbox.add_child(name_title)
+
+		var name_edit := LineEdit.new()
+		name_edit.name = "SlotNameEdit"
+		name_edit.placeholder_text = "Partida %d" % (slot_index + 1)
+		name_edit.max_length = 24
+		name_edit.custom_minimum_size = Vector2(0, 40)
+		name_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_style_line_edit(name_edit)
+		name_edit.text_submitted.connect(func(_t: String) -> void:
+			_on_confirm_new_slot(slot_index, name_edit)
+		)
+		vbox.add_child(name_edit)
+
+		var actions := HBoxContainer.new()
+		actions.add_theme_constant_override("separation", 10)
+		vbox.add_child(actions)
+
+		var cancel_btn := _make_secondary_button("Cancelar", Vector2(0, 40))
+		cancel_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		cancel_btn.pressed.connect(_on_cancel_naming)
+		actions.add_child(cancel_btn)
+
+		var create_btn := _make_primary_button("Crear", Vector2(0, 40))
+		create_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		create_btn.add_theme_font_size_override("font_size", 14)
+		create_btn.pressed.connect(_on_confirm_new_slot.bind(slot_index, name_edit))
+		actions.add_child(create_btn)
+
+		call_deferred("_focus_slot_name_edit", name_edit)
+	elif occupied:
+		var header := HBoxContainer.new()
+		header.add_theme_constant_override("separation", 10)
+		vbox.add_child(header)
+
+		var info := VBoxContainer.new()
+		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		info.add_theme_constant_override("separation", 2)
+		header.add_child(info)
+
+		var name_lbl := Label.new()
+		name_lbl.text = str(summary.name)
+		name_lbl.add_theme_font_size_override("font_size", 16)
+		name_lbl.add_theme_color_override("font_color", COL_GOLD)
+		info.add_child(name_lbl)
+
+		var detail := Label.new()
+		var record := MetaProgression.get_slot_record_text(slot_index)
+		if record.is_empty():
+			detail.text = "%d fragmentos" % int(summary.fragments)
+		else:
+			detail.text = "%d fragmentos  ·  %s" % [int(summary.fragments), record]
+		detail.add_theme_font_size_override("font_size", 12)
+		detail.add_theme_color_override("font_color", COL_MUTED)
+		info.add_child(detail)
+
+		var load_btn := _make_primary_button("Continuar", Vector2(110, 40))
+		load_btn.add_theme_font_size_override("font_size", 14)
+		load_btn.pressed.connect(_on_slot_selected.bind(slot_index))
+		header.add_child(load_btn)
+
+		var delete_btn := _make_secondary_button("Borrar", Vector2(80, 40))
+		delete_btn.add_theme_font_size_override("font_size", 13)
+		delete_btn.pressed.connect(_on_delete_slot_pressed.bind(slot_index))
+		header.add_child(delete_btn)
+	else:
+		var empty_btn := _make_primary_button("+  Nueva partida", Vector2(0, 52))
+		empty_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		empty_btn.add_theme_font_size_override("font_size", 16)
+		empty_btn.pressed.connect(_on_new_slot_pressed.bind(slot_index))
+		vbox.add_child(empty_btn)
+
+	return row
+
+
+func _style_line_edit(edit: LineEdit) -> void:
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = COL_BTN
+	normal.border_color = COL_BORDER_DIM
+	normal.set_border_width_all(1)
+	normal.set_corner_radius_all(6)
+	normal.set_content_margin_all(10)
+
+	var focus := normal.duplicate() as StyleBoxFlat
+	focus.border_color = COL_BORDER
+
+	edit.add_theme_stylebox_override("normal", normal)
+	edit.add_theme_stylebox_override("focus", focus)
+	edit.add_theme_stylebox_override("read_only", normal)
+	edit.add_theme_color_override("font_color", COL_CREAM)
+	edit.add_theme_color_override("font_placeholder_color", Color(0.55, 0.52, 0.42, 1.0))
+	edit.add_theme_color_override("caret_color", COL_GOLD)
+	edit.add_theme_font_size_override("font_size", 14)
+
+
+func _focus_slot_name_edit(edit: LineEdit) -> void:
+	if is_instance_valid(edit):
+		edit.grab_focus()
+
+
+func _on_new_slot_pressed(slot_index: int) -> void:
+	_naming_slot = slot_index
+	_refresh_slots_list()
+
+
+func _on_cancel_naming() -> void:
+	_naming_slot = -1
+	_refresh_slots_list()
+
+
+func _on_confirm_new_slot(slot_index: int, name_edit: LineEdit) -> void:
+	var name := ""
+	if is_instance_valid(name_edit):
+		name = name_edit.text
+	_naming_slot = -1
+	if not MetaProgression.create_slot(slot_index, name):
+		_refresh_slots_list()
+		return
+	_show_screen(Screen.SETUP)
+
+
+func _on_slot_selected(slot_index: int) -> void:
+	if not MetaProgression.select_slot(slot_index):
+		return
+	_naming_slot = -1
+	_show_screen(Screen.SETUP)
+
+
+func _on_delete_slot_pressed(slot_index: int) -> void:
+	_show_delete_confirm(slot_index)
+
+
+func _show_delete_confirm(slot_index: int) -> void:
+	if not MetaProgression.is_slot_occupied(slot_index):
+		return
+	_pending_delete_slot = slot_index
+	var summary := MetaProgression.get_slot_summary(slot_index)
+	var slot_name := str(summary.name)
+	if slot_name.is_empty():
+		slot_name = "esta partida"
+	_delete_confirm_label.text = (
+		"Se perderá todo el progreso de «%s». Esta acción no se puede deshacer."
+		% slot_name
+	)
+	_delete_confirm.visible = true
+
+
+func _hide_delete_confirm() -> void:
+	_pending_delete_slot = -1
+	if _delete_confirm != null:
+		_delete_confirm.visible = false
+
+
+func _on_confirm_delete_slot() -> void:
+	var slot_index := _pending_delete_slot
+	_hide_delete_confirm()
+	if slot_index < 0:
+		return
+	MetaProgression.delete_slot(slot_index)
+	_naming_slot = -1
+	_refresh_slots_list()
+
+
+func _on_delete_confirm_dim_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_hide_delete_confirm()
+
+
+# ---------------------------------------------------------------------------
 # Setup screen (start / difficulty / upgrades)
 # ---------------------------------------------------------------------------
 
@@ -252,6 +588,12 @@ func _build_setup_screen() -> void:
 	_fragments_label.add_theme_color_override("font_color", COL_GOLD_SOFT)
 	header.add_child(_fragments_label)
 
+	_save_name_label = Label.new()
+	_save_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_save_name_label.add_theme_font_size_override("font_size", 15)
+	_save_name_label.add_theme_color_override("font_color", COL_CREAM)
+	vbox.add_child(_save_name_label)
+
 	var subtitle := Label.new()
 	subtitle.text = "Prepara tu campaña"
 	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -299,11 +641,10 @@ func _build_setup_screen() -> void:
 	vbox.add_child(_difficulty_hint)
 
 	var back := _make_ghost_button("← Volver")
-	back.pressed.connect(_on_back_to_title)
+	back.pressed.connect(_on_back_to_slots)
 	vbox.add_child(back)
 
-	_refresh_fragments_label()
-	_refresh_record_label()
+	_refresh_setup_header()
 
 
 # ---------------------------------------------------------------------------
@@ -390,11 +731,15 @@ func _build_upgrades_screen() -> void:
 func _show_screen(screen: Screen) -> void:
 	_screen = screen
 	_title_screen.visible = screen == Screen.TITLE
+	_slots_screen.visible = screen == Screen.SAVE_SLOTS
 	_setup_screen.visible = screen == Screen.SETUP
 	_upgrades_screen.visible = screen == Screen.UPGRADES
+	if screen == Screen.SAVE_SLOTS:
+		_naming_slot = -1
+		_hide_delete_confirm()
+		_refresh_slots_list()
 	if screen == Screen.SETUP:
-		_refresh_fragments_label()
-		_refresh_record_label()
+		_refresh_setup_header()
 		_difficulty_hint.text = ""
 	if screen == Screen.UPGRADES:
 		_refresh_shop()
@@ -406,11 +751,16 @@ func _on_title_gui_input(event: InputEvent) -> void:
 
 
 func _on_play_pressed() -> void:
-	_show_screen(Screen.SETUP)
+	_show_screen(Screen.SAVE_SLOTS)
 
 
 func _on_back_to_title() -> void:
+	_naming_slot = -1
 	_show_screen(Screen.TITLE)
+
+
+func _on_back_to_slots() -> void:
+	_show_screen(Screen.SAVE_SLOTS)
 
 
 func _on_upgrades_pressed() -> void:
@@ -431,6 +781,9 @@ func _on_difficulty_pressed() -> void:
 
 
 func _on_start_pressed() -> void:
+	if not MetaProgression.has_active_slot():
+		_show_screen(Screen.SAVE_SLOTS)
+		return
 	GameSettings.map_size_preset = GameSettings.MapSizePreset.MEDIUM
 	get_tree().change_scene_to_file(GAME_SCENE)
 
@@ -442,6 +795,23 @@ func _on_start_pressed() -> void:
 func _on_fragments_changed(_amount: int) -> void:
 	_refresh_fragments_label()
 	_refresh_shop()
+
+
+func _refresh_setup_header() -> void:
+	_refresh_save_name_label()
+	_refresh_fragments_label()
+	_refresh_record_label()
+
+
+func _refresh_save_name_label() -> void:
+	if _save_name_label == null:
+		return
+	if MetaProgression.has_active_slot() and not MetaProgression.save_name.is_empty():
+		_save_name_label.text = MetaProgression.save_name
+		_save_name_label.visible = true
+	else:
+		_save_name_label.text = ""
+		_save_name_label.visible = false
 
 
 func _refresh_fragments_label() -> void:
