@@ -378,8 +378,7 @@ func _can_assign_to_building(villager: Unit, building: Building) -> bool:
 	if not is_instance_valid(building) or building.building_state != Building.BuildingState.ACTIVE:
 		return false
 	var workers: Array = _building_workers.get(building, [])
-	var def := BuildingDatabase.get_definition(building.building_type_id)
-	return workers.size() < def.get("max_workers", 0)
+	return workers.size() < BuildingDatabase.get_max_workers(building.building_type_id)
 
 
 func _assign_villager_to_resource(villager: Unit, building: Building, resource_node: ResourceNode) -> void:
@@ -403,8 +402,7 @@ func _assign_villager_to_resource(villager: Unit, building: Building, resource_n
 
 
 func _fill_building_workers(building: Building) -> void:
-	var def := BuildingDatabase.get_definition(building.building_type_id)
-	var max_workers: int = def.get("max_workers", 0)
+	var max_workers: int = BuildingDatabase.get_max_workers(building.building_type_id)
 	if max_workers <= 0:
 		return
 
@@ -481,8 +479,7 @@ func _find_best_gather_building_for_villager(villager: Unit) -> Building:
 			continue
 
 		var workers: Array = _building_workers.get(building, [])
-		var def := BuildingDatabase.get_definition(building.building_type_id)
-		if workers.size() >= def.get("max_workers", 0):
+		if workers.size() >= BuildingDatabase.get_max_workers(building.building_type_id):
 			continue
 		if _find_nearest_resource_node(building) == null:
 			continue

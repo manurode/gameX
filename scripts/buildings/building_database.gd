@@ -371,6 +371,14 @@ static func is_gather_building(type_id: String) -> bool:
 	return not def.get("gather_type", "").is_empty()
 
 
+static func get_max_workers(type_id: String) -> int:
+	var def := get_definition(type_id)
+	var base: int = int(def.get("max_workers", 0))
+	if base <= 0 or not is_gather_building(type_id):
+		return base
+	return base + MetaProgression.get_gather_max_workers_bonus()
+
+
 static func get_gather_type(type_id: String) -> String:
 	return get_definition(type_id).get("gather_type", "")
 

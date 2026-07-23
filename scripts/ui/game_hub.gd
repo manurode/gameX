@@ -724,6 +724,8 @@ func _update_selection_meta() -> void:
 	var parts: PackedStringArray = ["PV %d/%d" % [building.hp, building.max_hp]]
 	if building.can_garrison:
 		parts.append("Guarnición %d/%d" % [building.get_garrison_count(), building.garrison_capacity])
+	if BuildingDatabase.is_gather_building(building.building_type_id):
+		parts.append("Trabajadores max: %d" % BuildingDatabase.get_max_workers(building.building_type_id))
 	if building.upgrade_level > 0:
 		parts.append("Nv.%d" % (building.upgrade_level + 1))
 	_selection_meta.text = "\n".join(parts)

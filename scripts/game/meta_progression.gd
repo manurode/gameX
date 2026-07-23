@@ -67,6 +67,11 @@ const UNLOCKS := {
 		"cost": 55,
 	},
 	# --- Tier 3: poder de campaña ---
+	"extra_gather_worker": {
+		"name": "Cuadrillas ampliadas",
+		"description": "+1 trabajador máximo en todos los edificios de recolección.",
+		"cost": 70,
+	},
 	"pop_surge": {
 		"name": "Asentamiento amplio",
 		"description": "Límite de población base +8.",
@@ -271,6 +276,10 @@ func get_gather_multiplier() -> float:
 	if is_unlocked("gather_mastery"):
 		mult *= 1.10
 	return mult
+
+
+func get_gather_max_workers_bonus() -> int:
+	return 1 if is_unlocked("extra_gather_worker") else 0
 
 
 func get_knight_hp_bonus() -> int:
