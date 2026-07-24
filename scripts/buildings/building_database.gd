@@ -48,6 +48,7 @@ const UPGRADE_PATHS: Dictionary = {
 const DEFINITIONS: Dictionary = {
 	"town_center": {
 		"name": "Ciudadela",
+		"description": "Produce aldeanos.",
 		"texture": "res://assets/tilesets/mediterranean/Buildings/town_center.png",
 		"wood": 0,
 		"gold": 0,
@@ -68,6 +69,7 @@ const DEFINITIONS: Dictionary = {
 	},
 	"house_small": {
 		"name": "Casa",
+		"description": "+5 de población.",
 		"texture": "res://assets/tilesets/mediterranean/Buildings/house_small.png",
 		"wood": 60,
 		"gold": 0,
@@ -86,6 +88,7 @@ const DEFINITIONS: Dictionary = {
 	},
 	"house_big": {
 		"name": "Casa grande",
+		"description": "+8 de población.",
 		"texture": "res://assets/tilesets/mediterranean/Buildings/house_big.png",
 		"wood": 80,
 		"gold": 40,
@@ -104,6 +107,7 @@ const DEFINITIONS: Dictionary = {
 	},
 	"lumber_camp": {
 		"name": "Aserradero",
+		"description": "Permite extraer madera del bosque.",
 		"texture": "res://assets/tilesets/mediterranean/Buildings/lumber_camp.png",
 		"wood": 75,
 		"gold": 0,
@@ -125,6 +129,7 @@ const DEFINITIONS: Dictionary = {
 	},
 	"mill": {
 		"name": "Molino",
+		"description": "Produce comida con una granja.",
 		"texture": "res://assets/tilesets/mediterranean/Buildings/mill.png",
 		"wood": 90,
 		"gold": 0,
@@ -149,6 +154,7 @@ const DEFINITIONS: Dictionary = {
 	},
 	"mine": {
 		"name": "Mina",
+		"description": "Permite extraer oro de la montaña.",
 		"texture": "res://assets/tilesets/mediterranean/Buildings/mine.png",
 		"wood": 75,
 		"gold": 0,
@@ -170,6 +176,7 @@ const DEFINITIONS: Dictionary = {
 	},
 	"stable": {
 		"name": "Establo",
+		"description": "Entrena caballeros.",
 		"texture": "res://assets/tilesets/mediterranean/Buildings/stable.png",
 		"wood": 170,
 		"gold": 70,
@@ -190,6 +197,7 @@ const DEFINITIONS: Dictionary = {
 	},
 	"barracks": {
 		"name": "Cuartel",
+		"description": "Entrena arqueros.",
 		"texture": "res://assets/tilesets/mediterranean/Buildings/barracks.png",
 		"wood": 170,
 		"gold": 70,
@@ -209,6 +217,7 @@ const DEFINITIONS: Dictionary = {
 	},
 	"arcanum": {
 		"name": "Arcanum",
+		"description": "Entrena magos.",
 		"texture": "res://assets/tilesets/mediterranean/Buildings/arcanum.png",
 		"wood": 180,
 		"gold": 90,
@@ -228,6 +237,7 @@ const DEFINITIONS: Dictionary = {
 	},
 	"tower": {
 		"name": "Torre",
+		"description": "Ataca automáticamente a enemigos cercanos.",
 		"texture": "res://assets/tilesets/mediterranean/Buildings/tower.png",
 		"wood": 130,
 		"gold": 35,
@@ -246,6 +256,7 @@ const DEFINITIONS: Dictionary = {
 	},
 	"wall": {
 		"name": "Muralla",
+		"description": "",
 		"texture": "res://assets/tilesets/mediterranean/Buildings/wall_se.png",
 		"texture_vertical": "res://assets/tilesets/mediterranean/Buildings/wall_sw.png",
 		"wood": 15,
@@ -264,6 +275,7 @@ const DEFINITIONS: Dictionary = {
 	},
 	"castle_small": {
 		"name": "Castillo",
+		"description": "Fortaleza defensiva con gran guarnición.",
 		"texture": "res://assets/tilesets/mediterranean/Buildings/castle_small.png",
 		"wood": 200,
 		"gold": 300,
@@ -281,6 +293,7 @@ const DEFINITIONS: Dictionary = {
 	},
 	"castle_big": {
 		"name": "Castillo grande",
+		"description": "Fortaleza masiva con gran guarnición.",
 		"texture": "res://assets/tilesets/mediterranean/Buildings/castle_big.png",
 		"wood": 400,
 		"gold": 500,

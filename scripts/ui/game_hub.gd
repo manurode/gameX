@@ -476,7 +476,8 @@ func _create_build_slot(type_id: String) -> Button:
 	button.tooltip_text = _format_cost_tooltip(
 		def.get("name", type_id),
 		cost,
-		def.get("build_time", 0.0)
+		def.get("build_time", 0.0),
+		def.get("description", "")
 	)
 	button.set_meta("style", style)
 	button.set_meta("icon", icon)
@@ -554,12 +555,19 @@ func _format_cost_parts(cost: Dictionary, include_villager: bool = false) -> Pac
 	return parts
 
 
-func _format_cost_tooltip(name: String, cost: Dictionary, duration: float = 0.0) -> String:
+func _format_cost_tooltip(
+	name: String,
+	cost: Dictionary,
+	duration: float = 0.0,
+	description: String = ""
+) -> String:
 	var parts := _format_cost_parts(cost)
 	var details := " · ".join(parts) if not parts.is_empty() else "Gratis"
 	if duration > 0.0:
 		details += " · %.0f s" % duration
-	return "%s\n%s" % [name, details]
+	if description.is_empty():
+		return "%s\n%s" % [name, details]
+	return "%s\n%s\n%s" % [name, description, details]
 
 
 func _on_build_slot_pressed(type_id: String) -> void:
