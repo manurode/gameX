@@ -169,7 +169,13 @@ func _try_spawn_unit(world_pos: Vector2, type_id: String = "") -> void:
 	var world := get_tree().get_first_node_in_group("game_world")
 	if world != null and world.has_method("register_player_unit") and spawn_type not in enemy_kinds:
 		world.call("register_player_unit", unit)
-
+	if spawn_type == "villager":
+		var population_manager := get_tree().get_first_node_in_group("population_manager")
+		if population_manager is PopulationManager:
+			(population_manager as PopulationManager).register_unit(unit)
+		var job_manager := get_tree().get_first_node_in_group("job_manager")
+		if job_manager is JobManager:
+			(job_manager as JobManager).on_villager_spawned(unit)
 
 func _is_valid_spawn(world_pos: Vector2) -> bool:
 	if _ground_layer == null:

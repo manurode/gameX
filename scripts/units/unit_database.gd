@@ -196,7 +196,7 @@ const DEFINITIONS: Dictionary = {
 const SPAWN_HOTKEYS: Dictionary = {
 	KEY_F1: "knight",
 	KEY_F2: "archer",
-	KEY_F3: "builder",
+	KEY_F3: "villager",
 	KEY_F4: "enemy",
 	KEY_F5: "mage",
 	KEY_F6: "ember",
