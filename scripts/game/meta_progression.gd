@@ -567,3 +567,22 @@ func has_free_curfew() -> bool:
 
 func has_foresight() -> bool:
 	return is_unlocked("foresight")
+
+
+func get_unlocked_upgrade_names() -> Array[String]:
+	var names: Array[String] = []
+	for id in UNLOCKS:
+		if is_unlocked(id):
+			names.append(str(UNLOCKS[id].get("name", id)))
+	return names
+
+
+func get_run_start_unlocks_banner_text() -> String:
+	var lines: PackedStringArray = []
+	for id in UNLOCKS:
+		if not is_unlocked(id):
+			continue
+		lines.append("• %s" % str(UNLOCKS[id].get("name", id)))
+	if lines.is_empty():
+		return ""
+	return "Mejoras activas en esta partida:\n%s" % "\n".join(lines)

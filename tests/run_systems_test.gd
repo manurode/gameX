@@ -8,6 +8,7 @@ func _init() -> void:
 func _run() -> void:
 	_test_modifiers()
 	_test_meta_rewards()
+	_test_meta_upgrade_application()
 	print("RUN_SYSTEMS_OK")
 	quit(0)
 
@@ -66,3 +67,44 @@ func _test_meta_rewards() -> void:
 	meta.best_nights = before_best
 	meta.wins = before_wins
 	meta.save()
+
+
+func _test_meta_upgrade_application() -> void:
+	var meta := root.get_node_or_null("MetaProgression")
+	assert(meta != null)
+	var saved_unlocked: Dictionary = meta.unlocked.duplicate()
+	meta.unlocked = {
+		"gather_boost": true,
+		"gather_mastery": true,
+		"archer_dmg": true,
+		"knight_hp": true,
+		"mage_chain": true,
+		"extra_gather_worker": true,
+		"pop_surge": true,
+	}
+	assert(is_equal_approx(meta.get_gather_multiplier(), 1.155))
+	assert(meta.get_archer_damage_bonus() == 3)
+	assert(meta.get_knight_hp_bonus() == 15)
+	assert(meta.get_mage_chain_damage_bonus() == 2)
+	assert(meta.get_mage_chain_target_bonus() == 1)
+	assert(meta.get_gather_max_workers_bonus() == 1)
+	assert(meta.get_population_cap_bonus() == 8)
+
+	var archer := Unit.new()
+	UnitDatabase.apply_definition_to_unit(archer, "archer")
+	assert(archer.attack_damage == 17)
+	var knight := Unit.new()
+	UnitDatabase.apply_definition_to_unit(knight, "knight")
+	assert(knight.max_hp == 115)
+	var mage := Unit.new()
+	UnitDatabase.apply_definition_to_unit(mage, "mage")
+	assert(mage.chain_damage == 6)
+	assert(mage.chain_max_targets == 4)
+
+	var lumber_workers := BuildingDatabase.get_max_workers("lumber_camp")
+	assert(lumber_workers == 4)
+
+	var banner := meta.get_run_start_unlocks_banner_text()
+	assert(banner.contains("Herramientas mejores"))
+	assert(banner.contains("Maestría recolectora"))
+	meta.unlocked = saved_unlocked

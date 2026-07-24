@@ -123,8 +123,11 @@ func _apply_chrome_metrics() -> void:
 	if _event_banner != null:
 		_event_banner.offset_left = -_px(280.0)
 		_event_banner.offset_right = _px(280.0)
-		_event_banner.offset_top = _px(72.0)
-		_event_banner.offset_bottom = _px(128.0)
+		if _event_banner.visible and _event_banner_label != null and not _event_banner_label.text.is_empty():
+			_layout_event_banner(_event_banner_label.text)
+		else:
+			_event_banner.offset_top = _px(72.0)
+			_event_banner.offset_bottom = _px(128.0)
 		var banner_style := StyleBoxFlat.new()
 		banner_style.bg_color = Color(0.08, 0.06, 0.05, 0.92)
 		banner_style.border_color = Color(0.85, 0.55, 0.25, 1.0)
@@ -919,8 +922,29 @@ func show_banner(text: String, duration: float = 5.0) -> void:
 	if _event_banner == null or _event_banner_label == null:
 		return
 	_event_banner_label.text = text
+	_layout_event_banner(text)
 	_event_banner.visible = true
 	_banner_timer = duration
+
+
+func show_run_unlocks_at_start() -> void:
+	var text := MetaProgression.get_run_start_unlocks_banner_text()
+	if text.is_empty():
+		return
+	var line_count := text.count("\n") + 1
+	var duration := clampf(4.0 + float(line_count) * 0.6, 5.0, 12.0)
+	show_banner(text, duration)
+
+
+func _layout_event_banner(text: String) -> void:
+	if _event_banner == null:
+		return
+	var line_count := maxi(1, text.count("\n") + 1)
+	var line_height := float(_fs(17)) + _px(4.0)
+	var padding := _px(12.0)
+	var banner_height := line_count * line_height + padding * 2.0
+	_event_banner.offset_top = _px(72.0)
+	_event_banner.offset_bottom = _px(72.0) + banner_height
 
 
 func _show_banner(text: String, duration: float = 5.0) -> void:
