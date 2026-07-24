@@ -72,7 +72,7 @@ const DEFINITIONS := {
 	Id.FOG: {
 		"id": Id.FOG,
 		"name": "Niebla",
-		"description": "Spawn más cercano y oscuridad densa. El toque de queda importa.",
+		"description": "Spawn más cercano y oscuridad densa.",
 		"count_mult": 1.05,
 		"continuous_spawn": false,
 		"dual_direction": false,
