@@ -823,12 +823,9 @@ func _is_pointer_over_ui(screen_pos: Vector2) -> bool:
 	if hud == null:
 		return false
 
+	# Only the painted cycle panel — never the oversized TopLeft pad.
 	var cycle_panel := hud.get_node_or_null("TopLeft/MarginContainer/CyclePanel")
 	if cycle_panel is Control and (cycle_panel as Control).get_global_rect().has_point(screen_pos):
-		return true
-
-	var top_left := hud.get_node_or_null("TopLeft/MarginContainer")
-	if top_left is Control and (top_left as Control).get_global_rect().has_point(screen_pos):
 		return true
 
 	var hub := get_node_or_null("/root/Main/Layout/HubMargin/GameHub")

@@ -102,10 +102,12 @@ func _px(base: float) -> float:
 
 func _apply_chrome_metrics() -> void:
 	if _top_left != null:
-		_top_left.offset_right = _px(720.0)
-		_top_left.offset_bottom = _px(110.0)
+		# Container pads must IGNORE: a PASS hitbox here used to block world
+		# clicks across a ~720x110 strip even though only CyclePanel is visible.
+		_top_left.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var top_margin := _top_left.get_node_or_null("MarginContainer") as MarginContainer
 		if top_margin != null:
+			top_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			top_margin.add_theme_constant_override("margin_left", _fs(16))
 			top_margin.add_theme_constant_override("margin_top", _fs(12))
 		if cycle_button != null:
@@ -114,7 +116,9 @@ func _apply_chrome_metrics() -> void:
 		if help_label != null:
 			help_label.add_theme_font_size_override("font_size", _fs(13))
 		if cycle_panel != null:
+			cycle_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 			cycle_panel.add_theme_stylebox_override("panel", _make_info_panel_style())
+		call_deferred("_fit_top_left_to_content")
 
 	if _event_banner != null:
 		_event_banner.offset_left = -_px(280.0)
@@ -346,9 +350,15 @@ func _make_info_panel_style() -> StyleBoxFlat:
 
 
 func _style_cycle_panel() -> void:
+	if _top_left != null:
+		_top_left.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var top_margin := get_node_or_null("TopLeft/MarginContainer") as Control
+	if top_margin != null:
+		top_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if cycle_panel != null:
 		cycle_panel.add_theme_stylebox_override("panel", _make_info_panel_style())
-		cycle_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		# STOP only on the painted panel so tooltips work and empty pad does not.
+		cycle_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	if cycle_button == null:
 		return
 	cycle_button.disabled = true
@@ -367,6 +377,27 @@ func _style_cycle_panel() -> void:
 	if help_label != null:
 		help_label.add_theme_color_override("font_color", Color(0.78, 0.74, 0.64))
 		help_label.add_theme_font_size_override("font_size", 13)
+		help_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+
+func _fit_top_left_to_content() -> void:
+	if _top_left == null or cycle_panel == null:
+		return
+	var top_margin := _top_left.get_node_or_null("MarginContainer") as MarginContainer
+	var margin_l := _fs(16)
+	var margin_t := _fs(12)
+	var margin_r := 0
+	var margin_b := 0
+	if top_margin != null:
+		margin_l = top_margin.get_theme_constant("margin_left")
+		margin_t = top_margin.get_theme_constant("margin_top")
+		margin_r = top_margin.get_theme_constant("margin_right")
+		margin_b = top_margin.get_theme_constant("margin_bottom")
+	var panel_size := cycle_panel.get_combined_minimum_size()
+	if cycle_panel.size.x > 1.0 and cycle_panel.size.y > 1.0:
+		panel_size = panel_size.max(cycle_panel.size)
+	_top_left.offset_right = float(margin_l + margin_r) + panel_size.x
+	_top_left.offset_bottom = float(margin_t + margin_b) + panel_size.y
 
 
 func _create_event_banner() -> void:
@@ -1006,6 +1037,8 @@ func _update_cycle_ui(phase: DayNightManager.CyclePhase, force: bool = false) ->
 	)
 	if cycle_panel != null:
 		cycle_panel.tooltip_text = cycle_button.tooltip_text
+	if force:
+		call_deferred("_fit_top_left_to_content")
 
 
 func _on_phase_time_changed(_seconds_remaining: float) -> void:
