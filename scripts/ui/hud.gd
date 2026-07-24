@@ -859,14 +859,14 @@ func _create_quit_overlay() -> void:
 	vbox.add_child(buttons)
 
 	var continue_button := Button.new()
-	continue_button.text = "Continuar"
+	continue_button.text = "Cancelar"
 	continue_button.custom_minimum_size = Vector2(140, 36)
 	continue_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	continue_button.pressed.connect(_close_quit_menu)
 	buttons.add_child(continue_button)
 
 	var quit_button := Button.new()
-	quit_button.text = "Salir al menú"
+	quit_button.text = "Salir al menú principal"
 	quit_button.custom_minimum_size = Vector2(140, 36)
 	quit_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	quit_button.pressed.connect(_on_confirm_quit_to_menu)
