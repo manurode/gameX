@@ -963,21 +963,37 @@ func get_entry_approach_point(from_position: Vector2) -> Vector2:
 	return get_approach_point(from_position, 2.0)
 
 
+func _plant_local_offset() -> Vector2:
+	# global_position is shifted south for Y-sort; visual plant stays at the anchor.
+	return Vector2(0.0, -_sort_dy)
+
+
 func _setup_selection_indicator() -> void:
 	if selection_indicator == null:
 		return
 	var points := PackedVector2Array()
 	const SEGMENTS := 48
-	var radius_x := pick_half_size.x * 0.85
-	var radius_y := pick_half_size.y * 0.45
+	# Scale with building size and pad past the opaque sprite so the ring stays visible.
+	var radius_x := maxf(maxf(_footprint.x * 0.72, pick_half_size.x * 0.62), 40.0)
+	var radius_y := maxf(maxf(_footprint.y * 0.58, pick_half_size.x * 0.30), 18.0)
+	if building_type_id == "wall":
+		radius_x = maxf(_footprint.x * 0.62, 24.0)
+		radius_y = maxf(_footprint.y * 0.50, 14.0)
 	for i in SEGMENTS + 1:
 		var angle := float(i) / float(SEGMENTS) * TAU
 		points.append(Vector2(cos(angle) * radius_x, sin(angle) * radius_y))
 	selection_indicator.points = points
 	selection_indicator.closed = true
-	# After depth shift, node origin is the planted base.
-	selection_indicator.position = Vector2.ZERO
+	selection_indicator.position = _selection_local_position()
+	# Draw above the building sprite so the ring is not covered by art.
+	selection_indicator.z_index = 2
 	selection_indicator.y_sort_enabled = false
+	selection_indicator.width = clampf(radius_x * 0.018, 2.0, 3.5)
+
+
+func _selection_local_position() -> Vector2:
+	# Same ground center used for collision / approach (slightly north of plant).
+	return get_base_center() - global_position
 
 
 func _setup_ground_shadow() -> void:
@@ -1009,8 +1025,7 @@ func _setup_ground_shadow() -> void:
 func _refresh_ground_shadow() -> void:
 	if _ground_shadow == null:
 		return
-	# Node origin is the planted base after depth sync.
-	_ground_shadow.position = Vector2.ZERO
+	_ground_shadow.position = _plant_local_offset()
 	var radius_x := maxf(_footprint.x * 0.034, 1.15)
 	var radius_y := maxf(_footprint.y * 0.028, 0.75)
 	if building_type_id == "wall":
@@ -1019,7 +1034,7 @@ func _refresh_ground_shadow() -> void:
 	_ground_shadow.scale = Vector2(radius_x, radius_y)
 	_ground_shadow.visible = building_state != BuildingState.DESTROYED
 	if selection_indicator != null:
-		selection_indicator.position = Vector2.ZERO
+		selection_indicator.position = _selection_local_position()
 
 
 func get_sprite_center() -> Vector2:
