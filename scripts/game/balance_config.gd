@@ -30,13 +30,14 @@ const GOLD_MOUNTAIN_CAPACITY := 4500
 const MILL_MAX_WORKERS := 3
 
 const VILLAGER_FOOD_PER_SECOND := 1.0 / 30.0
-const SQUAD_FOOD_PER_SECOND_AT_NIGHT := 1.0 / 10.0
-## Meta shop armies: still eat at night, but cheaper than trained troops.
-const META_MILITARY_NIGHT_UPKEEP_MULT := 0.35
+## Military eats by day (not while fighting at night).
+const SQUAD_FOOD_PER_SECOND_BY_DAY := 1.0 / 10.0
+## Meta shop armies: still eat by day, but cheaper than trained troops.
+const META_MILITARY_DAY_UPKEEP_MULT := 0.35
 ## Pantry brought with meta starter military (per unit).
 const META_ARMY_START_FOOD_PER_UNIT := 4
 const STARVATION_WORK_MULTIPLIER := 0.5
-const STARVATION_DAMAGE_PER_SECOND := 2.0
+const STARVATION_DAMAGE_PER_SECOND := 1.0
 
 const SQUAD_SIZE := 1
 ## Military units cost gold + 1 villager (no food to train).

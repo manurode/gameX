@@ -167,7 +167,8 @@ func _simulate_ten_cycles() -> void:
 		wood += float(lumberjacks) * BalanceConfig.WOOD_PER_SECOND * cycle_len
 		gold += float(miners) * BalanceConfig.GOLD_PER_SECOND * cycle_len
 		food -= float(villagers) * BalanceConfig.VILLAGER_FOOD_PER_SECOND * cycle_len
-		food -= float(squads) * BalanceConfig.SQUAD_FOOD_PER_SECOND_AT_NIGHT * night_len
+		# Military eats outside night (day + dusk + dawn).
+		food -= float(squads) * BalanceConfig.SQUAD_FOOD_PER_SECOND_BY_DAY * (cycle_len - night_len)
 		if cycle >= 3 and villagers > 1 and gold >= BalanceConfig.SQUAD_GOLD_COST:
 			gold -= BalanceConfig.SQUAD_GOLD_COST
 			villagers -= 1

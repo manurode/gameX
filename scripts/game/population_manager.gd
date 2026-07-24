@@ -22,6 +22,7 @@ var _registered_units: Dictionary = {}
 var _upkeep_tick_timer := 0.0
 var _cached_upkeep := 0.0
 var _cached_is_night := false
+var _army_hunger_damage_active := false
 var _day_night_manager: DayNightManager
 
 
@@ -36,11 +37,7 @@ func get_food_upkeep_per_second() -> float:
 func get_food_upkeep_label() -> String:
 	if population <= 0:
 		return "Sin consumo"
-	var income := 0.0
-	var job_manager := get_tree().get_first_node_in_group("job_manager")
-	if job_manager is JobManager:
-		income = (job_manager as JobManager).get_food_income_per_second()
-	var net := income - get_food_upkeep_per_second()
+	var net := _get_food_income_per_second() - get_food_upkeep_per_second()
 	return "%.2f/s · balance %+.2f/s" % [get_food_upkeep_per_second(), net]
 
 
@@ -56,8 +53,7 @@ func _process(delta: float) -> void:
 
 	_upkeep_accumulator += _cached_upkeep * delta
 	if _upkeep_accumulator < 1.0:
-		if food_shortage_active:
-			_apply_starvation_damage(delta)
+		_update_starvation_damage(delta)
 		return
 
 	var food_cost := int(_upkeep_accumulator)
@@ -70,8 +66,7 @@ func _process(delta: float) -> void:
 	elif not food_shortage_active:
 		food_shortage_active = true
 		food_shortage.emit(true)
-	if food_shortage_active:
-		_apply_starvation_damage(delta)
+	_update_starvation_damage(delta)
 
 
 func register_unit(unit: Unit) -> void:
@@ -155,7 +150,7 @@ func _recalculate_upkeep() -> void:
 		if unit.is_civilian:
 			civilian_count += 1
 		elif unit.get_meta("meta_supplied", false):
-			# Meta shop starters only — run boons keep full night upkeep.
+			# Meta shop starters only — run boons keep full day upkeep.
 			meta_military_count += 1
 		else:
 			var squad_id: String = unit.get_meta("squad_id", "")
@@ -165,19 +160,57 @@ func _recalculate_upkeep() -> void:
 				squad_ids[squad_id] = true
 	var upkeep := float(civilian_count) * BalanceConfig.VILLAGER_FOOD_PER_SECOND
 	var is_night := _is_night()
-	if is_night:
-		var full_rate := BalanceConfig.SQUAD_FOOD_PER_SECOND_AT_NIGHT
+	# Army eats by day only — at night they fight and do not consume food.
+	if not is_night:
+		var full_rate := BalanceConfig.SQUAD_FOOD_PER_SECOND_BY_DAY
 		upkeep += float(squad_ids.size() + military_without_squad) * full_rate
 		upkeep += (
 			float(meta_military_count)
 			* full_rate
-			* BalanceConfig.META_MILITARY_NIGHT_UPKEEP_MULT
+			* BalanceConfig.META_MILITARY_DAY_UPKEEP_MULT
 		)
 	upkeep *= _get_food_upkeep_multiplier()
 	if not is_equal_approx(upkeep, _cached_upkeep) or is_night != _cached_is_night:
 		_cached_upkeep = upkeep
 		_cached_is_night = is_night
 		food_upkeep_changed.emit(_cached_upkeep)
+
+
+func _get_food_income_per_second() -> float:
+	var job_manager := get_tree().get_first_node_in_group("job_manager")
+	if job_manager is JobManager:
+		return (job_manager as JobManager).get_food_income_per_second()
+	return 0.0
+
+
+## Stockpile empty is not enough: if farmers already outpace upkeep, army is not damaged.
+func _is_food_balance_sustainable() -> bool:
+	return _get_food_income_per_second() >= _cached_upkeep
+
+
+func _should_damage_army_from_hunger() -> bool:
+	# Army only eats by day; do not punish them while fighting at night.
+	if _is_night():
+		return false
+	return food_shortage_active and not _is_food_balance_sustainable()
+
+
+func _update_starvation_damage(delta: float) -> void:
+	if not _should_damage_army_from_hunger():
+		if _army_hunger_damage_active:
+			_army_hunger_damage_active = false
+			_starvation_damage_accumulator = 0.0
+		return
+	if not _army_hunger_damage_active:
+		_army_hunger_damage_active = true
+		_show_army_starving_banner()
+	_apply_starvation_damage(delta)
+
+
+func _show_army_starving_banner() -> void:
+	var hud := get_node_or_null("/root/Main/Layout/WorldView/SubViewport/HUD")
+	if hud != null and hud.has_method("show_banner"):
+		hud.show_banner("El ejército se muere de hambre", 3.5)
 
 
 func _apply_starvation_damage(delta: float) -> void:
