@@ -53,7 +53,14 @@ func get_cursor_action_at(screen_point: Vector2) -> StringName:
 
 	var building := _pick_building_at(world_point)
 	if building != null and _can_build_or_repair(building):
-		return CURSOR_BUILD if _is_construction_allowed() else CURSOR_BUILD_FORBIDDEN
+		if not _is_construction_allowed():
+			return CURSOR_BUILD_FORBIDDEN
+		if (
+			building.building_state != Building.BuildingState.CONSTRUCTING
+			and not _can_afford_repair(building)
+		):
+			return CURSOR_BUILD_FORBIDDEN
+		return CURSOR_BUILD
 
 	var resource_node := _pick_resource_node_at(world_point)
 	if resource_node != null and _can_gather_resource(resource_node):
@@ -119,6 +126,15 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 		var target_building := _pick_building_at(world_point)
 		if target_building != null and _should_prefer_building_command(target_building):
 			if not _is_construction_allowed():
+				_show_feedback_banner("De noche no se puede construir ni reparar")
+				get_viewport().set_input_as_handled()
+				return
+			if (
+				target_building.building_state != Building.BuildingState.CONSTRUCTING
+				and target_building.can_be_repaired()
+				and not _can_afford_repair(target_building)
+			):
+				_show_feedback_banner("Sin recursos para reparar")
 				get_viewport().set_input_as_handled()
 				return
 			_handle_building_command(target_building, world_point, event.shift_pressed)
@@ -216,19 +232,7 @@ func _handle_building_command(building: Building, world_point: Vector2, force_at
 
 
 func _should_prefer_building_command(building: Building) -> bool:
-	if building.building_state == Building.BuildingState.CONSTRUCTING:
-		for unit in selected_units:
-			if is_instance_valid(unit) and unit.can_build:
-				return true
-		return false
-	if not building.can_be_repaired():
-		return false
-	if not _can_afford_repair(building):
-		return false
-	for unit in selected_units:
-		if is_instance_valid(unit) and unit.can_build and not unit.can_attack:
-			return true
-	return false
+	return _can_build_or_repair(building)
 
 
 func _try_gather_resource_command(world_point: Vector2) -> bool:
@@ -428,14 +432,14 @@ func _pick_attackable_unit_at(world_point: Vector2) -> Unit:
 
 
 func _can_build_or_repair(building: Building) -> bool:
+	# Intent only: selected builders could build/repair this target.
+	# Affordability and day/night gate the cursor and click feedback separately.
 	if building.building_state == Building.BuildingState.CONSTRUCTING:
 		for unit in selected_units:
 			if is_instance_valid(unit) and unit.can_build:
 				return true
 		return false
 	if not building.can_be_repaired():
-		return false
-	if not _can_afford_repair(building):
 		return false
 	for unit in selected_units:
 		# Building commands prioritize combat-capable units as attackers.
@@ -778,6 +782,12 @@ func _is_construction_allowed() -> bool:
 		not manager is DayNightManager
 		or (manager as DayNightManager).is_construction_allowed()
 	)
+
+
+func _show_feedback_banner(text: String, duration: float = 3.5) -> void:
+	var hud := get_node_or_null("/root/Main/Layout/WorldView/SubViewport/HUD")
+	if hud != null and hud.has_method("show_banner"):
+		hud.show_banner(text, duration)
 
 
 func _get_build_mode_cursor_at(screen_point: Vector2) -> StringName:

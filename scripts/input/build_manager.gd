@@ -205,6 +205,7 @@ func _start_build_mode(type_id: String) -> void:
 	if not BuildingDatabase.is_buildable(type_id):
 		return
 	if not _is_construction_allowed():
+		_show_feedback_banner("De noche no se puede construir ni reparar")
 		return
 	_stop_wall_drag()
 	# Manual build (hotkeys/UI) leaves free-only mode so paid construction works normally.
@@ -783,6 +784,12 @@ func _multiply_cost(cost: Dictionary, count: int) -> Dictionary:
 func _is_construction_allowed() -> bool:
 	var manager := get_tree().get_first_node_in_group("day_night_manager")
 	return not (manager is DayNightManager) or (manager as DayNightManager).is_construction_allowed()
+
+
+func _show_feedback_banner(text: String, duration: float = 3.5) -> void:
+	var hud := get_node_or_null("/root/Main/Layout/WorldView/SubViewport/HUD")
+	if hud != null and hud.has_method("show_banner"):
+		hud.show_banner(text, duration)
 
 
 func _max_affordable_wall_segments(desired: int) -> int:

@@ -915,12 +915,16 @@ func _on_confirm_quit_to_menu() -> void:
 	_on_return_to_menu()
 
 
-func _show_banner(text: String, duration: float = 5.0) -> void:
+func show_banner(text: String, duration: float = 5.0) -> void:
 	if _event_banner == null or _event_banner_label == null:
 		return
 	_event_banner_label.text = text
 	_event_banner.visible = true
 	_banner_timer = duration
+
+
+func _show_banner(text: String, duration: float = 5.0) -> void:
+	show_banner(text, duration)
 
 
 func _on_game_over_legacy() -> void:
