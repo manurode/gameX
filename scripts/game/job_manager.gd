@@ -168,9 +168,10 @@ func find_gather_building_for_resource(
 	return best_building
 
 
-func collect_civilian_villagers(count: int) -> Array[Unit]:
+func collect_civilian_villagers(count: int, near_building: Building = null) -> Array[Unit]:
 	var result: Array[Unit] = []
 	var candidates: Array[Unit] = []
+	var now_msec := Time.get_ticks_msec()
 
 	for node in get_tree().get_nodes_in_group("units"):
 		if not node is Unit:
@@ -182,11 +183,26 @@ func collect_civilian_villagers(count: int) -> Array[Unit]:
 			continue
 		if unit.garrisoned_building != null:
 			continue
+		if unit.has_meta("skip_recruitment_until_msec"):
+			if now_msec < int(unit.get_meta("skip_recruitment_until_msec")):
+				continue
+			unit.remove_meta("skip_recruitment_until_msec")
 		candidates.append(unit)
 
+	var target_pos := Vector2.ZERO
+	var has_target := is_instance_valid(near_building)
+	if has_target:
+		target_pos = near_building.global_position
+
 	candidates.sort_custom(func(a: Unit, b: Unit) -> bool:
-		# Prefer idle civilians so recruitment doesn't yank active workers first.
-		return not a.is_busy() and b.is_busy()
+		# Prefer idle civilians; among equals, prefer closest to the conversion building.
+		var a_idle := not a.is_busy()
+		var b_idle := not b.is_busy()
+		if a_idle != b_idle:
+			return a_idle
+		if not has_target:
+			return false
+		return a.global_position.distance_squared_to(target_pos) < b.global_position.distance_squared_to(target_pos)
 	)
 
 	for unit in candidates:

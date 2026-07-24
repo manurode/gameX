@@ -61,9 +61,38 @@ func unregister_producer(building: Building) -> void:
 			_population_manager.release_reserved_population(entry.get("reserved_population", 0))
 	for node in get_tree().get_nodes_in_group("units"):
 		if node is Unit and (node as Unit).recruitment_building == building:
-			(node as Unit).cancel_recruitment()
+			# Building is gone — do not requeue the conversion job.
+			(node as Unit).cancel_recruitment(false)
 	_queues.erase(building)
 	_pending_recruitment.erase(building)
+
+
+func requeue_pending_recruitment(
+	building: Building,
+	item_id: String,
+	transforms_to: String,
+	squad_size: int,
+	squad_id: String,
+	reserved_population: int = 0
+) -> void:
+	if not is_instance_valid(building) or transforms_to.is_empty():
+		if _population_manager != null and reserved_population > 0:
+			_population_manager.release_reserved_population(reserved_population)
+		return
+	if building.building_state != Building.BuildingState.ACTIVE:
+		if _population_manager != null and reserved_population > 0:
+			_population_manager.release_reserved_population(reserved_population)
+		return
+	if not _pending_recruitment.has(building):
+		_pending_recruitment[building] = []
+	_pending_recruitment[building].append({
+		"item_id": item_id,
+		"transforms_to": transforms_to,
+		"squad_size": squad_size,
+		"reserved_population": reserved_population,
+		"squad_id": squad_id,
+	})
+	queue_changed.emit(building)
 
 
 func get_production_availability(
@@ -270,7 +299,7 @@ func _process_pending_recruitment() -> void:
 		var changed := false
 		while not pending_queue.is_empty():
 			var entry: Dictionary = pending_queue[0]
-			var villagers := _job_manager.collect_civilian_villagers(1)
+			var villagers := _job_manager.collect_civilian_villagers(1, building)
 			if villagers.is_empty():
 				break
 			var villager: Unit = villagers[0]
@@ -280,7 +309,8 @@ func _process_pending_recruitment() -> void:
 				building,
 				entry.get("transforms_to", ""),
 				entry.get("squad_size", 1),
-				entry.get("squad_id", "")
+				entry.get("squad_id", ""),
+				entry.get("item_id", "")
 			)
 			pending_queue.remove_at(0)
 			changed = true

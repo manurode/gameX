@@ -97,6 +97,7 @@ var gather_target: ResourceNode = null
 var gather_building: Building = null
 var recruitment_building: Building = null
 var recruitment_type_id: String = ""
+var recruitment_item_id: String = ""
 var recruitment_squad_size: int = 1
 var recruitment_squad_id: String = ""
 
@@ -444,7 +445,8 @@ func begin_recruitment(
 	building: Building,
 	target_type_id: String,
 	squad_size: int = 1,
-	squad_id: String = ""
+	squad_id: String = "",
+	item_id: String = ""
 ) -> void:
 	if not is_civilian or not is_instance_valid(building):
 		return
@@ -456,6 +458,7 @@ func begin_recruitment(
 	garrison_approach_target = null
 	recruitment_building = building
 	recruitment_type_id = target_type_id
+	recruitment_item_id = item_id
 	recruitment_squad_size = squad_size
 	recruitment_squad_id = squad_id
 	_unit_state = UnitState.RECRUITING
@@ -468,8 +471,7 @@ func transform_to_unit_type(type_id: String) -> void:
 	UnitDatabase.apply_definition_to_unit(self, type_id)
 	is_civilian = false
 	can_gather = false
-	recruitment_building = null
-	recruitment_type_id = ""
+	_clear_recruitment_fields()
 	_unit_state = UnitState.IDLE
 	construction_target = null
 	repair_target = null
@@ -1863,6 +1865,7 @@ func _process_recruitment(delta: float) -> void:
 		or not is_instance_valid(building)
 		or building.building_state != Building.BuildingState.ACTIVE
 	):
+		# Building gone/inactive — drop reservation, no requeue.
 		_release_recruitment_reservation()
 		_unit_state = UnitState.IDLE
 		return
@@ -1873,8 +1876,9 @@ func _process_recruitment(delta: float) -> void:
 		if _is_in_build_range(building):
 			pass
 		elif stuck:
-			_release_recruitment_reservation()
-			_unit_state = UnitState.IDLE
+			# Give the job to another villager instead of losing the trained unit.
+			set_meta("skip_recruitment_until_msec", Time.get_ticks_msec() + 2000)
+			cancel_recruitment(true)
 			return
 		else:
 			return
@@ -1900,8 +1904,13 @@ func _process_recruitment(delta: float) -> void:
 			squad_id,
 			spawn_positions.slice(1)
 		)
+	_clear_recruitment_fields()
+
+
+func _clear_recruitment_fields() -> void:
 	recruitment_building = null
 	recruitment_type_id = ""
+	recruitment_item_id = ""
 	recruitment_squad_size = 1
 	recruitment_squad_id = ""
 
@@ -1911,18 +1920,45 @@ func _release_recruitment_reservation() -> void:
 	var population_manager := get_tree().get_first_node_in_group("population_manager")
 	if population_manager is PopulationManager:
 		(population_manager as PopulationManager).release_reserved_population(extra_population)
-	recruitment_building = null
-	recruitment_type_id = ""
-	recruitment_squad_size = 1
-	recruitment_squad_id = ""
+	_clear_recruitment_fields()
 
 
-func cancel_recruitment() -> void:
-	if recruitment_building == null and recruitment_squad_size <= 1:
+func cancel_recruitment(requeue: bool = true) -> void:
+	if recruitment_building == null and recruitment_type_id.is_empty() and recruitment_squad_size <= 1:
 		if _unit_state == UnitState.RECRUITING:
 			_unit_state = UnitState.IDLE
 		return
-	_release_recruitment_reservation()
+
+	var building := recruitment_building
+	var item_id := recruitment_item_id
+	var transforms_to := recruitment_type_id
+	var squad_size := recruitment_squad_size
+	var squad_id := recruitment_squad_id
+	var reserved_population := maxi(0, squad_size - 1)
+
+	var should_requeue := (
+		requeue
+		and is_instance_valid(building)
+		and building.building_state == Building.BuildingState.ACTIVE
+		and not transforms_to.is_empty()
+	)
+	if should_requeue:
+		var production_manager := get_tree().get_first_node_in_group("production_manager")
+		if production_manager is ProductionManager:
+			(production_manager as ProductionManager).requeue_pending_recruitment(
+				building,
+				item_id,
+				transforms_to,
+				squad_size,
+				squad_id,
+				reserved_population
+			)
+			_clear_recruitment_fields()
+		else:
+			_release_recruitment_reservation()
+	else:
+		_release_recruitment_reservation()
+
 	if _unit_state == UnitState.RECRUITING:
 		_unit_state = UnitState.IDLE
 
