@@ -66,6 +66,8 @@ var _enemy_night_vision_pending: bool = false
 var _enemy_night_vision_active: bool = false
 var _summer_equinox_pending: bool = false
 var _summer_equinox_active: bool = false
+## After equinox is chosen, the next dawn offer must not include it again.
+var _block_equinox_next_offer: bool = false
 
 
 func _ready() -> void:
@@ -201,10 +203,9 @@ func _clear_daytime_boons() -> void:
 
 func _roll_choices(count: int) -> Array[String]:
 	var pool: Array[String] = []
-	var exclude_equinox := (
-		_day_night != null
-		and _day_night.nights_survived >= BalanceConfig.WIN_NIGHTS - 1
-	)
+	# Never two equinox nights in a row, and never on the final night.
+	var exclude_equinox := _block_equinox_next_offer or _is_last_day_boon_offer()
+	_block_equinox_next_offer = false
 	for key in BOON_DEFS.keys():
 		var boon_id := str(key)
 		if exclude_equinox and boon_id == "summer_equinox":
@@ -215,6 +216,13 @@ func _roll_choices(count: int) -> Array[String]:
 	for i in mini(count, pool.size()):
 		choices.append(pool[i])
 	return choices
+
+
+func _is_last_day_boon_offer() -> bool:
+	return (
+		_day_night != null
+		and _day_night.nights_survived >= BalanceConfig.WIN_NIGHTS - 1
+	)
 
 
 func _apply_boon(boon_id: String) -> void:
@@ -248,6 +256,7 @@ func _apply_boon(boon_id: String) -> void:
 			_enemy_night_vision_pending = true
 		"summer_equinox":
 			_summer_equinox_pending = true
+			_block_equinox_next_offer = true
 
 
 func _grant_free_build(type_id: String, count: int) -> void:
