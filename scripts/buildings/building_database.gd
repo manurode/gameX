@@ -50,8 +50,9 @@ const DEFINITIONS: Dictionary = {
 		"name": "Ciudadela",
 		"description": "Produce aldeanos.",
 		"texture": "res://assets/tilesets/mediterranean/Buildings/town_center.png",
-		"wood": 0,
-		"gold": 0,
+		# Not buildable (pre-spawned); costs only feed repair pricing via get_repair_cost.
+		"wood": 180,
+		"gold": 160,
 		"food": 0,
 		"build_time": 0.0,
 		"max_hp": 800,
