@@ -123,8 +123,8 @@ func _apply_chrome_metrics() -> void:
 			cycle_button.add_theme_font_size_override("font_size", _fs(15))
 		if help_label != null:
 			help_label.add_theme_font_size_override("font_size", _fs(13))
-			help_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			help_label.custom_minimum_size = Vector2(_px(300.0), 0.0)
+			help_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+			help_label.custom_minimum_size = Vector2.ZERO
 		if cycle_panel != null:
 			cycle_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 			cycle_panel.propagate_maximum_size = false
@@ -404,8 +404,8 @@ func _style_cycle_panel() -> void:
 		help_label.add_theme_color_override("font_color", Color(0.78, 0.74, 0.64))
 		help_label.add_theme_font_size_override("font_size", 13)
 		help_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		help_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		help_label.custom_minimum_size = Vector2(300.0, 0.0)
+		help_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+		help_label.custom_minimum_size = Vector2.ZERO
 
 
 func _on_cycle_panel_minimum_size_changed() -> void:
@@ -450,7 +450,6 @@ func _fit_top_left_to_content() -> void:
 	# Prefer intrinsic minimum size; ignore a stale constrained size from a
 	# previous too-small TopLeft frame (that was pushing the panel off-screen).
 	var panel_size := cycle_panel.get_combined_minimum_size()
-	panel_size.x = maxf(panel_size.x, _px(300.0))
 	_top_left.offset_right = float(margin_l + margin_r) + panel_size.x
 	_top_left.offset_bottom = float(margin_t + margin_b) + panel_size.y
 
