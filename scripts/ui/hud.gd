@@ -105,18 +105,32 @@ func _apply_chrome_metrics() -> void:
 		# Container pads must IGNORE: a PASS hitbox here used to block world
 		# clicks across a ~720x110 strip even though only CyclePanel is visible.
 		_top_left.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_top_left.set_anchors_preset(Control.PRESET_TOP_LEFT)
+		_top_left.grow_horizontal = Control.GROW_DIRECTION_END
+		_top_left.grow_vertical = Control.GROW_DIRECTION_END
 		var top_margin := _top_left.get_node_or_null("MarginContainer") as MarginContainer
 		if top_margin != null:
 			top_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			# Godot 4.7 propagates max size into children; while TopLeft is being
+			# refit that squeeze can shove the painted panel off the left/top edge.
+			top_margin.propagate_maximum_size = false
 			top_margin.add_theme_constant_override("margin_left", _fs(16))
 			top_margin.add_theme_constant_override("margin_top", _fs(12))
+			top_margin.add_theme_constant_override("margin_right", _fs(10))
+			top_margin.add_theme_constant_override("margin_bottom", _fs(10))
 		if cycle_button != null:
 			cycle_button.custom_minimum_size = Vector2(_px(180.0), 0.0)
 			cycle_button.add_theme_font_size_override("font_size", _fs(15))
 		if help_label != null:
 			help_label.add_theme_font_size_override("font_size", _fs(13))
+			help_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			help_label.custom_minimum_size = Vector2(_px(300.0), 0.0)
 		if cycle_panel != null:
 			cycle_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+			cycle_panel.propagate_maximum_size = false
+			# Shrink-to-content so empty TopLeft pad does not steal world clicks.
+			cycle_panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+			cycle_panel.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 			cycle_panel.add_theme_stylebox_override("panel", _make_info_panel_style())
 		call_deferred("_fit_top_left_to_content")
 
@@ -355,13 +369,22 @@ func _make_info_panel_style() -> StyleBoxFlat:
 func _style_cycle_panel() -> void:
 	if _top_left != null:
 		_top_left.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var top_margin := get_node_or_null("TopLeft/MarginContainer") as Control
+		_top_left.set_anchors_preset(Control.PRESET_TOP_LEFT)
+		_top_left.grow_horizontal = Control.GROW_DIRECTION_END
+		_top_left.grow_vertical = Control.GROW_DIRECTION_END
+	var top_margin := get_node_or_null("TopLeft/MarginContainer") as MarginContainer
 	if top_margin != null:
 		top_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		top_margin.propagate_maximum_size = false
 	if cycle_panel != null:
 		cycle_panel.add_theme_stylebox_override("panel", _make_info_panel_style())
 		# STOP only on the painted panel so tooltips work and empty pad does not.
 		cycle_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+		cycle_panel.propagate_maximum_size = false
+		cycle_panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		cycle_panel.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+		if not cycle_panel.minimum_size_changed.is_connected(_on_cycle_panel_minimum_size_changed):
+			cycle_panel.minimum_size_changed.connect(_on_cycle_panel_minimum_size_changed)
 	if cycle_button == null:
 		return
 	cycle_button.disabled = true
@@ -381,24 +404,53 @@ func _style_cycle_panel() -> void:
 		help_label.add_theme_color_override("font_color", Color(0.78, 0.74, 0.64))
 		help_label.add_theme_font_size_override("font_size", 13)
 		help_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		help_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		help_label.custom_minimum_size = Vector2(300.0, 0.0)
+
+
+func _on_cycle_panel_minimum_size_changed() -> void:
+	call_deferred("_fit_top_left_to_content")
 
 
 func _fit_top_left_to_content() -> void:
 	if _top_left == null or cycle_panel == null:
 		return
+	# Always pin to the viewport's top-left. Growing content must expand right/down
+	# only — never shift the chrome off-screen.
+	_top_left.anchor_left = 0.0
+	_top_left.anchor_top = 0.0
+	_top_left.anchor_right = 0.0
+	_top_left.anchor_bottom = 0.0
+	_top_left.offset_left = 0.0
+	_top_left.offset_top = 0.0
+	_top_left.position = Vector2.ZERO
+	_top_left.grow_horizontal = Control.GROW_DIRECTION_END
+	_top_left.grow_vertical = Control.GROW_DIRECTION_END
+
 	var top_margin := _top_left.get_node_or_null("MarginContainer") as MarginContainer
 	var margin_l := _fs(16)
 	var margin_t := _fs(12)
-	var margin_r := 0
-	var margin_b := 0
+	var margin_r := _fs(10)
+	var margin_b := _fs(10)
 	if top_margin != null:
+		top_margin.propagate_maximum_size = false
 		margin_l = top_margin.get_theme_constant("margin_left")
 		margin_t = top_margin.get_theme_constant("margin_top")
 		margin_r = top_margin.get_theme_constant("margin_right")
 		margin_b = top_margin.get_theme_constant("margin_bottom")
+		if margin_r <= 0:
+			margin_r = _fs(10)
+		if margin_b <= 0:
+			margin_b = _fs(10)
+
+	cycle_panel.propagate_maximum_size = false
+	cycle_panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	cycle_panel.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+
+	# Prefer intrinsic minimum size; ignore a stale constrained size from a
+	# previous too-small TopLeft frame (that was pushing the panel off-screen).
 	var panel_size := cycle_panel.get_combined_minimum_size()
-	if cycle_panel.size.x > 1.0 and cycle_panel.size.y > 1.0:
-		panel_size = panel_size.max(cycle_panel.size)
+	panel_size.x = maxf(panel_size.x, _px(300.0))
 	_top_left.offset_right = float(margin_l + margin_r) + panel_size.x
 	_top_left.offset_bottom = float(margin_t + margin_b) + panel_size.y
 
@@ -1020,10 +1072,12 @@ func _on_build_mode_changed(active: bool, type_id: String) -> void:
 		return
 	if not active:
 		_update_help_for_cycle()
+		call_deferred("_fit_top_left_to_content")
 		return
 	var def := BuildingDatabase.get_definition(type_id)
 	var name_text: String = def.get("name", type_id)
-	help_label.text = "Colocando: %s — click izquierdo para confirmar, Esc para cancelar" % name_text
+	help_label.text = "Colocando: %s — click izq. confirmar, Esc cancelar" % name_text
+	call_deferred("_fit_top_left_to_content")
 
 
 func _on_cycle_changed(phase: DayNightManager.CyclePhase) -> void:
