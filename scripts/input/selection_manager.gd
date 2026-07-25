@@ -34,6 +34,20 @@ func setup(buildings_container: Node2D, resource_manager: ResourceManager) -> vo
 	_resource_manager = resource_manager
 
 
+func has_selection() -> bool:
+	if not selected_units.is_empty():
+		return true
+	if selected_building != null and is_instance_valid(selected_building):
+		return true
+	if selected_resource != null and is_instance_valid(selected_resource):
+		return true
+	return false
+
+
+func clear_selection() -> void:
+	_clear_selection()
+
+
 func get_cursor_action_at(screen_point: Vector2) -> StringName:
 	if not _is_construction_allowed() and _is_over_hub_build_slot(screen_point):
 		return CURSOR_BUILD_FORBIDDEN

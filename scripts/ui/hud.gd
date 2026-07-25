@@ -15,6 +15,7 @@ var game_hub: PanelContainer
 var minimap: Control
 var _build_manager: Node
 var _spawn_manager: Node
+var _selection_manager: Node
 var _day_night_manager: DayNightManager
 var _game_state_manager: GameStateManager
 var _run_boon_manager: RunBoonManager
@@ -255,6 +256,9 @@ func _try_handle_escape() -> bool:
 	# Prefer existing Esc actions (cancel build/spawn) over the quit menu.
 	if _is_escape_reserved():
 		return false
+	# Clear unit/building/resource selection before offering quit.
+	if _clear_selection_on_escape():
+		return true
 	_open_quit_menu()
 	return true
 
@@ -265,6 +269,18 @@ func _is_escape_reserved() -> bool:
 	if _spawn_manager != null and bool(_spawn_manager.get("spawn_mode_active")):
 		return true
 	return false
+
+
+func _clear_selection_on_escape() -> bool:
+	if _selection_manager == null:
+		return false
+	if not _selection_manager.has_method("has_selection"):
+		return false
+	if not bool(_selection_manager.call("has_selection")):
+		return false
+	if _selection_manager.has_method("clear_selection"):
+		_selection_manager.call("clear_selection")
+	return true
 
 
 func _process(delta: float) -> void:
@@ -307,6 +323,7 @@ func setup(
 ) -> void:
 	_build_manager = build_manager
 	_spawn_manager = spawn_manager
+	_selection_manager = selection_manager
 	_day_night_manager = day_night_manager
 	_run_boon_manager = run_boon_manager
 	_game_state_manager = game_state_manager
