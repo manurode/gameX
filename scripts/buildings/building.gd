@@ -27,6 +27,8 @@ const CONSTRUCTION_LIGHT_FACTOR := 0.42
 ## Unscaled local Y where the sprite base plants on the iso cell (see DepthSort).
 const PLANT_UNSCALED := DepthSort.ISO_HALF_TILE
 const WALL_PLANT_UNSCALED := DepthSort.WALL_PLANT
+## Distance cull for silhouette collection — wide sprites (Ciudadela) exceed the default.
+const DEFAULT_OCCLUSION_CULL_RADIUS := 220.0
 
 @export var building_type_id: String = "house_small"
 @export var team_id: int = Team.PLAYER
@@ -105,6 +107,19 @@ func get_occlusion_sprites() -> Array[Sprite2D]:
 	if sprite != null and sprite.visible and sprite.texture != null:
 		sprites.append(sprite)
 	return sprites
+
+
+## Distance cull for silhouette collection — large buildings exceed the unit default (220).
+func get_occlusion_cull_radius() -> float:
+	var radius := DEFAULT_OCCLUSION_CULL_RADIUS
+	# pick_half_size already tracks scaled sprite extent (Ciudadela ~259).
+	radius = maxf(radius, maxf(pick_half_size.x, pick_half_size.y) + 64.0)
+	if sprite != null and sprite.visible and sprite.texture != null:
+		var size := sprite.texture.get_size() * sprite.scale.abs()
+		var half := maxf(size.x, size.y) * 0.5
+		var offset_reach := sprite.offset.length() * maxf(absf(sprite.scale.x), absf(sprite.scale.y))
+		radius = maxf(radius, half + offset_reach + 64.0)
+	return radius
 
 
 func _process(delta: float) -> void:
