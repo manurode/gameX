@@ -143,7 +143,7 @@ const UNLOCKS := {
 	},
 	"grand_bastion": {
 		"name": "Gran bastión",
-		"description": "Empiezas con 6 torres extra y 16 segmentos de muro.",
+		"description": "Empiezas con 6 torres extra y 20 segmentos de muro.",
 		"cost": 400,
 	},
 }
@@ -549,7 +549,7 @@ func get_starter_wall_segments() -> int:
 	if is_unlocked("starter_walls"):
 		count += 4
 	if is_unlocked("grand_bastion"):
-		count += 16
+		count += 20
 	return count
 
 
