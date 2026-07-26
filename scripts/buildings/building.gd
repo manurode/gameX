@@ -511,10 +511,7 @@ func _setup_collision() -> void:
 func _get_collision_body_size() -> Vector2:
 	if building_type_id == "wall":
 		# Length along the wall axis, thickness across — continuous with neighbors.
-		return Vector2(
-			WallTexture.get_segment_spacing() * WallTexture.BLOCK_LENGTH_FACTOR,
-			WallTexture.BLOCK_THICKNESS
-		)
+		return Vector2(WallTexture.get_block_length(), WallTexture.BLOCK_THICKNESS)
 	return Vector2(
 		_footprint.x * COLLISION_BODY_SHRINK.x,
 		_footprint.y * COLLISION_BODY_SHRINK.y
@@ -1488,6 +1485,22 @@ func _update_construction_visual() -> void:
 		progress_bar.visible = building_state == BuildingState.CONSTRUCTING
 		progress_bar.queue_redraw()
 	_apply_phase_texture()
+
+
+## Ground area the art actually covers, independent of build state. Placement
+## checks use this instead of the sprite AABB so tall art (roofs, towers) never
+## reserves ground a neighbour could legitimately occupy.
+func get_ground_footprint_polygon() -> PackedVector2Array:
+	if building_type_id == "wall":
+		return WallTexture.get_ground_outline(get_anchor_position(), _wall_vertical)
+	var center := get_interaction_center()
+	var half := _footprint * 0.42
+	return PackedVector2Array([
+		center + Vector2(0.0, -half.y),
+		center + Vector2(half.x, 0.0),
+		center + Vector2(0.0, half.y),
+		center + Vector2(-half.x, 0.0),
+	])
 
 
 func get_nav_block_outline() -> PackedVector2Array:

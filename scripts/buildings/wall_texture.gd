@@ -5,19 +5,29 @@ extends RefCounted
 ## wall_se (/) runs bottom-left → top-right along axis (2, -1).
 ## wall_sw (\) runs top-left → bottom-right along axis (2, 1).
 ##
-## Segment centers sit on the lattice. Spacing is tuned so neighboring
-## centers share roughly one pillar (~60px painted overlap). Corners place
-## both orientations on the same lattice point (corner post).
+## Geometry model: walls live on a lattice of *posts* one segment apart along
+## each diagonal, and a segment is the edge between two neighbouring posts,
+## drawn centered on that edge. The art paints a full column at both ends of a
+## segment, exactly SEGMENT_SPACING apart, so two segments sharing a post render
+## their columns pixel-on-pixel. Straight runs, corners, T junctions and crosses
+## therefore all resolve to a single shared column with no dedicated corner art.
+##
+## post(i, j) = i * STEP_SE + j * STEP_SW
 const TEXTURE_SE := "res://assets/tilesets/mediterranean/Buildings/wall_se.png"
 const TEXTURE_SW := "res://assets/tilesets/mediterranean/Buildings/wall_sw.png"
 
-const ISO_STEP := 28.0
-## spacing = 140 → euclidean ≈ 156. Painted span ≈ 216 → ~60px pillar share.
-const SEGMENT_UNITS := 5
+## Screen-X distance between two posts. Matches the painted column spacing of
+## the art (148 px at 0.95 visual scale), so shared posts overlap exactly.
+const SEGMENT_SPACING := 140.0
+const STEP_SE := Vector2(SEGMENT_SPACING, -SEGMENT_SPACING * 0.5)
+const STEP_SW := Vector2(SEGMENT_SPACING, SEGMENT_SPACING * 0.5)
 ## Physical / nav thickness so chained segments form a continuous barrier.
 const BLOCK_THICKNESS := 28.0
 ## Slight length overlap so adjacent segments leave no walkable gap.
-const BLOCK_LENGTH_FACTOR := 1.12
+const BLOCK_LENGTH_FACTOR := 1.06
+## Painted base strip, used for placement overlap. Deliberately slimmer than the
+## nav block: a wall may be built anywhere its art does not cover a building.
+const GROUND_THICKNESS := 18.0
 
 static var _cache: Dictionary = {}
 
@@ -45,70 +55,80 @@ static func clear_cache() -> void:
 	_cache.clear()
 
 
-static func get_segment_spacing() -> float:
-	return ISO_STEP * float(SEGMENT_UNITS)
-
-
 static func get_segment_step(vertical: bool) -> Vector2:
-	var spacing := get_segment_spacing()
-	if vertical:
-		# SW texture (\): step along (2, 1) — down-right on screen.
-		return Vector2(spacing, spacing * 0.5)
-	# SE texture (/): step along (2, -1) — up-right on screen.
-	return Vector2(spacing, -spacing * 0.5)
+	return STEP_SW if vertical else STEP_SE
+
+
+static func get_segment_length() -> float:
+	return STEP_SE.length()
 
 
 static func get_axis_direction(vertical: bool) -> Vector2:
 	return get_segment_step(vertical).normalized()
 
 
-## vertical=true → SW backslash (\) = default "horizontal" wall on screen.
-## vertical=false → SE slash (/) = "vertical" wall, chosen when dragging upward.
-static func is_horizontal(vertical: bool) -> bool:
-	return vertical
+# --- Post lattice -------------------------------------------------------------
 
 
-static func default_orientation() -> bool:
-	## Idle / default drag: horizontal SW (\).
-	return true
+static func post_position(coords: Vector2i) -> Vector2:
+	return STEP_SE * float(coords.x) + STEP_SW * float(coords.y)
 
 
-## Drag rules: stay on horizontal (SW) unless the mouse clearly moves upward / along SE.
-static func orientation_from_delta(delta: Vector2) -> bool:
-	if delta.length_squared() < 1.0:
-		return default_orientation()
-	var slash_dir := Vector2(2.0, -1.0).normalized()
-	var backslash_dir := Vector2(2.0, 1.0).normalized()
-	var slash_score := absf(delta.dot(slash_dir))
-	var backslash_score := absf(delta.dot(backslash_dir))
-	# Upward mouse travel unlocks the SE ("vertical") wall.
-	var dragging_up := delta.y < -ISO_STEP * 0.5
-	if dragging_up and slash_score >= backslash_score * 0.85:
-		return false
-	if slash_score > backslash_score * 1.25:
-		return false
-	return true
+## Nearest post to a world point. The basis is not orthogonal, so rounding the
+## fractional coordinates can miss; scan the ring around them and keep the best.
+static func post_coords(world_pos: Vector2) -> Vector2i:
+	var sum := world_pos.x / SEGMENT_SPACING  # i + j
+	var diff := world_pos.y / (SEGMENT_SPACING * 0.5)  # j - i
+	var base := Vector2i(roundi((sum - diff) * 0.5), roundi((sum + diff) * 0.5))
+	var best := base
+	var best_dist := INF
+	for di in [-1, 0, 1]:
+		for dj in [-1, 0, 1]:
+			var candidate := base + Vector2i(di, dj)
+			var dist := world_pos.distance_squared_to(post_position(candidate))
+			if dist < best_dist:
+				best_dist = dist
+				best = candidate
+	return best
 
 
-static func snap_position(world_pos: Vector2) -> Vector2:
-	var s := ISO_STEP
-	var a := roundf(world_pos.x / (2.0 * s) + world_pos.y / s)
-	var b := roundf(world_pos.y / s - world_pos.x / (2.0 * s))
-	return Vector2(s * (a - b), (s * 0.5) * (a + b))
+# --- Segments (edges between posts) -------------------------------------------
 
 
-## Project `to` onto the wall axis that passes through `from`.
-static func project_to_axis(from: Vector2, to: Vector2, vertical: bool) -> Vector2:
-	var step := get_segment_step(vertical)
-	var axis := step.normalized()
-	var along := (to - from).dot(axis)
-	var count := int(round(along / step.length()))
-	return snap_position(from + step * float(count))
+## Center of the segment leaving `post` along the given axis (its low-post edge).
+static func segment_center(post: Vector2i, vertical: bool) -> Vector2:
+	return post_position(post) + get_segment_step(vertical) * 0.5
 
 
-static func segment_key(world_pos: Vector2, vertical: bool) -> String:
-	var snap := snap_position(world_pos)
-	return "%d:%d:%d" % [roundi(snap.x), roundi(snap.y), 1 if vertical else 0]
+## The post a segment starts from, derived from its painted center.
+static func segment_post(center: Vector2, vertical: bool) -> Vector2i:
+	return post_coords(center - get_segment_step(vertical) * 0.5)
+
+
+static func snap_segment_center(world_pos: Vector2, vertical: bool) -> Vector2:
+	return segment_center(segment_post(world_pos, vertical), vertical)
+
+
+## Segment of either orientation whose center is closest to `world_pos`.
+static func nearest_segment(world_pos: Vector2) -> Dictionary:
+	var best := {"pos": snap_segment_center(world_pos, false), "vertical": false}
+	var best_dist := world_pos.distance_squared_to(best["pos"])
+	var sw_center := snap_segment_center(world_pos, true)
+	if world_pos.distance_squared_to(sw_center) < best_dist:
+		return {"pos": sw_center, "vertical": true}
+	return best
+
+
+static func segment_key(center: Vector2, vertical: bool) -> String:
+	var post := segment_post(center, vertical)
+	return "%d:%d:%d" % [post.x, post.y, 1 if vertical else 0]
+
+
+## Both end posts of a segment, in lattice coordinates.
+static func segment_end_posts(center: Vector2, vertical: bool) -> Array[Vector2i]:
+	var low := segment_post(center, vertical)
+	var high := low + (Vector2i(0, 1) if vertical else Vector2i(1, 0))
+	return [low, high]
 
 
 static func footprint(_vertical: bool) -> Vector2:
@@ -120,8 +140,12 @@ static func pick_half_size(_vertical: bool) -> Vector2:
 	return Vector2(88.0, 70.0)
 
 
+static func get_block_length() -> float:
+	return get_segment_length() * BLOCK_LENGTH_FACTOR
+
+
 static func get_block_half_length() -> float:
-	return get_segment_spacing() * BLOCK_LENGTH_FACTOR * 0.5
+	return get_block_length() * 0.5
 
 
 static func get_block_half_thickness() -> float:
@@ -130,10 +154,22 @@ static func get_block_half_thickness() -> float:
 
 ## Oriented quad covering one wall segment (continuous barrier when chained).
 static func get_block_outline(center: Vector2, vertical: bool) -> PackedVector2Array:
+	return _oriented_quad(center, vertical, get_block_half_length(), get_block_half_thickness())
+
+
+## Tighter quad matching the painted base, used for build placement checks.
+static func get_ground_outline(center: Vector2, vertical: bool) -> PackedVector2Array:
+	return _oriented_quad(center, vertical, get_segment_length() * 0.5, GROUND_THICKNESS * 0.5)
+
+
+static func _oriented_quad(
+	center: Vector2,
+	vertical: bool,
+	half_len: float,
+	half_thick: float
+) -> PackedVector2Array:
 	var axis := get_axis_direction(vertical)
 	var perp := Vector2(-axis.y, axis.x)
-	var half_len := get_block_half_length()
-	var half_thick := get_block_half_thickness()
 	return PackedVector2Array([
 		center - axis * half_len - perp * half_thick,
 		center + axis * half_len - perp * half_thick,

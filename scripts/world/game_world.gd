@@ -163,10 +163,19 @@ func _spawn_building(
 	state: Building.BuildingState,
 	progress: float
 ) -> Building:
+	return _spawn_building_at(type_id, ground.map_to_local(cell), state, progress)
+
+
+func _spawn_building_at(
+	type_id: String,
+	world_pos: Vector2,
+	state: Building.BuildingState,
+	progress: float
+) -> Building:
 	var building: Building = BUILDING_SCENE.instantiate()
 	building.configure(type_id, state, progress)
 	buildings.add_child(building)
-	building.place_at(ground.map_to_local(cell))
+	building.place_at(world_pos)
 	if state == Building.BuildingState.ACTIVE:
 		if BuildingDatabase.is_gather_building(type_id):
 			job_manager.on_building_completed(building)
@@ -289,37 +298,53 @@ func _spawn_overlaps_obstacle(world_pos: Vector2, test_rect: Rect2, obstacle: Te
 
 
 func spawn_starter_walls(count: int) -> void:
-	if ground_layer == null or _town_center == null:
+	if ground_layer == null or _town_center == null or count <= 0:
 		return
-	var center := ground_layer.get_town_center_cell()
-	var offsets: Array[Vector2i] = [
-		Vector2i(2, -1),
-		Vector2i(2, 0),
-		Vector2i(2, 1),
-		Vector2i(-2, -1),
-		Vector2i(-2, 0),
-		Vector2i(-2, 1),
-		Vector2i(-1, 2),
-		Vector2i(0, 2),
-		Vector2i(1, 2),
-		Vector2i(-1, -2),
-		Vector2i(0, -2),
-		Vector2i(1, -2),
-	]
-	var placed := 0
-	for offset in offsets:
-		if placed >= count:
-			break
-		var building := _spawn_building(
+	var center := ground_layer.map_to_local(ground_layer.get_town_center_cell())
+	for segment in _starter_wall_ring(WallTexture.post_coords(center), count):
+		var building := _spawn_building_at(
 			"wall",
-			center + offset,
-			ground_layer,
+			segment["pos"],
 			Building.BuildingState.ACTIVE,
 			1.0
 		)
-		building.set_wall_vertical(offset.x != 0 and abs(offset.x) >= abs(offset.y))
-		placed += 1
+		building.set_wall_vertical(segment["vertical"])
 	rebuild_navigation()
+
+
+## Ring of lattice edges around the town center, ordered so a partial grant is
+## spread evenly over the four sides instead of piling up on one of them.
+func _starter_wall_ring(center_post: Vector2i, count: int) -> Array[Dictionary]:
+	# Radius keeps the ring clear of the Ciudadela art; grow it if it can't hold
+	# every granted segment (each side carries 2 * radius edges).
+	var radius := maxi(3, ceili(float(count) / 8.0))
+	var sides: Array[Array] = []
+	for side in 4:
+		var vertical := side < 2
+		var fixed := radius if side % 2 == 0 else -radius
+		var edges: Array[Dictionary] = []
+		for k in range(-radius, radius):
+			var post := Vector2i(fixed, k) if vertical else Vector2i(k, fixed)
+			edges.append({
+				"pos": WallTexture.segment_center(post, vertical),
+				"vertical": vertical,
+			})
+		# Middle-out so short rings read as centered wall stubs, not stray ends.
+		edges.sort_custom(
+			func(a: Dictionary, b: Dictionary) -> bool:
+				return absf(a["pos"].y) + absf(a["pos"].x) < absf(b["pos"].y) + absf(b["pos"].x)
+		)
+		sides.append(edges)
+
+	var origin := WallTexture.post_position(center_post)
+	var ring: Array[Dictionary] = []
+	for k in radius * 2:
+		for side in sides:
+			if ring.size() >= count:
+				return ring
+			var edge: Dictionary = side[k]
+			ring.append({"pos": origin + edge["pos"], "vertical": edge["vertical"]})
+	return ring
 
 
 func spawn_bonus_villagers(count: int) -> void:
