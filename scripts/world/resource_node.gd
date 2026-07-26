@@ -25,6 +25,8 @@ const DEFAULT_OCCLUSION_CULL_RADIUS := 220.0
 var pick_radius: float = PICK_RADIUS
 var _sprites: Array[Sprite2D] = []
 var _work_anchors: Array[Vector2] = []
+## Mill farm click/gather ellipse (tower stays outside so repair can target it).
+var _farm_half_size := Vector2.ZERO
 var _terrain_obstacle: TerrainObstacle = null
 var _amount_bar: Node2D = null
 var _selection_indicator: Line2D = null
@@ -153,14 +155,15 @@ func setup_mill_farm_zone(center_pos: Vector2, half_size: Vector2) -> void:
 	_initial_amount = 0
 	is_infinite = true
 	global_position = center_pos
+	_farm_half_size = half_size
 	pick_radius = maxf(half_size.x, half_size.y) * 1.15
 	# Stand on the front wheat strip (south of the tower) so pathing stays clear.
 	_work_anchors = [
-		Vector2(-half_size.x * 0.7, half_size.y * 0.2),
-		Vector2(-half_size.x * 0.3, half_size.y * 0.35),
-		Vector2(0.0, half_size.y * 0.4),
-		Vector2(half_size.x * 0.3, half_size.y * 0.35),
-		Vector2(half_size.x * 0.7, half_size.y * 0.2),
+		Vector2(-half_size.x * 0.65, half_size.y * 0.55),
+		Vector2(-half_size.x * 0.25, half_size.y * 0.75),
+		Vector2(0.0, half_size.y * 0.85),
+		Vector2(half_size.x * 0.25, half_size.y * 0.75),
+		Vector2(half_size.x * 0.65, half_size.y * 0.55),
 	]
 	_ensure_amount_bar()
 	_setup_selection_indicator()
@@ -200,8 +203,9 @@ func _setup_selection_indicator() -> void:
 	var radius_x := 40.0
 	var radius_y := 18.0
 	if not _work_anchors.is_empty():
-		radius_x = clampf(pick_radius, 28.0, 90.0)
-		radius_y = radius_x * 0.55
+		# Match the wheat-plot ellipse used by contains_point (not the tower).
+		radius_x = maxf(_farm_half_size.x, 28.0)
+		radius_y = maxf(_farm_half_size.y, 16.0)
 	else:
 		var sprites := get_occlusion_sprites()
 		if not sprites.is_empty():
@@ -387,12 +391,7 @@ func get_amount_bar_offset() -> Vector2:
 
 func contains_point(world_point: Vector2) -> bool:
 	if not _work_anchors.is_empty():
-		var local := to_local(world_point)
-		var rx := maxf(pick_radius, 1.0)
-		var ry := rx * 0.55
-		var nx := local.x / rx
-		var ny := local.y / ry
-		return nx * nx + ny * ny <= 1.0
+		return _contains_mill_farm_point(world_point)
 
 	var sprites := get_occlusion_sprites()
 	if sprites.is_empty():
@@ -406,6 +405,16 @@ func contains_point(world_point: Vector2) -> bool:
 	if not in_bounds:
 		return false
 	return OcclusionUtils.any_sprite_opaque_at(sprites, world_point)
+
+
+## Full painted wheat plot ellipse (tower/door stay repairable via sprite pixel checks).
+func _contains_mill_farm_point(world_point: Vector2) -> bool:
+	var local := to_local(world_point)
+	var rx := maxf(_farm_half_size.x, 1.0)
+	var ry := maxf(_farm_half_size.y, 1.0)
+	var nx := local.x / rx
+	var ny := local.y / ry
+	return nx * nx + ny * ny <= 1.0
 
 
 func harvest(amount: int) -> int:

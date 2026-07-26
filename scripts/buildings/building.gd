@@ -1072,7 +1072,18 @@ func contains_world_point(world_point: Vector2) -> bool:
 
 func contains_command_point(world_point: Vector2) -> bool:
 	# Same area as selection so right-click commands (attack/repair) hit the sprite.
-	return contains_world_point(world_point)
+	if not contains_world_point(world_point):
+		return false
+	# Mill: wheat/soil pixels are gather-only; tower/door/roof stay repair/attack.
+	if building_type_id == "mill" and _is_mill_wheat_pixel(world_point):
+		return false
+	return true
+
+
+func _is_mill_wheat_pixel(world_point: Vector2) -> bool:
+	if sprite == null:
+		return false
+	return OcclusionUtils.is_mill_farm_pixel_color(OcclusionUtils.sprite_color_at(sprite, world_point))
 
 
 func should_show_health_bar() -> bool:

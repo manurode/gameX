@@ -95,11 +95,15 @@ static func animated_display_pixel_to_world(sprite: AnimatedSprite2D, dx: int, d
 
 
 static func sprite_alpha_at(sprite: Sprite2D, world_pos: Vector2) -> float:
+	return sprite_color_at(sprite, world_pos).a
+
+
+static func sprite_color_at(sprite: Sprite2D, world_pos: Vector2) -> Color:
 	if sprite == null or not sprite.visible or sprite.texture == null:
-		return 0.0
+		return Color(0.0, 0.0, 0.0, 0.0)
 	var image := get_texture_image(sprite.texture)
 	if image == null:
-		return 0.0
+		return Color(0.0, 0.0, 0.0, 0.0)
 	var size := Vector2(image.get_width(), image.get_height())
 	var local := sprite.to_local(world_pos) - sprite.offset
 	if sprite.centered:
@@ -111,12 +115,37 @@ static func sprite_alpha_at(sprite: Sprite2D, world_pos: Vector2) -> float:
 	var x := int(floor(local.x))
 	var y := int(floor(local.y))
 	if x < 0 or y < 0 or x >= image.get_width() or y >= image.get_height():
-		return 0.0
-	return image.get_pixel(x, y).a
+		return Color(0.0, 0.0, 0.0, 0.0)
+	return image.get_pixel(x, y)
 
 
 static func sprite_opaque_at(sprite: Sprite2D, world_pos: Vector2, threshold: float = ALPHA_THRESHOLD) -> bool:
 	return sprite_alpha_at(sprite, world_pos) >= threshold
+
+
+## Painted wheat / soil on mill.png (and damaged variant) — not tower stone, roof, or sails.
+static func is_mill_farm_pixel_color(color: Color) -> bool:
+	if color.a < ALPHA_THRESHOLD:
+		return false
+	var r := color.r
+	var g := color.g
+	var b := color.b
+	var is_wheat := (
+		r > 0.55
+		and g > 0.42
+		and b < 0.55
+		and (r + g) > 2.0 * b
+		and absf(r - g) < 0.28
+	)
+	var is_soil := (
+		r > 0.20
+		and r < 0.60
+		and g > 0.10
+		and g < 0.42
+		and b < 0.30
+		and r > g + 0.02
+	)
+	return is_wheat or is_soil
 
 
 static func any_sprite_opaque_at(sprites: Array, world_pos: Vector2, threshold: float = ALPHA_THRESHOLD) -> bool:

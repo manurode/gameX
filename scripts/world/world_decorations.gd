@@ -42,8 +42,8 @@ const MOUNTAIN_FALLBACK_HALF := Vector2(260.0, 120.0)
 const GOLD_FALLBACK_HALF := Vector2(70.0, 42.0)
 const LAKE_FALLBACK_HALF := Vector2(280.0, 130.0)
 ## Farm plot is painted into mill.png; gather zone covers that wheat field.
-const MILL_FARM_OFFSET := Vector2(0.0, 14.0)
-const MILL_FARM_HALF_SIZE := Vector2(72.0, 40.0)
+const MILL_FARM_OFFSET := Vector2(0.0, -12.0)
+const MILL_FARM_HALF_SIZE := Vector2(74.0, 40.0)
 var _ground_layer: TileMapLayer
 var _entity_parent: Node2D
 var _obstacles: Array[TerrainObstacle] = []
