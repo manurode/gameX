@@ -776,6 +776,18 @@ func approach_garrison(building: Building) -> void:
 	navigation_agent.target_position = building.get_entry_approach_point(global_position)
 
 
+func cancel_garrison_approach() -> void:
+	if garrison_approach_target == null and _unit_state != UnitState.GARRISON_APPROACH:
+		return
+	garrison_approach_target = null
+	if _unit_state != UnitState.GARRISON_APPROACH:
+		return
+	_unit_state = UnitState.IDLE
+	velocity = Vector2.ZERO
+	navigation_agent.target_position = global_position
+	_play_idle()
+
+
 func assign_construction(site: Building) -> void:
 	cancel_recruitment()
 	release_repair()
@@ -1640,6 +1652,12 @@ func _process_garrison_approach(_delta: float) -> void:
 		_unit_state = UnitState.IDLE
 		return
 
+	# Shelter walks are curfew-driven; abort if curfew turned off mid-approach.
+	var curfew := get_tree().get_first_node_in_group("curfew_manager") as CurfewManager
+	if curfew == null or not curfew.is_active:
+		cancel_garrison_approach()
+		return
+
 	if _is_close_enough_to_enter_garrison(building):
 		if building.enter_garrison(self):
 			return
@@ -1655,8 +1673,7 @@ func _process_garrison_approach(_delta: float) -> void:
 		return
 	if stuck:
 		# Unreachable shelter — give up so the villager can accept other orders.
-		garrison_approach_target = null
-		_unit_state = UnitState.IDLE
+		cancel_garrison_approach()
 
 
 func _is_close_enough_to_enter_garrison(building: Building) -> bool:

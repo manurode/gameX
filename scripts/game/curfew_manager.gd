@@ -95,7 +95,11 @@ func _release_curfew() -> void:
 		if not node is Unit:
 			continue
 		var unit := node as Unit
-		if not _is_villager(unit) or unit.garrisoned_building == null:
+		if not _is_villager(unit):
+			continue
+		# Cancel mid-walk shelter approaches so they don't enter after OFF.
+		unit.cancel_garrison_approach()
+		if unit.garrisoned_building == null:
 			continue
 		var building := unit.garrisoned_building
 		if not buildings.has(building):
