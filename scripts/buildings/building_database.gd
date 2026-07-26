@@ -148,8 +148,9 @@ const DEFINITIONS: Dictionary = {
 		"gather_type": "food",
 		"spawns_gather_source": true,
 		"gather_radius_cells": 0,
-		"farm_offset": Vector2(0.0, 21.0),
-		"farm_half_size": Vector2(42.0, 25.0),
+		# Covers the painted wheat plot in mill.png (stone-bordered field around the base).
+		"farm_offset": Vector2(0.0, 14.0),
+		"farm_half_size": Vector2(72.0, 40.0),
 		"gather_rate": BalanceConfig.FOOD_PER_SECOND,
 		"max_workers": BalanceConfig.MILL_MAX_WORKERS,
 	},

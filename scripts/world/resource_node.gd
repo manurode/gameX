@@ -154,10 +154,13 @@ func setup_mill_farm_zone(center_pos: Vector2, half_size: Vector2) -> void:
 	is_infinite = true
 	global_position = center_pos
 	pick_radius = maxf(half_size.x, half_size.y) * 1.15
+	# Stand on the front wheat strip (south of the tower) so pathing stays clear.
 	_work_anchors = [
-		Vector2(-half_size.x * 0.55, half_size.y * 0.1),
-		Vector2(0.0, half_size.y * 0.25),
-		Vector2(half_size.x * 0.55, half_size.y * 0.1),
+		Vector2(-half_size.x * 0.7, half_size.y * 0.2),
+		Vector2(-half_size.x * 0.3, half_size.y * 0.35),
+		Vector2(0.0, half_size.y * 0.4),
+		Vector2(half_size.x * 0.3, half_size.y * 0.35),
+		Vector2(half_size.x * 0.7, half_size.y * 0.2),
 	]
 	_ensure_amount_bar()
 	_setup_selection_indicator()
