@@ -248,17 +248,39 @@ func _set_player_visible(visible: bool) -> void:
 
 
 func _evaluate_combat_target() -> void:
+	_clear_open_gate_breach_target()
+
 	var aggro_range := _get_aggro_range()
 	var nearby_player := _find_nearest_player_unit(aggro_range)
 	if nearby_player != null:
+		var barrier := _find_breach_barrier_toward(nearby_player.global_position)
+		if barrier != null:
+			if attack_target_building != barrier:
+				attack_target_building_node(barrier)
+			return
 		if attack_target != nearby_player:
 			attack_target_unit(nearby_player)
 		return
 
+	# Keep chopping a closed muralla / puerta until it falls or opens.
+	if _is_breaching_barrier():
+		return
+
 	if _has_valid_combat_target():
+		var goal := _get_breach_goal_position()
+		if goal != Vector2.INF:
+			var barrier := _find_breach_barrier_toward(goal)
+			if barrier != null:
+				attack_target_building_node(barrier)
+				return
 		return
 
 	_acquire_target()
+	var acquired_goal := _get_breach_goal_position()
+	if acquired_goal != Vector2.INF:
+		var barrier := _find_breach_barrier_toward(acquired_goal)
+		if barrier != null:
+			attack_target_building_node(barrier)
 
 
 func _get_aggro_range() -> float:
@@ -283,6 +305,85 @@ func _has_valid_combat_target() -> bool:
 		attack_target_building = null
 
 	return false
+
+
+func _clear_open_gate_breach_target() -> void:
+	if (
+		attack_target_building != null
+		and is_instance_valid(attack_target_building)
+		and attack_target_building.building_type_id == "gate"
+		and attack_target_building.is_gate_open()
+	):
+		_set_attack_target_building(null)
+
+
+func _is_breachable_barrier(building: Building) -> bool:
+	if building == null or not is_instance_valid(building):
+		return false
+	if not building.can_be_damaged() or not building.is_wall_segment():
+		return false
+	if building.building_type_id == "gate" and building.is_gate_open():
+		return false
+	return true
+
+
+func _is_breaching_barrier() -> bool:
+	return _is_breachable_barrier(attack_target_building)
+
+
+func _get_breach_goal_position() -> Vector2:
+	if attack_target != null and is_instance_valid(attack_target):
+		return attack_target.global_position
+	if attack_target_building != null and is_instance_valid(attack_target_building):
+		if attack_target_building.is_wall_segment():
+			return Vector2.INF
+		return attack_target_building.get_closest_surface_point(global_position)
+	return Vector2.INF
+
+
+## Prefer the closed gate / muralla blocking the path instead of idling against it.
+func _find_breach_barrier_toward(goal: Vector2) -> Building:
+	if _can_attack_through_walls():
+		return null
+
+	var ignore: Building = null
+	if (
+		attack_target_building != null
+		and is_instance_valid(attack_target_building)
+		and not attack_target_building.is_wall_segment()
+	):
+		ignore = attack_target_building
+
+	var blocker := _get_blocking_wall_building(global_position, goal, ignore)
+	if _is_breachable_barrier(blocker):
+		return blocker
+
+	var reach := melee_range * 1.75
+	if combat_style == CombatStyle.RANGED:
+		reach = maxf(reach, 72.0)
+	var nearby := _find_nearest_breachable_wall(reach)
+	if nearby == null:
+		return null
+	var wall_pt := nearby.get_closest_surface_point(global_position)
+	# Only smash fortifications that lie toward the goal (not walls behind us).
+	if (goal - global_position).dot(wall_pt - global_position) <= 0.0:
+		return null
+	return nearby
+
+
+func _find_nearest_breachable_wall(max_range: float) -> Building:
+	var best: Building = null
+	var best_dist_sq := max_range * max_range
+	var origin := global_position
+	for building in PlayerBuildingIndex.get_targets(get_tree()):
+		if not _is_breachable_barrier(building):
+			continue
+		var surface := building.get_closest_surface_point(origin)
+		var dist_sq := origin.distance_squared_to(surface)
+		if dist_sq < best_dist_sq:
+			best_dist_sq = dist_sq
+			best = building
+	return best
 
 
 func _acquire_target() -> void:

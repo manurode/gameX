@@ -2273,13 +2273,22 @@ func _is_attack_blocked_by_wall(
 	to: Vector2,
 	ignore_building: Building = null
 ) -> bool:
+	return _get_blocking_wall_building(from, to, ignore_building) != null
+
+
+## Muralla / puerta cerrada hit by a ground ray, or null.
+func _get_blocking_wall_building(
+	from: Vector2,
+	to: Vector2,
+	ignore_building: Building = null
+) -> Building:
 	if _can_attack_through_walls():
-		return false
+		return null
 	if from.distance_squared_to(to) < 1.0:
-		return false
+		return null
 	var world := get_world_2d()
 	if world == null:
-		return false
+		return null
 	var query := PhysicsRayQueryParameters2D.create(from, to)
 	query.collision_mask = 1
 	query.collide_with_areas = false
@@ -2288,9 +2297,11 @@ func _is_attack_blocked_by_wall(
 		query.exclude = [ignore_building.get_rid()]
 	var hit := world.direct_space_state.intersect_ray(query)
 	if hit.is_empty():
-		return false
+		return null
 	var collider: Object = hit.get("collider")
-	return collider is Building and (collider as Building).blocks_melee_los()
+	if collider is Building and (collider as Building).blocks_melee_los():
+		return collider as Building
+	return null
 
 
 func _get_desired_attack_distance() -> float:
