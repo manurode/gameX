@@ -150,7 +150,7 @@ const UNLOCKS := {
 
 ## Active slot index, or -1 when none is selected.
 var active_slot: int = -1
-## Slot metadata mirrors: { occupied, name, fragments, unlocked, best_nights, wins }
+## Slot metadata mirrors: { occupied, name, fragments, unlocked, best_nights, wins, difficulty }
 var _slots: Array[Dictionary] = []
 
 var fragments: int = 0
@@ -181,6 +181,7 @@ func _make_empty_slot_data() -> Dictionary:
 		"unlocked": {},
 		"best_nights": 0,
 		"wins": 0,
+		"difficulty": int(GameSettingsData.Difficulty.BEGINNER),
 	}
 
 
@@ -188,6 +189,10 @@ func load_all_slots() -> void:
 	_init_empty_slots()
 	var cfg := ConfigFile.new()
 	if cfg.load(SAVE_PATH) == OK:
+		# Legacy global preference (pre per-slot); used only as fallback for old slots.
+		var legacy_fallback := int(GameSettingsData.Difficulty.BEGINNER)
+		if cfg.has_section_key("settings", "difficulty"):
+			legacy_fallback = _clamp_difficulty(int(cfg.get_value("settings", "difficulty", legacy_fallback)))
 		for i in SLOT_COUNT:
 			var section := "slot_%d" % i
 			if not cfg.has_section(section):
@@ -201,11 +206,28 @@ func load_all_slots() -> void:
 				"unlocked": _unlocked_from_ids(cfg.get_value(section, "unlocked", [])),
 				"best_nights": int(cfg.get_value(section, "best_nights", 0)),
 				"wins": int(cfg.get_value(section, "wins", 0)),
+				"difficulty": _clamp_difficulty(int(cfg.get_value(section, "difficulty", legacy_fallback))),
 			}
 	else:
 		_migrate_legacy_save()
 	_clear_active_runtime()
 	slots_changed.emit()
+
+
+func _clamp_difficulty(raw: int) -> int:
+	if raw < int(GameSettingsData.Difficulty.BEGINNER) or raw > int(GameSettingsData.Difficulty.EXPERT):
+		return int(GameSettingsData.Difficulty.BEGINNER)
+	return raw
+
+
+## Persist the active slot's difficulty when starting a run.
+func save_slot_difficulty(diff: GameSettingsData.Difficulty) -> void:
+	if not has_active_slot():
+		return
+	var clamped := _clamp_difficulty(int(diff))
+	_slots[active_slot]["difficulty"] = clamped
+	GameSettings.difficulty = clamped as GameSettingsData.Difficulty
+	_persist_all_slots()
 
 
 func _migrate_legacy_save() -> void:
@@ -220,6 +242,7 @@ func _migrate_legacy_save() -> void:
 		"unlocked": _unlocked_from_ids(unlocked_ids),
 		"best_nights": int(cfg.get_value("meta", "best_nights", 0)),
 		"wins": int(cfg.get_value("meta", "wins", 0)),
+		"difficulty": int(GameSettingsData.Difficulty.BEGINNER),
 	}
 	_persist_all_slots()
 
@@ -241,6 +264,11 @@ func _persist_all_slots() -> void:
 		cfg.set_value(section, "fragments", int(data.get("fragments", 0)))
 		cfg.set_value(section, "best_nights", int(data.get("best_nights", 0)))
 		cfg.set_value(section, "wins", int(data.get("wins", 0)))
+		cfg.set_value(
+			section,
+			"difficulty",
+			_clamp_difficulty(int(data.get("difficulty", GameSettingsData.Difficulty.BEGINNER)))
+		)
 		var unlocked_dict: Dictionary = data.get("unlocked", {})
 		cfg.set_value(section, "unlocked", unlocked_dict.keys())
 	cfg.save(SAVE_PATH)
@@ -253,6 +281,7 @@ func _clear_active_runtime() -> void:
 	unlocked.clear()
 	best_nights = 0
 	wins = 0
+	GameSettings.difficulty = GameSettingsData.Difficulty.BEGINNER
 
 
 func get_slot_count() -> int:
@@ -275,6 +304,7 @@ func get_slot_summary(slot_index: int) -> Dictionary:
 		"fragments": int(data.get("fragments", 0)),
 		"best_nights": int(data.get("best_nights", 0)),
 		"wins": int(data.get("wins", 0)),
+		"difficulty": _clamp_difficulty(int(data.get("difficulty", GameSettingsData.Difficulty.BEGINNER))),
 	}
 
 
@@ -315,6 +345,7 @@ func create_slot(slot_index: int, name: String) -> bool:
 		"unlocked": {},
 		"best_nights": 0,
 		"wins": 0,
+		"difficulty": int(GameSettingsData.Difficulty.BEGINNER),
 	}
 	_persist_all_slots()
 	_apply_slot_to_runtime(slot_index)
@@ -345,6 +376,8 @@ func _apply_slot_to_runtime(slot_index: int) -> void:
 	best_nights = int(data.get("best_nights", 0))
 	wins = int(data.get("wins", 0))
 	unlocked = (data.get("unlocked", {}) as Dictionary).duplicate()
+	var diff := _clamp_difficulty(int(data.get("difficulty", GameSettingsData.Difficulty.BEGINNER)))
+	GameSettings.difficulty = diff as GameSettingsData.Difficulty
 
 
 func has_active_slot() -> bool:
@@ -363,6 +396,9 @@ func load_save() -> void:
 func save() -> void:
 	if not has_active_slot():
 		return
+	var slot_diff := _clamp_difficulty(int(
+		_slots[active_slot].get("difficulty", GameSettingsData.Difficulty.BEGINNER)
+	))
 	_slots[active_slot] = {
 		"occupied": true,
 		"name": save_name,
@@ -370,6 +406,7 @@ func save() -> void:
 		"unlocked": unlocked.duplicate(),
 		"best_nights": best_nights,
 		"wins": wins,
+		"difficulty": slot_diff,
 	}
 	_persist_all_slots()
 

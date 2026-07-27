@@ -12,8 +12,9 @@ const MAP_SIZE_SMALL := Vector2i(16, 16)
 const EDITOR_PLAY_SIZE := Vector2i(1280, 720)
 
 var map_size_preset: MapSizePreset = MapSizePreset.MEDIUM
+## Default is BEGINNER until the player starts a run on another setting (persisted).
 ## Combat baseline matches ADVANCED; BEGINNER eases waves, EXPERT doubles them.
-var difficulty: Difficulty = Difficulty.ADVANCED
+var difficulty: Difficulty = Difficulty.BEGINNER
 
 
 func _ready() -> void:

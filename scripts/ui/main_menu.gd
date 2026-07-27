@@ -626,7 +626,7 @@ func _build_setup_screen() -> void:
 	opts.add_theme_constant_override("separation", 10)
 	vbox.add_child(opts)
 
-	_difficulty_button = _make_secondary_button("Dificultad: Avanzado", Vector2(0, 44))
+	_difficulty_button = _make_secondary_button("Dificultad: Principiante", Vector2(0, 44))
 	_difficulty_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_difficulty_button.pressed.connect(_on_difficulty_pressed)
 	opts.add_child(_difficulty_button)
@@ -705,12 +705,12 @@ func _build_difficulty_modal() -> void:
 		{
 			"id": GameSettings.Difficulty.BEGINNER,
 			"title": "Principiante",
-			"blurb": "Para recién llegados al valle. Menos sombras en cada oleada, y los enemigos no ganan fuerza noche tras noche. Aprende el ritmo sin que te aplasten.",
+			"blurb": "Para recién llegados al valle. Menos monstruos en cada oleada, y los enemigos no ganan fuerza noche tras noche. Aprende el ritmo sin que te aplasten.",
 		},
 		{
 			"id": GameSettings.Difficulty.ADVANCED,
 			"title": "Avanzado",
-			"blurb": "Para quien ya domina el pulso de la muralla. Oleadas y dureza como las conoces… pero la noche paga el triple en fragmentos. Domina, y el botín será tuyo.",
+			"blurb": "Para quien ya domina el pulso de la batalla. Oleadas y dureza como las conoces… pero la noche paga el triple en fragmentos. Domina, y el botín será tuyo.",
 		},
 		{
 			"id": GameSettings.Difficulty.EXPERT,
@@ -972,6 +972,7 @@ func _on_start_pressed() -> void:
 	if not MetaProgression.has_active_slot():
 		_show_screen(Screen.SAVE_SLOTS)
 		return
+	MetaProgression.save_slot_difficulty(GameSettings.difficulty)
 	GameSettings.map_size_preset = GameSettings.MapSizePreset.MEDIUM
 	get_tree().change_scene_to_file(GAME_SCENE)
 
