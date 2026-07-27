@@ -691,7 +691,7 @@ func _build_difficulty_modal() -> void:
 	vbox.add_child(title)
 
 	var hint := Label.new()
-	hint.text = "Cada dificultad cambia la marea… y lo que la noche te paga."
+	hint.text = "Cada dificultad cambia las oleadas… y lo que la noche te paga."
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.add_theme_font_size_override("font_size", 12)
