@@ -590,7 +590,6 @@ func order_garrison_attack_unit(target: Unit) -> void:
 		return
 	garrison_attack_target = target
 	garrison_attack_target_building = null
-	_garrison_attack_cooldown = 0.0
 	_sync_garrison_unit_targets()
 
 
@@ -599,7 +598,6 @@ func order_garrison_attack_building(target: Building) -> void:
 		return
 	garrison_attack_target = null
 	garrison_attack_target_building = target
-	_garrison_attack_cooldown = 0.0
 	_sync_garrison_unit_targets()
 
 
