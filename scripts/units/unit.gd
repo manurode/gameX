@@ -793,13 +793,20 @@ func attack_target_building_node(target: Building) -> void:
 	_reset_navigation_recovery()
 
 
-func _set_attack_target_building(target: Building) -> void:
-	if attack_target_building == target:
+func _set_attack_target_building(target: Variant) -> void:
+	# Untyped: freed Object refs compare == null but still fail typed param checks.
+	var next: Building = null
+	if target != null and is_instance_valid(target) and target is Building:
+		next = target as Building
+	if is_instance_valid(attack_target_building) and attack_target_building == next:
 		return
-	if attack_target_building != null and is_instance_valid(attack_target_building):
+	if not is_instance_valid(attack_target_building) and next == null:
+		attack_target_building = null
+		return
+	if is_instance_valid(attack_target_building):
 		attack_target_building.unregister_attacker(self)
-	attack_target_building = target
-	if attack_target_building != null and is_instance_valid(attack_target_building):
+	attack_target_building = next
+	if is_instance_valid(attack_target_building):
 		attack_target_building.register_attacker(self)
 
 

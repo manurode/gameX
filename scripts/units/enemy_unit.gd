@@ -317,17 +317,27 @@ func _clear_open_gate_breach_target() -> void:
 		_set_attack_target_building(null)
 
 
-func _is_breachable_barrier(building: Building) -> bool:
+## Untyped on purpose: a typed `Building` param crashes if the ref was freed
+## before Godot can enter the function body.
+func _is_breachable_barrier(building: Variant) -> bool:
 	if building == null or not is_instance_valid(building):
 		return false
-	if not building.can_be_damaged() or not building.is_wall_segment():
+	if not (building is Building):
 		return false
-	if building.building_type_id == "gate" and building.is_gate_open():
+	var b := building as Building
+	if not b.can_be_damaged() or not b.is_wall_segment():
+		return false
+	if b.building_type_id == "gate" and b.is_gate_open():
 		return false
 	return true
 
 
 func _is_breaching_barrier() -> bool:
+	# Freed refs compare equal to null in GDScript, but still fail typed calls —
+	# assign null explicitly to drop the dangling Object.
+	if not is_instance_valid(attack_target_building):
+		attack_target_building = null
+		return false
 	return _is_breachable_barrier(attack_target_building)
 
 
