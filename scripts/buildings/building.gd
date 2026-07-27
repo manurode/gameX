@@ -189,7 +189,9 @@ func _update_gate_open_state(force: bool = false) -> void:
 	if building_type_id != "gate" or building_state != BuildingState.ACTIVE:
 		return
 	var want_open := false if gate_locked else _has_nearby_ally_for_gate()
-	if want_open == _gate_open and not force:
+	# Unlocked gates must stay pathable even while visually closed.
+	var want_block_nav: bool = _definition.get("blocks_nav", true) and gate_locked
+	if want_open == _gate_open and blocks_navigation == want_block_nav and not force:
 		return
 	_gate_open = want_open
 	_apply_gate_passability()
@@ -217,7 +219,10 @@ func _has_nearby_ally_for_gate() -> bool:
 
 func _apply_gate_passability() -> void:
 	_setup_collision()
-	blocks_navigation = _definition.get("blocks_nav", true) and not _gate_open
+	# Unlocked gates must stay pathable so A* routes through the door instead of
+	# around the wall. Collision/visual still open only when an ally is nearby.
+	var nav_passable := building_type_id == "gate" and (not gate_locked or _gate_open)
+	blocks_navigation = _definition.get("blocks_nav", true) and not nav_passable
 	_request_nav_rebuild()
 
 
@@ -449,6 +454,9 @@ func _apply_definition() -> void:
 	garrison_weapon = _definition.get("garrison_weapon", "stone")
 	can_garrison = _definition.get("can_garrison", true)
 	blocks_navigation = _definition.get("blocks_nav", true)
+	# Active unlocked gates are pathable immediately (do not wait for first open tick).
+	if building_type_id == "gate" and building_state == BuildingState.ACTIVE and not gate_locked:
+		blocks_navigation = false
 	_visual_scale = float(_definition.get("visual_scale", 1.0))
 	_footprint = _definition.get("footprint", Vector2(70.0, 45.0))
 	pick_half_size = _definition.get("pick_half_size", Vector2(55.0, 50.0))
@@ -1613,8 +1621,8 @@ func get_nav_block_outline() -> PackedVector2Array:
 	# Unfinished buildings are fully walkable (nav + physics) until construction completes.
 	if building_state != BuildingState.ACTIVE:
 		return PackedVector2Array()
-	# Open gates leave a passable gap in the wall line.
-	if building_type_id == "gate" and _gate_open:
+	# Unlocked / open gates leave a passable gap so paths prefer the door.
+	if building_type_id == "gate" and (not gate_locked or _gate_open):
 		return PackedVector2Array()
 
 	if is_wall_segment():
