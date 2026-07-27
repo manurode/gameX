@@ -1086,8 +1086,16 @@ func contains_command_point(world_point: Vector2) -> bool:
 	# Same area as selection so right-click commands (attack/repair) hit the sprite.
 	if not contains_world_point(world_point):
 		return false
-	# Mill: wheat/soil pixels are gather-only; tower/door/roof stay repair/attack.
-	if building_type_id == "mill" and _is_mill_wheat_pixel(world_point):
+	# Mill: wheat/soil are gather-only when the farm exists and the mill is healthy.
+	# Construction plots are almost all soil-colored, and damaged art flips soil/stone
+	# per pixel — both would shrink the hammer cursor to a tiny tower patch and flicker
+	# between hammer/hoe/default. Keep the full footprint for build and repair.
+	if (
+		building_type_id == "mill"
+		and building_state == BuildingState.ACTIVE
+		and not can_be_repaired()
+		and _is_mill_wheat_pixel(world_point)
+	):
 		return false
 	return true
 
