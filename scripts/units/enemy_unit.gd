@@ -154,7 +154,7 @@ func get_attack_damage() -> int:
 	if (
 		attack_target_building != null
 		and is_instance_valid(attack_target_building)
-		and attack_target_building.building_type_id == "wall"
+		and attack_target_building.is_wall_segment()
 		and wall_damage_bonus > 1.0
 	):
 		return int(round(float(base) * wall_damage_bonus))
@@ -345,7 +345,7 @@ func _find_best_player_building() -> Building:
 		var type_index := priorities.find(building.building_type_id)
 		if type_index >= 0:
 			priority_bonus = -300.0 - float(type_index) * 50.0
-		if (enemy_kind == "siege" or enemy_kind == "mire") and building.building_type_id == "wall":
+		if (enemy_kind == "siege" or enemy_kind == "mire") and building.is_wall_segment():
 			priority_bonus -= 200.0
 		if enemy_kind == "hexwing" and building.building_type_id in ["barracks", "stable", "arcanum", "tower"]:
 			priority_bonus -= 180.0

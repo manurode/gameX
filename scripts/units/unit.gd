@@ -2253,8 +2253,8 @@ func _is_in_attack_range() -> bool:
 			CombatStyle.RANGED:
 				if building_dist < attack_range_min * 0.85 or building_dist > attack_range_max:
 					return false
-		# Attacking the muralla itself is always allowed when in range.
-		if attack_target_building.building_type_id == "wall":
+		# Attacking the muralla / puerta itself is always allowed when in range.
+		if attack_target_building.is_wall_segment():
 			return true
 		return not _is_attack_blocked_by_wall(
 			global_position, building_origin, attack_target_building
@@ -2290,7 +2290,7 @@ func _is_attack_blocked_by_wall(
 	if hit.is_empty():
 		return false
 	var collider: Object = hit.get("collider")
-	return collider is Building and (collider as Building).building_type_id == "wall"
+	return collider is Building and (collider as Building).blocks_melee_los()
 
 
 func _get_desired_attack_distance() -> float:
@@ -2435,7 +2435,7 @@ func _deal_attack() -> void:
 			else attack_target_building.get_closest_surface_point(global_position)
 		)
 		if (
-			attack_target_building.building_type_id != "wall"
+			not attack_target_building.is_wall_segment()
 			and _is_attack_blocked_by_wall(global_position, building_aim, attack_target_building)
 		):
 			return

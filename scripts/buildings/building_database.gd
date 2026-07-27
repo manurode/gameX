@@ -36,6 +36,9 @@ const UPGRADE_PATHS: Dictionary = {
 	"wall": [
 		{"weapon": "stone", "wood": 0, "gold": 0, "food": 0, "hp_bonus": 0},
 	],
+	"gate": [
+		{"weapon": "stone", "wood": 0, "gold": 0, "food": 0, "hp_bonus": 0},
+	],
 	"castle_small": [
 		{"weapon": "crossbow", "wood": 0, "gold": 0, "food": 0, "hp_bonus": 0},
 		{"weapon": "ballista", "wood": 150, "gold": 200, "food": 30, "hp_bonus": 200},
@@ -274,6 +277,27 @@ const DEFINITIONS: Dictionary = {
 		"visual_scale": 0.95,
 		"footprint": Vector2(86.0, 42.0),
 		"pick_half_size": Vector2(88.0, 70.0),
+	},
+	"gate": {
+		"name": "Puerta",
+		"description": "Sustituye un tramo de muralla. Se abre solo para aliados.",
+		"texture": "res://assets/tilesets/mediterranean/Buildings/gate_se.png",
+		"texture_vertical": "res://assets/tilesets/mediterranean/Buildings/gate_sw.png",
+		"wood": 45,
+		"gold": 15,
+		"food": 0,
+		"build_time": 8.0,
+		"max_hp": 220,
+		"garrison_capacity": 0,
+		"garrison_attack_multiplier": 1.0,
+		"garrison_weapon": "stone",
+		"can_garrison": false,
+		"blocks_nav": true,
+		"visual_scale": 0.95,
+		"footprint": Vector2(86.0, 42.0),
+		"pick_half_size": Vector2(88.0, 70.0),
+		## Not in the build bar — placed by converting an existing wall.
+		"buildable": false,
 	},
 	"castle_small": {
 		"name": "Castillo",

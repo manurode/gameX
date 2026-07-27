@@ -15,6 +15,8 @@ extends RefCounted
 ## post(i, j) = i * STEP_SE + j * STEP_SW
 const TEXTURE_SE := "res://assets/tilesets/mediterranean/Buildings/wall_se.png"
 const TEXTURE_SW := "res://assets/tilesets/mediterranean/Buildings/wall_sw.png"
+const GATE_TEXTURE_SE := "res://assets/tilesets/mediterranean/Buildings/gate_se.png"
+const GATE_TEXTURE_SW := "res://assets/tilesets/mediterranean/Buildings/gate_sw.png"
 
 ## Screen-X distance between two posts. Matches the painted column spacing of
 ## the art (148 px at 0.95 visual scale), so shared posts overlap exactly.
@@ -34,16 +36,33 @@ static var _cache: Dictionary = {}
 
 static func get_texture_path(vertical: bool = false, phase: String = "complete") -> String:
 	## vertical=true → SW backslash (\); false → SE slash (/).
-	var base := TEXTURE_SW if vertical else TEXTURE_SE
+	return _phase_path(TEXTURE_SW if vertical else TEXTURE_SE, phase)
+
+
+static func get_gate_texture_path(vertical: bool = false, phase: String = "complete") -> String:
+	return _phase_path(GATE_TEXTURE_SW if vertical else GATE_TEXTURE_SE, phase)
+
+
+static func _phase_path(base: String, phase: String) -> String:
 	if phase.is_empty() or phase == "complete":
 		return base
 	return base.get_basename() + "_" + phase + ".png"
 
 
 static func get_texture(vertical: bool = false, phase: String = "complete") -> Texture2D:
-	var path := get_texture_path(vertical, phase)
+	return _load_cached(get_texture_path(vertical, phase), get_texture_path(vertical, "complete"))
+
+
+static func get_gate_texture(vertical: bool = false, phase: String = "complete") -> Texture2D:
+	return _load_cached(
+		get_gate_texture_path(vertical, phase),
+		get_gate_texture_path(vertical, "complete")
+	)
+
+
+static func _load_cached(path: String, fallback: String) -> Texture2D:
 	if not ResourceLoader.exists(path):
-		path = get_texture_path(vertical, "complete")
+		path = fallback
 	if _cache.has(path):
 		return _cache[path]
 	var texture: Texture2D = load(path)

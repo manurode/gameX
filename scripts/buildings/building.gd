@@ -29,6 +29,8 @@ const PLANT_UNSCALED := DepthSort.ISO_HALF_TILE
 const WALL_PLANT_UNSCALED := DepthSort.WALL_PLANT
 ## Distance cull for silhouette collection — wide sprites (Ciudadela) exceed the default.
 const DEFAULT_OCCLUSION_CULL_RADIUS := 220.0
+const GATE_OPEN_RADIUS := 110.0
+const GATE_CHECK_INTERVAL := 0.25
 
 @export var building_type_id: String = "house_small"
 @export var team_id: int = Team.PLAYER
@@ -49,6 +51,8 @@ var blocks_navigation: bool = true
 var pick_half_size := Vector2(55.0, 50.0)
 var sprite_offset := Vector2(0.0, -40.0)
 var is_selected: bool = false
+## When true, a completed gate stays shut even if allies are nearby.
+var gate_locked: bool = false
 
 var garrisoned_units: Array[Unit] = []
 var garrison_attack_target: Unit = null
@@ -60,6 +64,8 @@ var _definition: Dictionary = {}
 var _visual_scale: float = 1.0
 var _footprint := Vector2(70.0, 45.0)
 var _wall_vertical: bool = false
+var _gate_open: bool = false
+var _gate_check_timer: float = 0.0
 var _repair_start_hp: int = 0
 var _repair_target_hp: int = 0
 var _repair_progress: float = 0.0
@@ -125,6 +131,8 @@ func get_occlusion_cull_radius() -> float:
 func _process(delta: float) -> void:
 	if building_state != BuildingState.ACTIVE:
 		return
+	if building_type_id == "gate":
+		_process_gate(delta)
 	if _definition.get("automatic_defense", false):
 		_process_automatic_defense(delta)
 	elif is_garrison_occupied():
@@ -136,10 +144,89 @@ func configure(type_id: String, state: BuildingState = BuildingState.ACTIVE, pro
 	building_state = state
 	construction_progress = progress
 	_wall_vertical = false
+	_gate_open = false
+	gate_locked = false
 	_apply_definition()
 	_update_visual_damage()
 	_update_construction_visual()
 	_refresh_night_light_params()
+
+
+func is_wall_segment() -> bool:
+	return building_type_id == "wall" or building_type_id == "gate"
+
+
+func is_gate_open() -> bool:
+	return building_type_id == "gate" and _gate_open
+
+
+func is_gate_locked() -> bool:
+	return building_type_id == "gate" and gate_locked
+
+
+func set_gate_locked(locked: bool) -> void:
+	if building_type_id != "gate":
+		return
+	if gate_locked == locked:
+		return
+	gate_locked = locked
+	_update_gate_open_state(true)
+
+
+func toggle_gate_locked() -> void:
+	set_gate_locked(not gate_locked)
+
+
+func _process_gate(delta: float) -> void:
+	_gate_check_timer -= delta
+	if _gate_check_timer > 0.0:
+		return
+	_gate_check_timer = GATE_CHECK_INTERVAL
+	_update_gate_open_state()
+
+
+func _update_gate_open_state(force: bool = false) -> void:
+	if building_type_id != "gate" or building_state != BuildingState.ACTIVE:
+		return
+	var want_open := false if gate_locked else _has_nearby_ally_for_gate()
+	if want_open == _gate_open and not force:
+		return
+	_gate_open = want_open
+	_apply_gate_passability()
+	_last_visual_phase = ""
+	_apply_phase_texture(true)
+
+
+func _has_nearby_ally_for_gate() -> bool:
+	var center := get_anchor_position()
+	var radius_sq := GATE_OPEN_RADIUS * GATE_OPEN_RADIUS
+	for node in get_tree().get_nodes_in_group("units"):
+		if not (node is Unit):
+			continue
+		var unit := node as Unit
+		if not is_instance_valid(unit) or unit._is_dying or unit.hp <= 0:
+			continue
+		if unit.team_id != team_id:
+			continue
+		if unit.garrisoned_building != null:
+			continue
+		if center.distance_squared_to(unit.global_position) <= radius_sq:
+			return true
+	return false
+
+
+func _apply_gate_passability() -> void:
+	_setup_collision()
+	blocks_navigation = _definition.get("blocks_nav", true) and not _gate_open
+	_request_nav_rebuild()
+
+
+func blocks_melee_los() -> bool:
+	if not is_wall_segment() or building_state != BuildingState.ACTIVE:
+		return false
+	if building_type_id == "gate" and _gate_open:
+		return false
+	return true
 
 
 func apply_cycle_visuals(light_factor: float = 0.0, instant: bool = false) -> void:
@@ -197,7 +284,7 @@ func _resolve_night_light_params() -> Dictionary:
 			return {"energy": 1.15, "scale": 2.35, "offset_y": -32.0}
 		"tower":
 			return {"energy": 1.15, "scale": 2.15, "offset_y": -36.0}
-		"wall":
+		"wall", "gate":
 			return {"energy": 1.05, "scale": 1.75, "offset_y": -16.0}
 		_:
 			return {"energy": 1.15, "scale": 2.05, "offset_y": -24.0}
@@ -253,7 +340,7 @@ func get_night_light_radius() -> float:
 
 
 func set_wall_vertical(vertical: bool) -> void:
-	if building_type_id != "wall":
+	if not is_wall_segment():
 		return
 	_wall_vertical = vertical
 	_apply_wall_orientation()
@@ -301,7 +388,7 @@ func _sync_depth_from_anchor() -> void:
 
 
 func _plant_unscaled() -> float:
-	if building_type_id == "wall":
+	if is_wall_segment():
 		return WALL_PLANT_UNSCALED
 	return PLANT_UNSCALED
 
@@ -336,7 +423,7 @@ func _sync_pick_half_size_from_sprite() -> void:
 	if sprite == null or sprite.texture == null:
 		return
 	var scaled_half := sprite.texture.get_size() * absf(_visual_scale) * 0.5
-	if building_type_id == "wall":
+	if is_wall_segment():
 		# Diagonal segment sits on a square canvas with lots of empty corners.
 		pick_half_size = Vector2(scaled_half.x * 0.72, scaled_half.y * 0.58)
 	else:
@@ -377,7 +464,7 @@ func _setup_texture() -> void:
 		return
 
 	_last_visual_phase = ""
-	if building_type_id == "wall":
+	if is_wall_segment():
 		_apply_wall_orientation()
 	else:
 		_apply_phase_texture(true)
@@ -393,7 +480,7 @@ func _setup_texture() -> void:
 
 
 func _apply_wall_orientation() -> void:
-	if building_type_id != "wall" or sprite == null:
+	if not is_wall_segment() or sprite == null:
 		return
 	sprite.rotation_degrees = 0.0
 	sprite.position = Vector2.ZERO
@@ -422,12 +509,16 @@ func _resolve_visual_phase() -> String:
 	if building_state == BuildingState.ACTIVE and max_hp > 0:
 		if float(hp) / float(max_hp) <= DAMAGED_HP_RATIO:
 			return "damaged"
+		if building_type_id == "gate" and _gate_open:
+			return "open"
 	return "complete"
 
 
 func _texture_path_for_phase(phase: String) -> String:
 	if building_type_id == "wall":
 		return WallTexture.get_texture_path(_wall_vertical, phase)
+	if building_type_id == "gate":
+		return WallTexture.get_gate_texture_path(_wall_vertical, phase)
 	var base_path: String = _definition.get("texture", "")
 	if base_path.is_empty():
 		return ""
@@ -447,6 +538,8 @@ func _apply_phase_texture(force: bool = false) -> void:
 	var texture: Texture2D = null
 	if building_type_id == "wall":
 		texture = WallTexture.get_texture(_wall_vertical, phase)
+	elif building_type_id == "gate":
+		texture = WallTexture.get_gate_texture(_wall_vertical, phase)
 	else:
 		var path := _texture_path_for_phase(phase)
 		if path.is_empty() or not ResourceLoader.exists(path):
@@ -484,7 +577,7 @@ func _wall_base_rotation() -> float:
 func _setup_collision() -> void:
 	if collision_shape == null:
 		return
-	if building_type_id == "wall":
+	if is_wall_segment():
 		var shape := RectangleShape2D.new()
 		shape.size = _get_collision_body_size()
 		collision_shape.shape = shape
@@ -504,12 +597,13 @@ func _setup_collision() -> void:
 		collision_shape.shape = convex
 		collision_shape.position = get_collision_center() - global_position
 		collision_shape.rotation = 0.0
-	# Unfinished buildings stay walkable; collision only once ACTIVE.
-	set_collision_layer_value(1, building_state == BuildingState.ACTIVE)
+	# Unfinished buildings stay walkable; collision only once ACTIVE (and closed for gates).
+	var solid := building_state == BuildingState.ACTIVE and not _gate_open
+	set_collision_layer_value(1, solid)
 
 
 func _get_collision_body_size() -> Vector2:
-	if building_type_id == "wall":
+	if is_wall_segment():
 		# Length along the wall axis, thickness across — continuous with neighbors.
 		return Vector2(WallTexture.get_block_length(), WallTexture.BLOCK_THICKNESS)
 	return Vector2(
@@ -519,7 +613,7 @@ func _get_collision_body_size() -> Vector2:
 
 
 func _get_collision_center_y_factor() -> float:
-	if building_type_id == "wall":
+	if is_wall_segment():
 		return WALL_COLLISION_CENTER_Y
 	return COLLISION_BODY_CENTER_Y
 
@@ -910,24 +1004,24 @@ func _apply_upgrade_visual() -> void:
 
 func get_collision_center() -> Vector2:
 	var origin := get_anchor_position()
-	if building_type_id == "wall":
+	if is_wall_segment():
 		return origin + Vector2(0.0, -_footprint.y * WALL_COLLISION_CENTER_Y)
 	return get_interaction_center()
 
 
 func get_collision_half_size() -> Vector2:
-	if building_type_id == "wall":
+	if is_wall_segment():
 		return _get_collision_body_size() * 0.5
 	return get_interaction_half_size()
 
 
 func get_interaction_center() -> Vector2:
-	var center_y := WALL_COLLISION_CENTER_Y if building_type_id == "wall" else 0.2
+	var center_y := WALL_COLLISION_CENTER_Y if is_wall_segment() else 0.2
 	return get_anchor_position() + Vector2(0.0, -_footprint.y * center_y)
 
 
 func get_interaction_half_size() -> Vector2:
-	if building_type_id == "wall":
+	if is_wall_segment():
 		# Axis-aligned bounds that cover the oriented block (used for approach points).
 		return Vector2(
 			WallTexture.get_block_half_length(),
@@ -986,7 +1080,7 @@ func _setup_selection_indicator() -> void:
 	# Scale with building size and pad past the opaque sprite so the ring stays visible.
 	var radius_x := maxf(maxf(_footprint.x * 0.72, pick_half_size.x * 0.62), 40.0)
 	var radius_y := maxf(maxf(_footprint.y * 0.58, pick_half_size.x * 0.30), 18.0)
-	if building_type_id == "wall":
+	if is_wall_segment():
 		radius_x = maxf(_footprint.x * 0.62, 24.0)
 		radius_y = maxf(_footprint.y * 0.50, 14.0)
 	for i in SEGMENTS + 1:
@@ -1038,7 +1132,7 @@ func _refresh_ground_shadow() -> void:
 	_ground_shadow.position = _plant_local_offset()
 	var radius_x := maxf(_footprint.x * 0.034, 1.15)
 	var radius_y := maxf(_footprint.y * 0.028, 0.75)
-	if building_type_id == "wall":
+	if is_wall_segment():
 		radius_x = maxf(_footprint.x * 0.028, 0.9)
 		radius_y = maxf(_footprint.y * 0.022, 0.55)
 	_ground_shadow.scale = Vector2(radius_x, radius_y)
@@ -1406,7 +1500,11 @@ func _complete_construction() -> void:
 	building_state = BuildingState.ACTIVE
 	hp = max_hp
 	construction_progress = 1.0
-	_setup_collision()
+	if building_type_id == "gate":
+		_gate_open = false
+		_apply_gate_passability()
+	else:
+		_setup_collision()
 	_update_construction_visual()
 	_update_visual_damage()
 	health_changed.emit(hp, max_hp)
@@ -1497,7 +1595,7 @@ func _update_construction_visual() -> void:
 ## checks use this instead of the sprite AABB so tall art (roofs, towers) never
 ## reserves ground a neighbour could legitimately occupy.
 func get_ground_footprint_polygon() -> PackedVector2Array:
-	if building_type_id == "wall":
+	if is_wall_segment():
 		return WallTexture.get_ground_outline(get_anchor_position(), _wall_vertical)
 	var center := get_interaction_center()
 	var half := _footprint * 0.42
@@ -1515,8 +1613,11 @@ func get_nav_block_outline() -> PackedVector2Array:
 	# Unfinished buildings are fully walkable (nav + physics) until construction completes.
 	if building_state != BuildingState.ACTIVE:
 		return PackedVector2Array()
+	# Open gates leave a passable gap in the wall line.
+	if building_type_id == "gate" and _gate_open:
+		return PackedVector2Array()
 
-	if building_type_id == "wall":
+	if is_wall_segment():
 		return WallTexture.get_block_outline(get_collision_center(), _wall_vertical)
 
 	var center := get_interaction_center()

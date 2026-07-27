@@ -274,11 +274,11 @@ func _place_single_building(world_pos: Vector2, vertical: bool, charge_resources
 
 	var building: Building = _building_scene.instantiate()
 	building.configure(selected_building_type, Building.BuildingState.CONSTRUCTING, 0.0)
-	if selected_building_type == "wall":
+	if selected_building_type == "wall" or selected_building_type == "gate":
 		building.set_wall_vertical(vertical)
 	_buildings_container.add_child(building)
 	building.place_at(world_pos)
-	if selected_building_type == "wall":
+	if selected_building_type == "wall" or selected_building_type == "gate":
 		building.notify_world_placed()
 	if consume_free:
 		_consume_free_placements(selected_building_type, 1)
@@ -286,6 +286,51 @@ func _place_single_building(world_pos: Vector2, vertical: bool, charge_resources
 	if _job_manager != null:
 		_job_manager.alert_nearby_builders(building)
 	return building
+
+
+## Replace an ACTIVE muralla with a constructing puerta on the same segment.
+func try_convert_wall_to_gate(wall: Building) -> Building:
+	if not _is_construction_allowed():
+		_show_feedback_banner("No se puede construir de noche")
+		return null
+	if wall == null or not is_instance_valid(wall):
+		return null
+	if wall.building_type_id != "wall" or wall.building_state != Building.BuildingState.ACTIVE:
+		return null
+
+	var cost := BuildingDatabase.get_cost("gate")
+	if _resource_manager == null or not _resource_manager.can_afford(cost):
+		_show_feedback_banner("Recursos insuficientes para la puerta")
+		return null
+	if not _resource_manager.spend(cost):
+		return null
+
+	var world_pos := wall.get_anchor_position()
+	var vertical := wall.is_wall_vertical()
+	if wall.is_selected:
+		wall.deselect()
+	if _selection_manager != null and _selection_manager.has_method("clear_selection"):
+		_selection_manager.clear_selection()
+
+	# Quiet remove — not combat destruction.
+	wall.building_state = Building.BuildingState.DESTROYED
+	var world := get_tree().get_first_node_in_group("game_world")
+	if world != null and world.has_method("rebuild_navigation"):
+		world.call_deferred("rebuild_navigation", wall)
+	if wall.get_parent() != null:
+		wall.get_parent().remove_child(wall)
+	wall.queue_free()
+	_wall_cache_frame = -1
+
+	var prev_type := selected_building_type
+	selected_building_type = "gate"
+	var gate := _place_single_building(world_pos, vertical, false)
+	selected_building_type = prev_type
+	if gate == null:
+		return null
+	if _selection_manager != null and _selection_manager.has_method("select_building"):
+		_selection_manager.select_building(gate)
+	return gate
 
 
 func _place_wall_run(mouse_world: Vector2) -> void:
@@ -417,7 +462,7 @@ func _refresh_wall_cache() -> void:
 		if not (node is Building):
 			continue
 		var other := node as Building
-		if other.building_type_id != "wall" or other.building_state == Building.BuildingState.DESTROYED:
+		if not other.is_wall_segment() or other.building_state == Building.BuildingState.DESTROYED:
 			continue
 		var center := other.get_anchor_position()
 		var vertical := other.is_wall_vertical()
@@ -528,7 +573,7 @@ func _is_valid_wall_segment(
 			continue
 		# Wall-vs-wall is fully described by segment keys: distinct edges of the
 		# lattice never overlap, they only ever share a post.
-		if other.building_type_id == "wall":
+		if other.is_wall_segment():
 			continue
 		if _polygons_overlap(outline, other.get_ground_footprint_polygon()):
 			return false
@@ -625,7 +670,7 @@ func _is_valid_placement_at(world_pos: Vector2, type_id: String, _vertical: bool
 	for node in get_tree().get_nodes_in_group("buildings"):
 		if node is Building and (node as Building).building_state != Building.BuildingState.DESTROYED:
 			var other := node as Building
-			if other.building_type_id == "wall":
+			if other.is_wall_segment():
 				# A wall only reserves its painted base, so buildings may sit against it.
 				if _polygons_overlap(_rect_polygon(test_rect), other.get_ground_footprint_polygon()):
 					return false

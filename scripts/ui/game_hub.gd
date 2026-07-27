@@ -73,6 +73,8 @@ var _gather_bonus_label: Label
 var _production_double_label: Label
 var _active_build_type: String = ""
 var _selected_building: Building = null
+var _special_actions_box: HBoxContainer
+var _special_action_buttons: Dictionary = {}
 
 
 func _ready() -> void:
@@ -224,7 +226,10 @@ func _build_resource_rows() -> void:
 	_production_double_label.add_theme_color_override("font_color", Color(0.95, 0.82, 0.35))
 	bonus_row.add_child(_production_double_label)
 func _ensure_selection_ui() -> void:
-	if _selection_mode == null or _selection_info != null:
+	if _selection_mode == null:
+		return
+	if _selection_info != null:
+		_ensure_special_actions_box()
 		return
 
 	var info_panel := PanelContainer.new()
@@ -332,6 +337,12 @@ func _ensure_selection_ui() -> void:
 	_production_items_box.add_theme_constant_override("separation", 6)
 	_selection_actions.add_child(_production_items_box)
 
+	_special_actions_box = HBoxContainer.new()
+	_special_actions_box.name = "SpecialActionsBox"
+	_special_actions_box.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	_special_actions_box.add_theme_constant_override("separation", 6)
+	_selection_actions.add_child(_special_actions_box)
+
 	_market_box = VBoxContainer.new()
 	_market_box.visible = false
 	_market_box.clip_contents = true
@@ -356,6 +367,20 @@ func _ensure_selection_ui() -> void:
 	_market_limit_label.add_theme_font_size_override("font_size", 12)
 	_market_limit_label.add_theme_color_override("font_color", Color(0.65, 0.74, 0.82))
 	_market_box.add_child(_market_limit_label)
+
+
+func _ensure_special_actions_box() -> void:
+	if _special_actions_box != null or _selection_actions == null:
+		return
+	_special_actions_box = HBoxContainer.new()
+	_special_actions_box.name = "SpecialActionsBox"
+	_special_actions_box.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	_special_actions_box.add_theme_constant_override("separation", 6)
+	# Keep special actions before the market column when both exist.
+	var market_idx := _market_box.get_index() if _market_box != null else -1
+	_selection_actions.add_child(_special_actions_box)
+	if market_idx >= 0:
+		_selection_actions.move_child(_special_actions_box, market_idx)
 
 	_production_queue_label = Label.new()
 	_production_queue_label.visible = false
@@ -536,6 +561,8 @@ func _get_building_icon(type_id: String) -> Texture2D:
 	var def := BuildingDatabase.get_definition(type_id)
 	if type_id == "wall":
 		return WallTexture.get_texture(false)
+	if type_id == "gate":
+		return WallTexture.get_gate_texture(false)
 	var texture_path: String = def.get("texture", "")
 	if texture_path.is_empty():
 		return null
@@ -688,7 +715,8 @@ func _refresh_selection_panel() -> void:
 
 	var items := _get_production_items_for_building(building)
 	var show_market := _should_show_market(building)
-	var has_actions := not items.is_empty() or show_market
+	var special_actions := _get_special_actions_for_building(building)
+	var has_actions := not items.is_empty() or show_market or not special_actions.is_empty()
 
 	if _actions_panel != null:
 		_actions_panel.visible = has_actions
@@ -703,11 +731,14 @@ func _refresh_selection_panel() -> void:
 	elif not items.is_empty():
 		_production_title.text = "PRODUCCIÓN"
 		_production_title.add_theme_color_override("font_color", COL_GOLD_SOFT)
+	elif not special_actions.is_empty():
+		_production_title.text = "ACCIONES"
+		_production_title.add_theme_color_override("font_color", COL_GOLD_SOFT)
 	else:
 		_production_title.text = ""
 		_production_title.add_theme_color_override("font_color", COL_GOLD_SOFT)
 
-	_production_title.visible = not items.is_empty()
+	_production_title.visible = not items.is_empty() or not special_actions.is_empty()
 	_production_items_box.visible = not items.is_empty()
 	_market_box.visible = show_market
 	_selection_actions.visible = true
@@ -715,19 +746,134 @@ func _refresh_selection_panel() -> void:
 	var trades_left := 0
 	if _market_manager != null:
 		trades_left = _market_manager.get_trades_remaining()
-	var panel_key := "%d:%s:%s:m%d" % [
+	var special_key := ",".join(special_actions)
+	if building.building_type_id == "gate":
+		special_key += ":L%d" % (1 if building.is_gate_locked() else 0)
+	var panel_key := "%d:%s:%s:m%d:s%s" % [
 		building.get_instance_id(),
 		",".join(items),
 		"x2" if _has_production_double() else "x1",
 		trades_left if show_market else -1,
+		special_key,
 	]
 	if _production_panel_key != panel_key:
 		_rebuild_production_item_buttons(items)
 		_rebuild_market_buttons(show_market)
+		_rebuild_special_action_buttons(special_actions)
 		_production_panel_key = panel_key
 
 	_update_production_status_labels()
 	_update_market_status()
+	_update_special_action_affordability()
+
+
+func _get_special_actions_for_building(building: Building) -> Array[String]:
+	var actions: Array[String] = []
+	if building == null or not is_instance_valid(building):
+		return actions
+	if (
+		building.building_type_id == "wall"
+		and building.building_state == Building.BuildingState.ACTIVE
+	):
+		actions.append("build_gate")
+	elif (
+		building.building_type_id == "gate"
+		and building.building_state == Building.BuildingState.ACTIVE
+	):
+		actions.append("toggle_gate_lock")
+	return actions
+
+
+func _rebuild_special_action_buttons(actions: Array[String]) -> void:
+	if _special_actions_box == null:
+		return
+	for child in _special_actions_box.get_children():
+		child.queue_free()
+	_special_action_buttons.clear()
+	_special_actions_box.visible = not actions.is_empty()
+
+	for action_id in actions:
+		var slot := Control.new()
+		slot.custom_minimum_size = ACTION_SLOT_SIZE
+		slot.mouse_filter = Control.MOUSE_FILTER_STOP
+
+		var button := Button.new()
+		button.set_anchors_preset(Control.PRESET_FULL_RECT)
+		button.focus_mode = Control.FOCUS_NONE
+		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		button.clip_contents = true
+		button.clip_text = true
+		button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		_style_dialog_button(button, true)
+		button.add_theme_font_size_override("font_size", 13)
+		button.text = _special_action_label(action_id)
+		button.tooltip_text = _special_action_tooltip(action_id)
+		button.pressed.connect(_on_special_action_pressed.bind(action_id))
+		slot.add_child(button)
+		_special_actions_box.add_child(slot)
+		_special_action_buttons[action_id] = button
+
+
+func _special_action_label(action_id: String) -> String:
+	match action_id:
+		"build_gate":
+			return "Puerta"
+		"toggle_gate_lock":
+			if _selected_building != null and _selected_building.is_gate_locked():
+				return "Desbloquear"
+			return "Bloquear"
+		_:
+			return action_id
+
+
+func _special_action_tooltip(action_id: String) -> String:
+	match action_id:
+		"build_gate":
+			var def := BuildingDatabase.get_definition("gate")
+			return _format_cost_tooltip(
+				"Construir puerta",
+				BuildingDatabase.get_cost("gate"),
+				float(def.get("build_time", 0.0)),
+				str(def.get("description", ""))
+			)
+		"toggle_gate_lock":
+			if _selected_building != null and _selected_building.is_gate_locked():
+				return "Desbloquear\nSe abrirá cuando un aliado se acerque"
+			return "Bloquear cerrada\nPermanecerá cerrada aunque haya aliados cerca"
+		_:
+			return ""
+
+
+func _on_special_action_pressed(action_id: String) -> void:
+	if _selected_building == null or not is_instance_valid(_selected_building):
+		return
+	match action_id:
+		"build_gate":
+			if _build_manager != null and _build_manager.has_method("try_convert_wall_to_gate"):
+				_build_manager.try_convert_wall_to_gate(_selected_building)
+		"toggle_gate_lock":
+			_selected_building.toggle_gate_locked()
+			_production_panel_key = ""
+			_refresh_selection_panel()
+
+
+func _update_special_action_affordability() -> void:
+	if _special_action_buttons.is_empty():
+		return
+	for action_id in _special_action_buttons.keys():
+		var button: Button = _special_action_buttons[action_id]
+		if button == null or not is_instance_valid(button):
+			continue
+		button.text = _special_action_label(action_id)
+		button.tooltip_text = _special_action_tooltip(action_id)
+		if action_id == "build_gate":
+			var cost := BuildingDatabase.get_cost("gate")
+			var affordable := _resource_manager == null or _resource_manager.can_afford(cost)
+			button.disabled = not affordable
+			button.modulate = Color(1, 1, 1, 1) if affordable else Color(0.55, 0.55, 0.55, 0.85)
+		else:
+			button.disabled = false
+			button.modulate = Color.WHITE
 
 
 func _update_selection_meta() -> void:
@@ -741,6 +887,13 @@ func _update_selection_meta() -> void:
 		parts.append("Trabajadores max: %d" % BuildingDatabase.get_max_workers(building.building_type_id))
 	if building.upgrade_level > 0:
 		parts.append("Nv.%d" % (building.upgrade_level + 1))
+	if building.building_type_id == "gate" and building.building_state == Building.BuildingState.ACTIVE:
+		if building.is_gate_locked():
+			parts.append("Bloqueada")
+		elif building.is_gate_open():
+			parts.append("Abierta")
+		else:
+			parts.append("Cerrada")
 	_selection_meta.text = "\n".join(parts)
 
 
@@ -1272,6 +1425,7 @@ func _refresh_affordability() -> void:
 			style.border_color = Color(0.25, 0.22, 0.18, 1.0)
 			style.bg_color = COL_BTN_DISABLED
 		_apply_slot_style(button, style)
+	_update_special_action_affordability()
 
 
 func _apply_slot_style(button: Button, style: StyleBoxFlat, border_width: int = 1) -> void:
