@@ -32,10 +32,12 @@ const HIT_FLASH_DURATION := 0.14
 const DEATH_FRAME_COUNT := 6
 const STONE_SCENE: PackedScene = preload("res://scenes/combat/stone.tscn")
 const FIREBALL_SCENE: PackedScene = preload("res://scenes/combat/fireball.tscn")
-const SEPARATION_UPDATE_INTERVAL := 0.08
+const SEPARATION_UPDATE_INTERVAL := 0.16
 ## Soft push so units never settle on the exact same world point.
 const STACK_CLEAR_RADIUS := 20.0
 const STACK_PUSH_SPEED := 55.0
+## Skip world push while actively navigating — avoids fighting move_and_slide.
+const STACK_PUSH_MAX_SPEED_SQ := 1600.0
 const FORMATION_SLOT_SPACING := 22.0
 const NIGHT_LIGHT_COLOR := Color(1.0, 0.78, 0.48)
 const NIGHT_LIGHT_ENERGY := 1.15
@@ -43,6 +45,12 @@ const NIGHT_LIGHT_SCALE := 1.55
 
 static var _shared_shadow_texture: Texture2D
 static var _shared_dust_texture: Texture2D
+## Per physics frame: (target_id * 8 + team_id) -> sorted attacker instance ids.
+static var _attack_slot_frame := -1
+static var _attack_slot_peers: Dictionary = {}
+## unit instance id -> slot index for the current physics frame.
+static var _attack_slot_index_by_unit: Dictionary = {}
+static var _formation_offset_cache: Dictionary = {}
 
 @export var move_speed: float = 95.0
 @export var max_hp: int = 100
@@ -611,6 +619,52 @@ static func _formation_offsets(count: int, spacing: float) -> Array[Vector2]:
 			placed += 1
 		ring += 1
 	return offsets
+
+
+static func _cached_formation_offsets(count: int, spacing: float) -> Array[Vector2]:
+	if count <= 0:
+		return []
+	if not is_equal_approx(spacing, FORMATION_SLOT_SPACING):
+		return _formation_offsets(count, spacing)
+	if _formation_offset_cache.has(count):
+		return _formation_offset_cache[count]
+	var offsets := _formation_offsets(count, spacing)
+	_formation_offset_cache[count] = offsets
+	return offsets
+
+
+static func _rebuild_attack_slot_peers(tree: SceneTree) -> void:
+	var frame := Engine.get_physics_frames()
+	if frame == _attack_slot_frame:
+		return
+	_attack_slot_frame = frame
+	_attack_slot_peers.clear()
+	_attack_slot_index_by_unit.clear()
+	if tree == null:
+		return
+	for node in tree.get_nodes_in_group("units"):
+		if not node is Unit:
+			continue
+		var unit := node as Unit
+		if unit._is_dying or unit.hp <= 0 or unit.garrisoned_building != null:
+			continue
+		var target_id := 0
+		if unit.attack_target != null and is_instance_valid(unit.attack_target):
+			target_id = unit.attack_target.get_instance_id()
+		elif unit.attack_target_building != null and is_instance_valid(unit.attack_target_building):
+			target_id = unit.attack_target_building.get_instance_id()
+		else:
+			continue
+		var group_key := target_id * 8 + unit.team_id
+		if not _attack_slot_peers.has(group_key):
+			var peers: Array[int] = []
+			_attack_slot_peers[group_key] = peers
+		(_attack_slot_peers[group_key] as Array).append(unit.get_instance_id())
+	for key in _attack_slot_peers.keys():
+		var peers: Array = _attack_slot_peers[key]
+		peers.sort()
+		for slot_index in peers.size():
+			_attack_slot_index_by_unit[peers[slot_index]] = slot_index
 
 
 func select() -> void:
@@ -1594,30 +1648,20 @@ func _process_combat(_delta: float) -> void:
 		_update_terrain_feedback(_delta)
 		return
 
-	# Melee vs unit/building: direct chase toward a personal attack slot.
-	if combat_style == CombatStyle.MELEE and attack_target != null and is_instance_valid(attack_target):
-		_chase_melee_unit_direct(_delta)
-		_update_terrain_feedback(_delta)
-		return
-	if combat_style == CombatStyle.MELEE and attack_target_building != null and is_instance_valid(attack_target_building):
-		_chase_melee_building_direct(_delta)
-		_update_terrain_feedback(_delta)
-		return
+	# Melee vs unit/building: reuse the slot already computed above.
+	if combat_style == CombatStyle.MELEE and combat_slot != Vector2.INF:
+		if (
+			(attack_target != null and is_instance_valid(attack_target))
+			or (attack_target_building != null and is_instance_valid(attack_target_building))
+		):
+			_chase_melee_direct_toward(combat_slot, _delta)
+			_update_terrain_feedback(_delta)
+			return
 
 	var chase_target := _get_chase_navigation_target()
 	var desired_distance := _get_chase_desired_distance()
 	_follow_navigation_toward(chase_target, desired_distance, _delta)
 	_update_terrain_feedback(_delta)
-
-
-func _chase_melee_unit_direct(delta: float) -> void:
-	var base := attack_target.get_sprite_center()
-	_chase_melee_direct_toward(_get_attack_slot_point(base), delta)
-
-
-func _chase_melee_building_direct(delta: float) -> void:
-	var base := attack_target_building.get_melee_attack_point(global_position)
-	_chase_melee_direct_toward(_get_attack_slot_point(base), delta)
 
 
 func _chase_melee_direct_toward(target_point: Vector2, delta: float) -> void:
@@ -1639,38 +1683,30 @@ func _get_chase_navigation_target() -> Vector2:
 ## Spread chase destinations like group-move formation slots so same-team units
 ## do not all navigate to one shared pixel (allies and enemies alike).
 func _get_attack_slot_point(base_point: Vector2) -> Vector2:
-	var slot_index := _get_shared_attack_slot_index()
+	var group_key := _get_attack_slot_group_key()
+	if group_key == 0:
+		return base_point
+	_rebuild_attack_slot_peers(get_tree())
+	var my_id := get_instance_id()
+	var slot_index: int = int(_attack_slot_index_by_unit.get(my_id, -1))
+	var peers: Array = _attack_slot_peers.get(group_key, [])
+	if slot_index < 0:
+		slot_index = peers.size()
 	if slot_index <= 0:
 		return base_point
-	var offsets := _formation_offsets(slot_index + 1, FORMATION_SLOT_SPACING)
+	var peer_count := maxi(slot_index + 1, peers.size())
+	var offsets := _cached_formation_offsets(peer_count, FORMATION_SLOT_SPACING)
+	if slot_index >= offsets.size():
+		offsets = _cached_formation_offsets(slot_index + 1, FORMATION_SLOT_SPACING)
 	return base_point + offsets[slot_index]
 
 
-func _get_shared_attack_slot_index() -> int:
-	var my_id := get_instance_id()
-	var peer_ids: Array[int] = [my_id]
-	var query_radius := maxf(melee_range, PERSONAL_SPACE_RADIUS * 4.0)
-	for item in UnitSpatialIndex.query_nearby(get_tree(), global_position, query_radius):
-		if not item is Unit:
-			continue
-		var other := item as Unit
-		if other == self or other.team_id != team_id or other._is_dying:
-			continue
-		if other.garrisoned_building != null:
-			continue
-		if not _shares_attack_target_with(other):
-			continue
-		peer_ids.append(other.get_instance_id())
-	peer_ids.sort()
-	return peer_ids.find(my_id)
-
-
-func _shares_attack_target_with(other: Unit) -> bool:
+func _get_attack_slot_group_key() -> int:
 	if attack_target != null and is_instance_valid(attack_target):
-		return other.attack_target == attack_target
+		return attack_target.get_instance_id() * 8 + team_id
 	if attack_target_building != null and is_instance_valid(attack_target_building):
-		return other.attack_target_building == attack_target_building
-	return false
+		return attack_target_building.get_instance_id() * 8 + team_id
+	return 0
 
 
 func _get_combat_slot_destination() -> Vector2:
@@ -2717,6 +2753,10 @@ func _update_visual_separation(delta: float) -> void:
 
 func _apply_cached_stack_push(delta: float) -> void:
 	if _last_stack_push == Vector2.ZERO:
+		return
+	# Only unstick settled piles. Pushing while pathing fights move_and_slide
+	# and keeps crowds thrashing when many units share a choke point.
+	if velocity.length_squared() > STACK_PUSH_MAX_SPEED_SQ:
 		return
 	var step := minf(STACK_PUSH_SPEED * delta, STACK_CLEAR_RADIUS * 0.5)
 	global_position += _last_stack_push * step

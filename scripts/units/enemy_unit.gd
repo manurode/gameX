@@ -1,6 +1,9 @@
 class_name EnemyUnit
 extends Unit
 
+const NightLightIndex = preload("res://scripts/game/night_light_index.gd")
+const PlayerBuildingIndex = preload("res://scripts/game/player_building_index.gd")
+
 const UNIT_AGGRO_RANGE := 180.0
 const VISIBILITY_LINGER := 0.4
 const PRIORITY_BUILDING_TYPES: Array[String] = [
@@ -227,32 +230,7 @@ func _has_enemy_night_vision() -> bool:
 
 
 func _is_lit_by_allies() -> bool:
-	var origin := global_position
-	for node in get_tree().get_nodes_in_group("selectable_units"):
-		if not node is Unit:
-			continue
-		var ally := node as Unit
-		if ally.team_id != Team.PLAYER or not ally.is_night_light_active():
-			continue
-		var radius := ally.get_night_light_radius()
-		if radius <= 0.0:
-			continue
-		if origin.distance_squared_to(ally.get_night_light_origin()) <= radius * radius:
-			return true
-
-	for node in get_tree().get_nodes_in_group("buildings"):
-		if not node is Building:
-			continue
-		var building := node as Building
-		if building.team_id != Team.PLAYER or not building.is_night_light_active():
-			continue
-		var radius := building.get_night_light_radius()
-		if radius <= 0.0:
-			continue
-		if origin.distance_squared_to(building.get_night_light_origin()) <= radius * radius:
-			return true
-
-	return false
+	return NightLightIndex.is_position_lit(get_tree(), global_position)
 
 
 func _set_player_visible(visible: bool) -> void:
@@ -358,13 +336,8 @@ func _find_best_player_building() -> Building:
 	var priorities := RAID_PRIORITY_BUILDING_TYPES if steals_resources else PRIORITY_BUILDING_TYPES
 	var origin := global_position
 
-	for node in get_tree().get_nodes_in_group("buildings"):
-		if not node is Building:
-			continue
-		var building := node as Building
-		if building.team_id != Team.PLAYER or not building.can_be_damaged():
-			continue
-		if building.building_state != Building.BuildingState.ACTIVE:
+	for building in PlayerBuildingIndex.get_targets(get_tree()):
+		if not is_instance_valid(building) or not building.can_be_damaged():
 			continue
 
 		var distance := origin.distance_to(building.global_position)
