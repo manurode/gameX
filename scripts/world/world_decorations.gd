@@ -5,6 +5,9 @@ const TREE_PATHS: Array[String] = [
 	"res://assets/tilesets/mediterranean/Decor/forest_b.png",
 	"res://assets/tilesets/mediterranean/Decor/forest_c.png",
 ]
+const FOREST_A_EMPTY: Texture2D = preload("res://assets/tilesets/mediterranean/Decor/forest_a_empty.png")
+const FOREST_B_EMPTY: Texture2D = preload("res://assets/tilesets/mediterranean/Decor/forest_b_empty.png")
+const FOREST_C_EMPTY: Texture2D = preload("res://assets/tilesets/mediterranean/Decor/forest_c_empty.png")
 const GOLD_VEIN_PATHS: Array[String] = [
 	"res://assets/tilesets/mediterranean/Decor/rocks.png",
 	"res://assets/tilesets/mediterranean/Decor/rocks.png",
@@ -14,6 +17,9 @@ const HILL_PATHS: Array[String] = [
 	"res://assets/tilesets/mediterranean/Decor/mountain_b.png",
 	"res://assets/tilesets/mediterranean/Decor/mountain_c.png",
 ]
+const MOUNTAIN_A_EMPTY: Texture2D = preload("res://assets/tilesets/mediterranean/Decor/mountain_a_empty.png")
+const MOUNTAIN_B_EMPTY: Texture2D = preload("res://assets/tilesets/mediterranean/Decor/mountain_b_empty.png")
+const MOUNTAIN_C_EMPTY: Texture2D = preload("res://assets/tilesets/mediterranean/Decor/mountain_c_empty.png")
 const LAKE_PATHS: Array[String] = [
 	"res://assets/tilesets/mediterranean/Decor/lake_a.png",
 	"res://assets/tilesets/mediterranean/Decor/lake_b.png",
@@ -115,9 +121,14 @@ func _spawn_resources(placements: Array[Dictionary]) -> void:
 		if paths.is_empty():
 			continue
 		var variant := clampi(placement.get("variant", 0), 0, paths.size() - 1)
-		var texture: Texture2D = load(paths[variant])
+		var full_path: String = paths[variant]
+		var texture: Texture2D = load(full_path)
 		if texture == null:
 			continue
+		var empty_path := full_path.replace(".png", "_empty.png")
+		var depleted_texture: Texture2D = _preloaded_empty_for_path(full_path)
+		if depleted_texture == null and ResourceLoader.exists(empty_path):
+			depleted_texture = load(empty_path)
 		var offset := Vector2(0.0, -texture.get_height() * 0.5 + DepthSort.ISO_HALF_TILE)
 		var visual_scale := _visual_scale_for_kind(kind)
 		var node := ResourceNode.new()
@@ -136,6 +147,13 @@ func _spawn_resources(placements: Array[Dictionary]) -> void:
 			visual_scale,
 			sort_bias
 		)
+		node.set_depleted_texture_path(empty_path)
+		if depleted_texture != null:
+			node.set_depleted_texture(depleted_texture)
+		elif kind == "wood" or kind == "gold_mountain":
+			push_error("Missing depleted art for %s (expected %s)" % [kind, empty_path])
+		# Remember spawn kind so deplete never uses the old translucent fade on mountains/forests.
+		node.set_meta("spawn_kind", kind)
 		if kind == "wood":
 			node.pick_radius = FOREST_PICK_RADIUS
 		elif kind == "gold_mountain":
@@ -172,6 +190,24 @@ func _paths_for_kind(kind: String) -> Array[String]:
 		_:
 			var empty: Array[String] = []
 			return empty
+
+
+func _preloaded_empty_for_path(full_path: String) -> Texture2D:
+	match full_path:
+		"res://assets/tilesets/mediterranean/Decor/forest_a.png":
+			return FOREST_A_EMPTY
+		"res://assets/tilesets/mediterranean/Decor/forest_b.png":
+			return FOREST_B_EMPTY
+		"res://assets/tilesets/mediterranean/Decor/forest_c.png":
+			return FOREST_C_EMPTY
+		"res://assets/tilesets/mediterranean/Decor/mountain_a.png":
+			return MOUNTAIN_A_EMPTY
+		"res://assets/tilesets/mediterranean/Decor/mountain_b.png":
+			return MOUNTAIN_B_EMPTY
+		"res://assets/tilesets/mediterranean/Decor/mountain_c.png":
+			return MOUNTAIN_C_EMPTY
+		_:
+			return null
 
 
 func _visual_scale_for_kind(kind: String) -> float:

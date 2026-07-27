@@ -34,6 +34,10 @@ var _selection_indicator: Line2D = null
 var _anchor_position := Vector2.ZERO
 ## Map cells occupied by this mass (forest/mountain footprint). Used for build adjacency.
 var _footprint_cells: Array[Vector2i] = []
+## Cleared/mined-out art shown when amount_remaining hits zero (same canvas as full art).
+var _depleted_texture: Texture2D = null
+## Fallback path so deplete can still resolve empty art if the Texture2D ref was lost.
+var _depleted_texture_path: String = ""
 
 
 func _ready() -> void:
@@ -67,6 +71,16 @@ func setup(
 		add_to_group("occlusion_props")
 	_ensure_amount_bar()
 	_setup_selection_indicator()
+
+
+func set_depleted_texture(texture: Texture2D) -> void:
+	_depleted_texture = texture
+
+
+func set_depleted_texture_path(path: String) -> void:
+	_depleted_texture_path = path
+	if _depleted_texture == null and not path.is_empty() and ResourceLoader.exists(path):
+		_depleted_texture = load(path) as Texture2D
 
 
 ## True when standing deep inside a wood stand (not the outer foliage fringe).
@@ -470,9 +484,63 @@ func _update_field_visual() -> void:
 			sprite.modulate = Color(ratio, ratio, ratio * 0.85, 1.0)
 
 
-func _on_depleted() -> void:
+func _resolve_depleted_texture() -> Texture2D:
+	if _depleted_texture != null:
+		return _depleted_texture
+	if not _depleted_texture_path.is_empty() and ResourceLoader.exists(_depleted_texture_path):
+		_depleted_texture = load(_depleted_texture_path) as Texture2D
+		if _depleted_texture != null:
+			return _depleted_texture
+	# Last resort: derive <name>_empty.png from the live sprite texture path.
 	for sprite in _sprites:
-		sprite.modulate = Color(0.45, 0.45, 0.35, 0.35)
+		if sprite == null or sprite.texture == null:
+			continue
+		var tex_path := sprite.texture.resource_path
+		if tex_path.is_empty() or not tex_path.ends_with(".png"):
+			continue
+		if tex_path.ends_with("_empty.png"):
+			return sprite.texture
+		var empty_path := tex_path.replace(".png", "_empty.png")
+		if ResourceLoader.exists(empty_path):
+			_depleted_texture = load(empty_path) as Texture2D
+			_depleted_texture_path = empty_path
+			if _depleted_texture != null:
+				return _depleted_texture
+	return null
+
+
+func _on_depleted() -> void:
+	var empty := _resolve_depleted_texture()
+	if empty != null:
+		for sprite in _sprites:
+			if sprite == null:
+				continue
+			sprite.texture = empty
+			sprite.modulate = Color(1, 1, 1, 1)
+	else:
+		var spawn_kind := str(get_meta("spawn_kind", ""))
+		var is_large_prop := (
+			spawn_kind == "wood"
+			or spawn_kind == "gold_mountain"
+			or _depleted_texture_path.contains("forest_")
+			or _depleted_texture_path.contains("mountain_")
+		)
+		if is_large_prop:
+			# Never ghost-fade forests/mountains — keeps the bug visible as "still full"
+			# instead of looking like the old translucent deplete.
+			push_error(
+				"Depleted %s without empty texture (path=%s). Keeping full art."
+				% [spawn_kind, _depleted_texture_path]
+			)
+			for sprite in _sprites:
+				if sprite == null:
+					continue
+				sprite.modulate = Color(1, 1, 1, 1)
+		else:
+			for sprite in _sprites:
+				if sprite == null:
+					continue
+				sprite.modulate = Color(0.45, 0.45, 0.35, 0.35)
 	if is_selected:
 		deselect()
 	depleted.emit()
