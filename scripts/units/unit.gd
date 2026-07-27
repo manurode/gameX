@@ -2114,9 +2114,12 @@ func _is_in_attack_range() -> bool:
 			return dist <= range_max
 		match combat_style:
 			CombatStyle.MELEE:
-				return _get_melee_combat_distance() <= melee_range * 1.15
+				if _get_melee_combat_distance() > melee_range * 1.15:
+					return false
 			CombatStyle.RANGED:
-				return dist >= attack_range_min and dist <= attack_range_max
+				if dist < attack_range_min or dist > attack_range_max:
+					return false
+		return not _is_attack_blocked_by_wall(global_position, attack_target.global_position)
 
 	if attack_target_building != null and is_instance_valid(attack_target_building):
 		var building_origin := (
@@ -2134,10 +2137,49 @@ func _is_in_attack_range() -> bool:
 			return building_dist <= range_max
 		match combat_style:
 			CombatStyle.MELEE:
-				return building_dist <= melee_range * 1.35
+				if building_dist > melee_range * 1.35:
+					return false
 			CombatStyle.RANGED:
-				return building_dist >= attack_range_min * 0.85 and building_dist <= attack_range_max
+				if building_dist < attack_range_min * 0.85 or building_dist > attack_range_max:
+					return false
+		# Attacking the muralla itself is always allowed when in range.
+		if attack_target_building.building_type_id == "wall":
+			return true
+		return not _is_attack_blocked_by_wall(
+			global_position, building_origin, attack_target_building
+		)
 	return false
+
+
+## Archers and flying fireball enemies can shoot over murallas; everyone else cannot.
+func _can_attack_through_walls() -> bool:
+	return uses_fireball or unit_type_id == "archer"
+
+
+## True when a muralla sits between two ground points (melee / non-wallshot ranged).
+func _is_attack_blocked_by_wall(
+	from: Vector2,
+	to: Vector2,
+	ignore_building: Building = null
+) -> bool:
+	if _can_attack_through_walls():
+		return false
+	if from.distance_squared_to(to) < 1.0:
+		return false
+	var world := get_world_2d()
+	if world == null:
+		return false
+	var query := PhysicsRayQueryParameters2D.create(from, to)
+	query.collision_mask = 1
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+	if ignore_building != null and is_instance_valid(ignore_building):
+		query.exclude = [ignore_building.get_rid()]
+	var hit := world.direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return false
+	var collider: Object = hit.get("collider")
+	return collider is Building and (collider as Building).building_type_id == "wall"
 
 
 func _get_desired_attack_distance() -> float:
@@ -2260,6 +2302,8 @@ func _deal_attack() -> void:
 		if garrisoned_building != null:
 			_fire_garrison_projectile_at_unit(attack_target)
 			return
+		if _is_attack_blocked_by_wall(global_position, attack_target.global_position):
+			return
 		match combat_style:
 			CombatStyle.MELEE:
 				if _get_melee_combat_distance() <= melee_range * 1.15:
@@ -2271,6 +2315,16 @@ func _deal_attack() -> void:
 	if attack_target_building != null and is_instance_valid(attack_target_building) and attack_target_building.can_be_damaged():
 		if garrisoned_building != null:
 			_fire_garrison_projectile_at_building(attack_target_building)
+			return
+		var building_aim := (
+			attack_target_building.get_melee_attack_point(global_position)
+			if combat_style == CombatStyle.MELEE
+			else attack_target_building.get_closest_surface_point(global_position)
+		)
+		if (
+			attack_target_building.building_type_id != "wall"
+			and _is_attack_blocked_by_wall(global_position, building_aim, attack_target_building)
+		):
 			return
 		match combat_style:
 			CombatStyle.MELEE:
