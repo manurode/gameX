@@ -1581,7 +1581,20 @@ func _process_combat(_delta: float) -> void:
 		_update_terrain_feedback(_delta)
 		return
 
-	# Melee vs unit/building: direct chase toward the nearest attack surface.
+	# Same early-stop idea as group move orders: do not squeeze into a peer's
+	# personal space when already close to our assigned attack slot.
+	var combat_slot := _get_combat_slot_destination()
+	if (
+		combat_slot != Vector2.INF
+		and global_position.distance_to(combat_slot) <= PERSONAL_SPACE_RADIUS * 2.25
+		and _is_adjacent_to_same_team_unit()
+	):
+		velocity = Vector2.ZERO
+		_play_idle_facing_target()
+		_update_terrain_feedback(_delta)
+		return
+
+	# Melee vs unit/building: direct chase toward a personal attack slot.
 	if combat_style == CombatStyle.MELEE and attack_target != null and is_instance_valid(attack_target):
 		_chase_melee_unit_direct(_delta)
 		_update_terrain_feedback(_delta)
@@ -1598,12 +1611,13 @@ func _process_combat(_delta: float) -> void:
 
 
 func _chase_melee_unit_direct(delta: float) -> void:
-	_chase_melee_direct_toward(attack_target.get_sprite_center(), delta)
+	var base := attack_target.get_sprite_center()
+	_chase_melee_direct_toward(_get_attack_slot_point(base), delta)
 
 
 func _chase_melee_building_direct(delta: float) -> void:
-	var target_point := attack_target_building.get_melee_attack_point(global_position)
-	_chase_melee_direct_toward(target_point, delta)
+	var base := attack_target_building.get_melee_attack_point(global_position)
+	_chase_melee_direct_toward(_get_attack_slot_point(base), delta)
 
 
 func _chase_melee_direct_toward(target_point: Vector2, delta: float) -> void:
@@ -1613,13 +1627,64 @@ func _chase_melee_direct_toward(target_point: Vector2, delta: float) -> void:
 func _get_chase_navigation_target() -> Vector2:
 	if attack_target != null and is_instance_valid(attack_target):
 		if combat_style == CombatStyle.MELEE:
-			return attack_target.get_sprite_center()
+			return _get_attack_slot_point(attack_target.get_sprite_center())
 		return _get_chase_standoff_point()
 
 	if attack_target_building != null and is_instance_valid(attack_target_building):
 		return _get_chase_standoff_point()
 
 	return global_position
+
+
+## Spread chase destinations like group-move formation slots so same-team units
+## do not all navigate to one shared pixel (allies and enemies alike).
+func _get_attack_slot_point(base_point: Vector2) -> Vector2:
+	var slot_index := _get_shared_attack_slot_index()
+	if slot_index <= 0:
+		return base_point
+	var offsets := _formation_offsets(slot_index + 1, FORMATION_SLOT_SPACING)
+	return base_point + offsets[slot_index]
+
+
+func _get_shared_attack_slot_index() -> int:
+	var my_id := get_instance_id()
+	var peer_ids: Array[int] = [my_id]
+	var query_radius := maxf(melee_range, PERSONAL_SPACE_RADIUS * 4.0)
+	for item in UnitSpatialIndex.query_nearby(get_tree(), global_position, query_radius):
+		if not item is Unit:
+			continue
+		var other := item as Unit
+		if other == self or other.team_id != team_id or other._is_dying:
+			continue
+		if other.garrisoned_building != null:
+			continue
+		if not _shares_attack_target_with(other):
+			continue
+		peer_ids.append(other.get_instance_id())
+	peer_ids.sort()
+	return peer_ids.find(my_id)
+
+
+func _shares_attack_target_with(other: Unit) -> bool:
+	if attack_target != null and is_instance_valid(attack_target):
+		return other.attack_target == attack_target
+	if attack_target_building != null and is_instance_valid(attack_target_building):
+		return other.attack_target_building == attack_target_building
+	return false
+
+
+func _get_combat_slot_destination() -> Vector2:
+	if attack_target != null and is_instance_valid(attack_target):
+		if combat_style == CombatStyle.MELEE:
+			return _get_attack_slot_point(attack_target.get_sprite_center())
+		return _get_chase_standoff_point()
+	if attack_target_building != null and is_instance_valid(attack_target_building):
+		if combat_style == CombatStyle.MELEE:
+			return _get_attack_slot_point(
+				attack_target_building.get_melee_attack_point(global_position)
+			)
+		return _get_chase_standoff_point()
+	return Vector2.INF
 
 
 func _get_chase_desired_distance() -> float:
@@ -2072,6 +2137,14 @@ func _should_stop_move_order() -> bool:
 
 
 func _is_adjacent_to_other_unit() -> bool:
+	return _is_adjacent_to_unit_matching(false)
+
+
+func _is_adjacent_to_same_team_unit() -> bool:
+	return _is_adjacent_to_unit_matching(true)
+
+
+func _is_adjacent_to_unit_matching(same_team_only: bool) -> bool:
 	var touch_radius := PERSONAL_SPACE_RADIUS * 1.2
 	var touch_distance_sq := touch_radius * touch_radius
 	var origin := global_position
@@ -2080,6 +2153,8 @@ func _is_adjacent_to_other_unit() -> bool:
 			continue
 		var other := item as Unit
 		if other == self or other._is_dying or other.garrisoned_building != null:
+			continue
+		if same_team_only and other.team_id != team_id:
 			continue
 		if origin.distance_squared_to(other.global_position) <= touch_distance_sq:
 			return true
@@ -2207,15 +2282,17 @@ func _get_chase_standoff_point() -> Vector2:
 			elif _is_in_attack_range():
 				return global_position
 
-			return target_pos - dir * desired
+			return _get_attack_slot_point(target_pos - dir * desired)
 
-		return target_pos
+		return _get_attack_slot_point(target_pos)
 
 	if attack_target_building != null and is_instance_valid(attack_target_building):
 		if combat_style == CombatStyle.MELEE:
 			if _is_in_attack_range():
 				return global_position
-			return attack_target_building.get_melee_attack_point(global_position)
+			return _get_attack_slot_point(
+				attack_target_building.get_melee_attack_point(global_position)
+			)
 
 		var building_pos := attack_target_building.get_closest_surface_point(global_position)
 		var building_dir := global_position.direction_to(building_pos)
@@ -2229,7 +2306,7 @@ func _get_chase_standoff_point() -> Vector2:
 			building_desired = attack_range_min * 1.02
 		elif _is_in_attack_range():
 			return global_position
-		return building_pos - building_dir * building_desired
+		return _get_attack_slot_point(building_pos - building_dir * building_desired)
 
 	return global_position
 

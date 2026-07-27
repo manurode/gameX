@@ -295,15 +295,53 @@ func _get_edge_spawn_points(count: int, fog: bool) -> Array[Vector2]:
 	for direction in directions:
 		cells_by_dir[direction] = _filter_directional_cells(edge_cells, town_position, direction)
 
+	# Same personal-space rule as ally building exits / squad spawns.
+	var min_dist := Unit.PERSONAL_SPACE_RADIUS * 2.0
+	var min_dist_sq := min_dist * min_dist
+	var used_cells: Dictionary = {}
+
 	for i in count:
 		var direction: String = directions[i % directions.size()]
 		var directional_cells: Array = cells_by_dir.get(direction, edge_cells)
 		if directional_cells.is_empty():
 			directional_cells = edge_cells
-		var edge_position := _ground.map_to_local(directional_cells[i % directional_cells.size()])
-		var inward := edge_position.direction_to(town_position) * margin
-		points.append(edge_position + inward)
+
+		var placed := false
+		for attempt in directional_cells.size():
+			var cell: Vector2i = directional_cells[(i + attempt) % directional_cells.size()]
+			if used_cells.has(cell):
+				continue
+			var edge_position := _ground.map_to_local(cell)
+			var candidate := edge_position + edge_position.direction_to(town_position) * margin
+			if _is_spawn_point_free(candidate, points, min_dist_sq):
+				used_cells[cell] = true
+				points.append(candidate)
+				placed = true
+				break
+
+		if placed:
+			continue
+
+		# Not enough unique edge cells: ring-offset around an existing spawn
+		# (mirrors Unit._formation_offsets / squad member spacing).
+		var anchor: Vector2
+		if not points.is_empty():
+			anchor = points[i % points.size()]
+		else:
+			var fallback_cell: Vector2i = directional_cells[i % directional_cells.size()]
+			var edge_position := _ground.map_to_local(fallback_cell)
+			anchor = edge_position + edge_position.direction_to(town_position) * margin
+		var overflow_index := points.size()
+		var offsets: Array[Vector2] = Unit._formation_offsets(overflow_index + 1, Unit.FORMATION_SLOT_SPACING)
+		points.append(anchor + offsets[overflow_index])
 	return points
+
+
+func _is_spawn_point_free(candidate: Vector2, existing: Array[Vector2], min_dist_sq: float) -> bool:
+	for point in existing:
+		if candidate.distance_squared_to(point) < min_dist_sq:
+			return false
+	return true
 
 
 func _filter_directional_cells(
