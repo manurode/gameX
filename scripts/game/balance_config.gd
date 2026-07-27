@@ -102,9 +102,23 @@ static func get_wave_base_count(cycle_number: int) -> int:
 
 
 ## Multiplier applied to enemy HP and attack damage for the given night.
+## Beginner difficulty freezes this at 1.0 (no nightly climb).
 static func get_enemy_night_stat_mult(cycle_number: int) -> float:
+	if not GameSettings.enemy_stats_scale_with_night():
+		return 1.0
 	var n := maxi(1, cycle_number)
 	return 1.0 + ENEMY_NIGHT_STAT_GROWTH * float(n - 1)
+
+
+## Soft floor / hard cap for wave size after difficulty mult.
+static func get_wave_count_floor() -> int:
+	var mult := GameSettings.get_enemy_count_mult()
+	return maxi(2, int(round(4.0 * mult)))
+
+
+static func get_wave_count_cap() -> int:
+	var mult := GameSettings.get_enemy_count_mult()
+	return maxi(4, int(round(float(WAVE_COUNT_CAP) * mult)))
 
 
 ## Cumulative fragments for ending a run after surviving `nights_survived` nights.

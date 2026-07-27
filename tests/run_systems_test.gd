@@ -54,12 +54,19 @@ func _test_meta_rewards() -> void:
 	var before: int = meta.fragments
 	var before_best: int = meta.best_nights
 	var before_wins: int = meta.wins
+	var frag_mult: float = GameSettings.get_fragment_reward_mult()
 	var earned: int = meta.award_run_rewards(3, false)
-	assert(earned == BalanceConfig.meta_fragments_for_nights(3))
+	var expected_partial: int = maxi(
+		1, int(round(float(BalanceConfig.meta_fragments_for_nights(3)) * frag_mult))
+	)
+	assert(earned == expected_partial)
 	assert(meta.fragments == before + earned)
 	assert(meta.best_nights == maxi(before_best, 3))
 	var victory_earn: int = meta.award_run_rewards(BalanceConfig.WIN_NIGHTS, true)
-	assert(victory_earn == BalanceConfig.META_FRAGMENT_TARGET_VICTORY)
+	var expected_victory: int = maxi(
+		1, int(round(float(BalanceConfig.META_FRAGMENT_TARGET_VICTORY) * frag_mult))
+	)
+	assert(victory_earn == expected_victory)
 	assert(meta.wins == before_wins + 1)
 	assert(meta.best_nights == maxi(before_best, BalanceConfig.WIN_NIGHTS))
 	# Restore to avoid polluting the user's save during tests.

@@ -33,6 +33,8 @@ var _slots_list: VBoxContainer
 var _shop_list: VBoxContainer
 var _difficulty_button: Button
 var _difficulty_hint: Label
+var _difficulty_modal: Control
+var _difficulty_option_buttons: Dictionary = {}
 var _cta_pulse_t: float = 0.0
 ## Slot currently showing the new-game name editor (-1 = none).
 var _naming_slot: int = -1
@@ -624,7 +626,7 @@ func _build_setup_screen() -> void:
 	opts.add_theme_constant_override("separation", 10)
 	vbox.add_child(opts)
 
-	_difficulty_button = _make_secondary_button("Dificultad: Normal", Vector2(0, 44))
+	_difficulty_button = _make_secondary_button("Dificultad: Avanzado", Vector2(0, 44))
 	_difficulty_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_difficulty_button.pressed.connect(_on_difficulty_pressed)
 	opts.add_child(_difficulty_button)
@@ -644,7 +646,191 @@ func _build_setup_screen() -> void:
 	back.pressed.connect(_on_back_to_slots)
 	vbox.add_child(back)
 
+	_build_difficulty_modal()
+	_refresh_difficulty_button()
 	_refresh_setup_header()
+
+
+func _build_difficulty_modal() -> void:
+	_difficulty_modal = Control.new()
+	_difficulty_modal.name = "DifficultyModal"
+	_difficulty_modal.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_difficulty_modal.visible = false
+	_difficulty_modal.z_index = 10
+	_setup_screen.add_child(_difficulty_modal)
+
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.55)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.gui_input.connect(_on_difficulty_dim_input)
+	_difficulty_modal.add_child(dim)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_difficulty_modal.add_child(center)
+
+	var panel := _make_panel(Vector2(540, 0))
+	center.add_child(panel)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 22)
+	margin.add_theme_constant_override("margin_right", 22)
+	margin.add_theme_constant_override("margin_top", 20)
+	margin.add_theme_constant_override("margin_bottom", 20)
+	panel.add_child(margin)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 12)
+	margin.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "Elige tu noche"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 22)
+	title.add_theme_color_override("font_color", COL_GOLD)
+	vbox.add_child(title)
+
+	var hint := Label.new()
+	hint.text = "Cada dificultad cambia la marea… y lo que la noche te paga."
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.add_theme_font_size_override("font_size", 12)
+	hint.add_theme_color_override("font_color", COL_MUTED)
+	vbox.add_child(hint)
+
+	vbox.add_child(_make_gold_rule(0.0))
+
+	_difficulty_option_buttons.clear()
+	var options := [
+		{
+			"id": GameSettings.Difficulty.BEGINNER,
+			"title": "Principiante",
+			"blurb": "Para recién llegados al valle. Menos sombras en cada oleada, y los enemigos no ganan fuerza noche tras noche. Aprende el ritmo sin que te aplasten.",
+		},
+		{
+			"id": GameSettings.Difficulty.ADVANCED,
+			"title": "Avanzado",
+			"blurb": "Para quien ya domina el pulso de la muralla. Oleadas y dureza como las conoces… pero la noche paga el triple en fragmentos. Domina, y el botín será tuyo.",
+		},
+		{
+			"id": GameSettings.Difficulty.EXPERT,
+			"title": "Experto",
+			"blurb": "Para quien busca retos enormes. El doble de enemigos, la misma escalada letal… y recompensas a ×4. Si caes, que sea con gloria.",
+		},
+	]
+	for opt in options:
+		var row := _make_difficulty_option_row(
+			opt["id"] as GameSettingsData.Difficulty,
+			str(opt["title"]),
+			str(opt["blurb"])
+		)
+		vbox.add_child(row)
+
+	var close_btn := _make_secondary_button("Cerrar", Vector2(0, 40))
+	close_btn.pressed.connect(_hide_difficulty_modal)
+	vbox.add_child(close_btn)
+
+
+func _make_difficulty_option_row(
+	diff: GameSettingsData.Difficulty,
+	title_text: String,
+	blurb_text: String
+) -> PanelContainer:
+	var row := PanelContainer.new()
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.mouse_filter = Control.MOUSE_FILTER_STOP
+	row.add_theme_stylebox_override("panel", _make_inner_row_style())
+	row.gui_input.connect(_on_difficulty_row_input.bind(diff))
+
+	var margin := MarginContainer.new()
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	margin.add_theme_constant_override("margin_left", 12)
+	margin.add_theme_constant_override("margin_right", 12)
+	margin.add_theme_constant_override("margin_top", 10)
+	margin.add_theme_constant_override("margin_bottom", 10)
+	row.add_child(margin)
+
+	var vbox := VBoxContainer.new()
+	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.add_theme_constant_override("separation", 6)
+	margin.add_child(vbox)
+
+	var header := HBoxContainer.new()
+	header.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	header.add_theme_constant_override("separation", 10)
+	vbox.add_child(header)
+
+	var name_lbl := Label.new()
+	name_lbl.text = title_text
+	name_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_lbl.add_theme_font_size_override("font_size", 16)
+	name_lbl.add_theme_color_override("font_color", COL_GOLD_SOFT)
+	header.add_child(name_lbl)
+
+	var pick_btn := _make_secondary_button("Elegir", Vector2(90, 34))
+	pick_btn.pressed.connect(_on_difficulty_chosen.bind(diff))
+	header.add_child(pick_btn)
+	_difficulty_option_buttons[diff] = pick_btn
+
+	var blurb := Label.new()
+	blurb.text = blurb_text
+	blurb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	blurb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	blurb.add_theme_font_size_override("font_size", 12)
+	blurb.add_theme_color_override("font_color", COL_MUTED)
+	vbox.add_child(blurb)
+
+	return row
+
+
+func _on_difficulty_row_input(event: InputEvent, diff: GameSettingsData.Difficulty) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_on_difficulty_chosen(diff)
+
+
+func _refresh_difficulty_button() -> void:
+	if _difficulty_button == null:
+		return
+	_difficulty_button.text = "Dificultad: %s" % GameSettings.get_difficulty_label()
+
+
+func _refresh_difficulty_modal_selection() -> void:
+	for diff in _difficulty_option_buttons.keys():
+		var btn: Button = _difficulty_option_buttons[diff]
+		var selected: bool = int(diff) == int(GameSettings.difficulty)
+		btn.text = "Elegida" if selected else "Elegir"
+		btn.disabled = selected
+		_style_button(btn, selected, false)
+		btn.add_theme_font_size_override("font_size", 14)
+		if selected:
+			btn.add_theme_color_override("font_color", COL_GOLD)
+			btn.add_theme_color_override("font_disabled_color", COL_GOLD)
+		else:
+			btn.add_theme_color_override("font_color", COL_CREAM)
+
+
+func _show_difficulty_modal() -> void:
+	_refresh_difficulty_modal_selection()
+	if _difficulty_modal != null:
+		_difficulty_modal.visible = true
+
+
+func _hide_difficulty_modal() -> void:
+	if _difficulty_modal != null:
+		_difficulty_modal.visible = false
+
+
+func _on_difficulty_dim_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_hide_difficulty_modal()
+
+
+func _on_difficulty_chosen(diff: GameSettingsData.Difficulty) -> void:
+	GameSettings.difficulty = diff
+	_refresh_difficulty_button()
+	_difficulty_hint.text = ""
+	_hide_difficulty_modal()
 
 
 # ---------------------------------------------------------------------------
@@ -740,7 +926,9 @@ func _show_screen(screen: Screen) -> void:
 		_refresh_slots_list()
 	if screen == Screen.SETUP:
 		_refresh_setup_header()
+		_refresh_difficulty_button()
 		_difficulty_hint.text = ""
+		_hide_difficulty_modal()
 	if screen == Screen.UPGRADES:
 		_refresh_shop()
 
@@ -777,7 +965,7 @@ func _on_upgrades_dim_input(event: InputEvent) -> void:
 
 
 func _on_difficulty_pressed() -> void:
-	_difficulty_hint.text = "Próximamente — la dificultad aún no está disponible."
+	_show_difficulty_modal()
 
 
 func _on_start_pressed() -> void:

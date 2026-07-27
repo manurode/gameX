@@ -2,6 +2,7 @@ class_name GameSettingsData
 extends Node
 
 enum MapSizePreset { LARGE, MEDIUM, SMALL }
+enum Difficulty { BEGINNER, ADVANCED, EXPERT }
 
 const MAP_SIZE_LARGE := Vector2i(64, 64)
 const MAP_SIZE_MEDIUM := Vector2i(32, 32)
@@ -11,6 +12,8 @@ const MAP_SIZE_SMALL := Vector2i(16, 16)
 const EDITOR_PLAY_SIZE := Vector2i(1280, 720)
 
 var map_size_preset: MapSizePreset = MapSizePreset.MEDIUM
+## Combat baseline matches ADVANCED; BEGINNER eases waves, EXPERT doubles them.
+var difficulty: Difficulty = Difficulty.ADVANCED
 
 
 func _ready() -> void:
@@ -69,3 +72,40 @@ func get_preset_label(preset: MapSizePreset) -> String:
 			return "Pequeño (16×16)"
 		_:
 			return "Grande (64×64)"
+
+
+func get_difficulty_label(diff: Difficulty = difficulty) -> String:
+	match diff:
+		Difficulty.BEGINNER:
+			return "Principiante"
+		Difficulty.EXPERT:
+			return "Experto"
+		_:
+			return "Avanzado"
+
+
+## Wave size multiplier applied after base count + army pressure.
+func get_enemy_count_mult(diff: Difficulty = difficulty) -> float:
+	match diff:
+		Difficulty.BEGINNER:
+			return 0.5
+		Difficulty.EXPERT:
+			return 2.0
+		_:
+			return 1.0
+
+
+## When false, enemies keep base HP/damage every night (no +4%/night climb).
+func enemy_stats_scale_with_night(diff: Difficulty = difficulty) -> bool:
+	return diff != Difficulty.BEGINNER
+
+
+## Meta-fragment payout multiplier at end of run.
+func get_fragment_reward_mult(diff: Difficulty = difficulty) -> float:
+	match diff:
+		Difficulty.ADVANCED:
+			return 3.0
+		Difficulty.EXPERT:
+			return 4.0
+		_:
+			return 1.0

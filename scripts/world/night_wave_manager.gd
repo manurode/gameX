@@ -156,10 +156,13 @@ func _format_direction_text(primary: String, secondary: String) -> String:
 func _compute_enemy_count(modifier: NightModifier.Id) -> int:
 	var def := NightModifier.get_definition(modifier)
 	var base_count := _get_wave_size()
-	var count := maxi(4, int(round(float(base_count) * float(def.get("count_mult", 1.0)))))
+	var floor_count := BalanceConfig.get_wave_count_floor()
+	var count := maxi(floor_count, int(round(float(base_count) * float(def.get("count_mult", 1.0)))))
 	if modifier == NightModifier.Id.ELITE:
-		count += maxi(1, mini(6, 1 + _day_night.cycle_number / 3))
-	return count
+		var elite_extras := maxi(1, mini(6, 1 + _day_night.cycle_number / 3))
+		elite_extras = maxi(1, int(round(float(elite_extras) * GameSettings.get_enemy_count_mult())))
+		count += elite_extras
+	return mini(count, BalanceConfig.get_wave_count_cap())
 
 
 func _try_emit_foresight() -> void:
@@ -194,13 +197,15 @@ func _spawn_wave() -> void:
 		count = _compute_enemy_count(_current_modifier)
 
 	# Elite nights bake bonus elites into the planned total; peel them off to spawn separately.
+	var floor_count := BalanceConfig.get_wave_count_floor()
 	var elite_extras := 0
 	if _current_modifier == NightModifier.Id.ELITE:
 		elite_extras = maxi(1, mini(6, 1 + _day_night.cycle_number / 3))
-		count = maxi(4, count - elite_extras)
+		elite_extras = maxi(1, int(round(float(elite_extras) * GameSettings.get_enemy_count_mult())))
+		count = maxi(floor_count, count - elite_extras)
 
 	if def.get("continuous_spawn", false):
-		var initial := maxi(4, int(count * 0.45))
+		var initial := maxi(floor_count, int(count * 0.45))
 		_continuous_remaining = count - initial
 		_continuous_timer = CONTINUOUS_SPAWN_INTERVAL
 		_continuous_def = def
@@ -264,7 +269,8 @@ func _get_wave_size() -> int:
 	# Exponential night climb; army pressure still adds a little pressure on top.
 	var count := BalanceConfig.get_wave_base_count(_day_night.cycle_number)
 	count += floori(float(military_count) / 3.0)
-	return clampi(count, 4, BalanceConfig.WAVE_COUNT_CAP)
+	count = int(round(float(count) * GameSettings.get_enemy_count_mult()))
+	return clampi(count, BalanceConfig.get_wave_count_floor(), BalanceConfig.get_wave_count_cap())
 
 
 func _despawn_all() -> void:

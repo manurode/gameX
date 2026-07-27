@@ -408,6 +408,7 @@ func award_run_rewards(nights_survived: int, victory: bool) -> int:
 		# Still persist records even when the run yields no fragments.
 		save()
 		return 0
+	reward = maxi(1, int(round(float(reward) * GameSettings.get_fragment_reward_mult())))
 	fragments += reward
 	save()
 	fragments_changed.emit(fragments)
