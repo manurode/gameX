@@ -348,6 +348,7 @@ func setup(
 
 	if _day_night_manager != null:
 		_day_night_manager.cycle_changed.connect(_on_cycle_changed)
+		_day_night_manager.cycle_started.connect(_on_cycle_started)
 		_day_night_manager.phase_time_changed.connect(_on_phase_time_changed)
 		_update_cycle_ui(_day_night_manager.current_phase)
 		_update_help_for_cycle()
@@ -1109,6 +1110,12 @@ func _on_cycle_changed(phase: DayNightManager.CyclePhase) -> void:
 	if _build_manager != null and _build_manager.build_mode_active:
 		return
 	_update_help_for_cycle()
+
+
+func _on_cycle_started(cycle_number: int) -> void:
+	if cycle_number != BalanceConfig.WIN_NIGHTS:
+		return
+	_show_banner("Última noche — Prepárate para la batalla final", 5.5)
 
 
 func _update_cycle_ui(phase: DayNightManager.CyclePhase, force: bool = false) -> void:
