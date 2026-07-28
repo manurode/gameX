@@ -9,6 +9,9 @@ static var _image_cache: Dictionary = {}  # RID -> Image
 static var _opaque_sample_cache: Dictionary = {}  # String -> PackedVector2Array of texels
 ## Building textures: L8 mask where white = real structure that can hide units.
 static var _structure_mask_cache: Dictionary = {}  # RID -> Image
+## Fast 0/1 bytes for structure occlusion sampling (RID -> PackedByteArray).
+static var _structure_bytes_cache: Dictionary = {}
+static var _structure_size_cache: Dictionary = {}  # RID -> Vector2i
 
 
 static func get_texture_image(texture: Texture2D) -> Image:
@@ -34,13 +37,36 @@ static func get_structure_occlusion_mask(texture: Texture2D) -> Image:
 	var key := texture.get_rid()
 	if _structure_mask_cache.has(key):
 		return _structure_mask_cache[key]
+	_ensure_structure_bytes(texture)
+	return _structure_mask_cache.get(key)
+
+
+static func structure_occludes_texel(texture: Texture2D, x: int, y: int) -> bool:
+	if texture == null or x < 0 or y < 0:
+		return false
+	_ensure_structure_bytes(texture)
+	var key := texture.get_rid()
+	if not _structure_bytes_cache.has(key):
+		return false
+	var size: Vector2i = _structure_size_cache[key]
+	if x >= size.x or y >= size.y:
+		return false
+	return (_structure_bytes_cache[key] as PackedByteArray)[y * size.x + x] != 0
+
+
+static func _ensure_structure_bytes(texture: Texture2D) -> void:
+	if texture == null:
+		return
+	var key := texture.get_rid()
+	if _structure_bytes_cache.has(key):
+		return
 	var src := get_texture_image(texture)
 	if src == null:
-		return null
-	var mask := _build_structure_occlusion_mask(src)
-	_structure_mask_cache[key] = mask
-	return mask
-
+		return
+	var built := _build_structure_occlusion_bytes(src)
+	_structure_bytes_cache[key] = built.bytes
+	_structure_size_cache[key] = built.size
+	_structure_mask_cache[key] = built.image
 
 static func sprite_texel_coords(sprite: Sprite2D, world_pos: Vector2) -> Vector2i:
 	if sprite == null or sprite.texture == null:
@@ -242,7 +268,7 @@ static func _is_groundish_plot_pixel(color: Color, tex_y: int, height: int) -> b
 	return false
 
 
-static func _build_structure_occlusion_mask(src: Image) -> Image:
+static func _build_structure_occlusion_bytes(src: Image) -> Dictionary:
 	var width := src.get_width()
 	var height := src.get_height()
 	var ground: PackedByteArray = PackedByteArray()
@@ -251,9 +277,14 @@ static func _build_structure_occlusion_mask(src: Image) -> Image:
 	var queue: Array[Vector2i] = []
 	var y0 := int(float(height) * 0.35)
 	var seed_bottom := int(float(height) * 0.70)
+
+	# Prefer raw RGBA bytes when available (much faster than get_pixel per texel).
+	var use_raw := src.get_format() == Image.FORMAT_RGBA8
+	var raw := src.get_data() if use_raw else PackedByteArray()
+
 	for y in range(y0, height):
 		for x in range(width):
-			var color := src.get_pixel(x, y)
+			var color := _pixel_at(src, raw, use_raw, x, y, width)
 			if is_building_plot_pixel_color(color) or (
 				y > seed_bottom and _is_groundish_plot_pixel(color, y, height)
 			):
@@ -274,7 +305,7 @@ static func _build_structure_occlusion_mask(src: Image) -> Image:
 				var idx := ny * width + nx
 				if ground[idx] != 0:
 					continue
-				var ncolor := src.get_pixel(nx, ny)
+				var ncolor := _pixel_at(src, raw, use_raw, nx, ny, width)
 				if _is_groundish_plot_pixel(ncolor, ny, height):
 					ground[idx] = 1
 					queue.append(Vector2i(nx, ny))
@@ -285,20 +316,47 @@ static func _build_structure_occlusion_mask(src: Image) -> Image:
 			var idx := y * width + x
 			if ground[idx] == 0:
 				continue
-			if not is_building_plot_pixel_color(src.get_pixel(x, y)):
+			if not is_building_plot_pixel_color(_pixel_at(src, raw, use_raw, x, y, width)):
 				ground[idx] = 0
+
+	var bytes := PackedByteArray()
+	bytes.resize(width * height)
 	var mask := Image.create(width, height, false, Image.FORMAT_L8)
 	mask.fill(Color(1, 1, 1, 1))
 	for y in range(height):
 		for x in range(width):
-			var color := src.get_pixel(x, y)
-			if color.a < ALPHA_THRESHOLD:
-				mask.set_pixel(x, y, Color(0, 0, 0, 1))
-			elif ground[y * width + x] != 0:
+			var color := _pixel_at(src, raw, use_raw, x, y, width)
+			var idx := y * width + x
+			if color.a < ALPHA_THRESHOLD or ground[idx] != 0:
+				bytes[idx] = 0
 				mask.set_pixel(x, y, Color(0, 0, 0, 1))
 			else:
+				bytes[idx] = 1
 				mask.set_pixel(x, y, Color(1, 1, 1, 1))
-	return mask
+	return {"bytes": bytes, "size": Vector2i(width, height), "image": mask}
+
+
+static func _pixel_at(
+	src: Image,
+	raw: PackedByteArray,
+	use_raw: bool,
+	x: int,
+	y: int,
+	width: int
+) -> Color:
+	if use_raw:
+		var i := (y * width + x) * 4
+		return Color(
+			float(raw[i]) / 255.0,
+			float(raw[i + 1]) / 255.0,
+			float(raw[i + 2]) / 255.0,
+			float(raw[i + 3]) / 255.0
+		)
+	return src.get_pixel(x, y)
+
+
+static func _build_structure_occlusion_mask(src: Image) -> Image:
+	return _build_structure_occlusion_bytes(src).image
 
 
 ## Opaque occluder pixel that should hide a unit (optional: ignore building plot decor).
@@ -308,19 +366,17 @@ static func sprite_occludes_at(
 	threshold: float = ALPHA_THRESHOLD,
 	structure_only: bool = false
 ) -> bool:
-	if not sprite_opaque_at(sprite, world_pos, threshold):
-		return false
-	if not structure_only:
-		return true
 	var texel := sprite_texel_coords(sprite, world_pos)
 	if texel.x < 0:
 		return false
-	var mask := get_structure_occlusion_mask(sprite.texture)
-	if mask != null:
-		return mask.get_pixel(texel.x, texel.y).r >= 0.5
-	# Fallback if mask build failed: color heuristic only.
-	return not is_building_plot_pixel_color(sprite_color_at(sprite, world_pos))
-
+	var image := get_texture_image(sprite.texture)
+	if image == null:
+		return false
+	if image.get_pixel(texel.x, texel.y).a < threshold:
+		return false
+	if not structure_only:
+		return true
+	return structure_occludes_texel(sprite.texture, texel.x, texel.y)
 
 static func any_sprite_opaque_at(sprites: Array, world_pos: Vector2, threshold: float = ALPHA_THRESHOLD) -> bool:
 	for item in sprites:

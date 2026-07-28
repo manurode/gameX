@@ -69,6 +69,7 @@ var _block_center_local := Vector2.ZERO
 var _block_half_size := Vector2.ZERO
 ## Local placement outline (full plot, including walkable farm for mills).
 var _placement_outline_local := PackedVector2Array()
+var _outline_cache_key := ""
 var _wall_vertical: bool = false
 var _gate_open: bool = false
 var _gate_check_timer: float = 0.0
@@ -372,6 +373,7 @@ func notify_world_placed() -> void:
 		_anchor_position = global_position
 		_depth_ready = true
 	_sync_depth_from_anchor()
+	OcclusionPropIndex.invalidate()
 	# Only ACTIVE buildings carve nav; unfinished sites stay walkable.
 	if building_state == BuildingState.ACTIVE and blocks_navigation:
 		_request_nav_rebuild()
@@ -635,12 +637,22 @@ func _setup_collision() -> void:
 
 ## Builds local walk-block + placement outlines from plot / structure art.
 func _rebuild_ground_outlines() -> void:
+	if is_wall_segment():
+		_block_outline_local = PackedVector2Array()
+		_placement_outline_local = PackedVector2Array()
+		_block_center_local = Vector2.ZERO
+		_block_half_size = Vector2.ZERO
+		_outline_cache_key = ""
+		return
+
+	var cache_key := "%s|%.4f|%.3f" % [building_type_id, _visual_scale, _sort_dy]
+	if cache_key == _outline_cache_key and _block_outline_local.size() >= 3:
+		return
+
 	_block_outline_local = PackedVector2Array()
 	_placement_outline_local = PackedVector2Array()
 	_block_center_local = Vector2.ZERO
 	_block_half_size = Vector2.ZERO
-	if is_wall_segment():
-		return
 
 	var texture_path: String = _definition.get("texture", "")
 	var plot_tex := BuildingFootprint.load_plot_texture(texture_path)
@@ -684,6 +696,7 @@ func _rebuild_ground_outlines() -> void:
 			maxf(_block_half_size.x / 0.42, 24.0),
 			maxf(_block_half_size.y / 0.42, 16.0)
 		)
+	_outline_cache_key = cache_key
 
 
 func _get_collision_body_size() -> Vector2:
@@ -1795,6 +1808,7 @@ func _destroy() -> void:
 
 	destroyed.emit()
 	_request_nav_rebuild()
+	OcclusionPropIndex.invalidate()
 	queue_free()
 
 

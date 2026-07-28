@@ -9,9 +9,9 @@ extends Node
 ## unit is inside a forest stand. Building grass/plot pixels do not count — only the
 ## real structure (walls, roof, wood). Leaf-fringe / edge touches do not count.
 
-const OCCLUDER_REFRESH_INTERVAL := 0.12
+const OCCLUDER_REFRESH_INTERVAL := 0.18
 const SILHOUETTE_COLOR := Color(0.12, 0.28, 0.48, 0.82)
-const SAMPLE_STEP := 4
+const SAMPLE_STEP := 6
 ## Ignore tiny fringe overlaps (single leaves at the forest edge).
 const MIN_COVER_RATIO := 0.16
 ## Leafy forest stands rarely hit 16% opaque cover even when the unit is under canopy.
@@ -19,6 +19,8 @@ const MIN_COVER_RATIO_SPARSE := 0.05
 const DEFAULT_OCCLUSION_CULL_RADIUS := 220.0
 const SHADER_PATH := "res://shaders/unit_occlusion_silhouette.gdshader"
 const VIEWPORT_MARGIN := 96.0
+## Only re-check pixels after moving this far (world px).
+const MOVE_DIRTY_DISTANCE_SQ := 16.0
 
 static var _shared_material: ShaderMaterial
 
@@ -123,7 +125,7 @@ func _process(delta: float) -> void:
 		_occlusion_dirty = true
 
 	var pos := _unit.global_position
-	if pos.distance_squared_to(_last_check_pos) > 4.0:
+	if pos.distance_squared_to(_last_check_pos) > MOVE_DIRTY_DISTANCE_SQ:
 		_last_check_pos = pos
 		_occlusion_dirty = true
 
@@ -131,12 +133,19 @@ func _process(delta: float) -> void:
 		_set_occluded(false)
 		return
 
-	_sync_sprite_from_unit()
+	# Only mirror the overlay while it is visible (or about to be sampled).
+	if _occluded:
+		_sync_sprite_from_unit()
 
 	_sample_budget_timer -= delta
 	if _occlusion_dirty and _sample_budget_timer <= 0.0:
+		if not OcclusionSampleBudget.try_acquire():
+			# Keep prior silhouette state; try again next frame if still dirty.
+			return
 		_sample_budget_timer = OCCLUDER_REFRESH_INTERVAL
 		_update_occlusion_if_needed()
+		if _occluded:
+			_sync_sprite_from_unit()
 
 
 func _is_unit_roughly_on_screen() -> bool:
@@ -274,12 +283,15 @@ func _collect_overlapping_front_occluders(unit_rect: Rect2) -> Dictionary:
 	var sparse := false
 	var unit_y := DepthSort.sort_y(_unit)
 	var unit_pos := _unit.global_position
-	for node in _unit.get_tree().get_nodes_in_group("occlusion_props"):
+	var candidates := OcclusionPropIndex.query_nearby(
+		_unit.get_tree(),
+		unit_pos,
+		OcclusionPropIndex.DEFAULT_QUERY_RADIUS
+	)
+	for node in candidates:
 		if not is_instance_valid(node) or not (node is Node2D):
 			continue
 		var occluder := node as Node2D
-		if not occluder.has_method("get_occlusion_sprites"):
-			continue
 		# Match Godot Y-sort key (may be position-shifted for tall props).
 		var draws_in_front := DepthSort.sort_y(occluder) > unit_y
 		var forest_interior := false
@@ -287,9 +299,10 @@ func _collect_overlapping_front_occluders(unit_rect: Rect2) -> Dictionary:
 			forest_interior = bool(occluder.call("is_forest_interior", unit_pos))
 		if not draws_in_front and not forest_interior:
 			continue
-		# Cheap distance reject before expensive sprite work (scale to large forests).
 		var cull_r := _occlusion_cull_radius(occluder)
 		if occluder.global_position.distance_squared_to(unit_pos) > cull_r * cull_r:
+			continue
+		if not occluder.has_method("get_occlusion_sprites"):
 			continue
 		var sprites: Array = occluder.call("get_occlusion_sprites")
 		var structure_only := (
