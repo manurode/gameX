@@ -63,6 +63,12 @@ var _active_attackers: int = 0
 var _definition: Dictionary = {}
 var _visual_scale: float = 1.0
 var _footprint := Vector2(70.0, 45.0)
+## Local walk-block outline (plot / tower). Empty → diamond fallback from _footprint.
+var _block_outline_local := PackedVector2Array()
+var _block_center_local := Vector2.ZERO
+var _block_half_size := Vector2.ZERO
+## Local placement outline (full plot, including walkable farm for mills).
+var _placement_outline_local := PackedVector2Array()
 var _wall_vertical: bool = false
 var _gate_open: bool = false
 var _gate_check_timer: float = 0.0
@@ -591,6 +597,10 @@ func _setup_collision() -> void:
 	if collision_shape == null:
 		return
 	if is_wall_segment():
+		_block_outline_local = PackedVector2Array()
+		_placement_outline_local = PackedVector2Array()
+		_block_center_local = Vector2.ZERO
+		_block_half_size = Vector2.ZERO
 		var shape := RectangleShape2D.new()
 		shape.size = _get_collision_body_size()
 		collision_shape.shape = shape
@@ -598,21 +608,82 @@ func _setup_collision() -> void:
 		# Align the box with the painted iso diagonal so segments meet end-to-end.
 		collision_shape.rotation = WallTexture.get_axis_direction(_wall_vertical).angle()
 	else:
-		# Iso diamond matching the visual ground footprint (avoids AABB corner ghosts).
+		_rebuild_ground_outlines()
 		var convex := ConvexPolygonShape2D.new()
-		var half := get_interaction_half_size()
-		convex.points = PackedVector2Array([
-			Vector2(0.0, -half.y),
-			Vector2(half.x, 0.0),
-			Vector2(0.0, half.y),
-			Vector2(-half.x, 0.0),
-		])
+		if _block_outline_local.size() >= 3:
+			# Plot-aligned polygon in building-local space (matches painted ground plan).
+			convex.points = _block_outline_local
+			collision_shape.position = Vector2.ZERO
+		else:
+			# Iso diamond fallback from DB footprint.
+			var half := get_interaction_half_size()
+			convex.points = PackedVector2Array([
+				Vector2(0.0, -half.y),
+				Vector2(half.x, 0.0),
+				Vector2(0.0, half.y),
+				Vector2(-half.x, 0.0),
+			])
+			collision_shape.position = get_collision_center() - global_position
 		collision_shape.shape = convex
-		collision_shape.position = get_collision_center() - global_position
 		collision_shape.rotation = 0.0
 	# Unfinished buildings stay walkable; collision only once ACTIVE (and closed for gates).
 	var solid := building_state == BuildingState.ACTIVE and not _gate_open
 	set_collision_layer_value(1, solid)
+	if selection_indicator != null:
+		_setup_selection_indicator()
+
+
+## Builds local walk-block + placement outlines from plot / structure art.
+func _rebuild_ground_outlines() -> void:
+	_block_outline_local = PackedVector2Array()
+	_placement_outline_local = PackedVector2Array()
+	_block_center_local = Vector2.ZERO
+	_block_half_size = Vector2.ZERO
+	if is_wall_segment():
+		return
+
+	var texture_path: String = _definition.get("texture", "")
+	var plot_tex := BuildingFootprint.load_plot_texture(texture_path)
+	var complete_tex: Texture2D = null
+	if not texture_path.is_empty() and ResourceLoader.exists(texture_path):
+		complete_tex = load(texture_path) as Texture2D
+
+	# Placement always prefers the full painted plot (reserves the whole planta).
+	if plot_tex != null:
+		var place_tex := BuildingFootprint.get_tex_local_outline(plot_tex, "opaque")
+		_placement_outline_local = BuildingFootprint.to_building_local(
+			place_tex, plot_tex, _visual_scale, _plant_unscaled(), _sort_dy
+		)
+
+	# Walk-block: mill keeps the farm walkable; others use the plot planta.
+	var block_tex: Texture2D = plot_tex
+	var block_mode := "opaque"
+	if building_type_id == "mill":
+		block_tex = complete_tex if complete_tex != null else plot_tex
+		block_mode = "mill_tower"
+	elif plot_tex == null:
+		block_tex = complete_tex
+		block_mode = "bottom_band"
+
+	if block_tex != null:
+		var block_tex_local := BuildingFootprint.get_tex_local_outline(block_tex, block_mode)
+		_block_outline_local = BuildingFootprint.to_building_local(
+			block_tex_local, block_tex, _visual_scale, _plant_unscaled(), _sort_dy
+		)
+
+	if _placement_outline_local.is_empty() and not _block_outline_local.is_empty():
+		_placement_outline_local = _block_outline_local
+
+	if _block_outline_local.size() >= 3:
+		_block_center_local = BuildingFootprint.polygon_center(_block_outline_local)
+		_block_half_size = BuildingFootprint.polygon_half_extents(
+			_block_outline_local, _block_center_local
+		)
+		# Keep DB footprint in sync for spawn / approach radius helpers.
+		_footprint = Vector2(
+			maxf(_block_half_size.x / 0.42, 24.0),
+			maxf(_block_half_size.y / 0.42, 16.0)
+		)
 
 
 func _get_collision_body_size() -> Vector2:
@@ -1029,8 +1100,11 @@ func get_collision_half_size() -> Vector2:
 
 
 func get_interaction_center() -> Vector2:
-	var center_y := WALL_COLLISION_CENTER_Y if is_wall_segment() else 0.2
-	return get_anchor_position() + Vector2(0.0, -_footprint.y * center_y)
+	if is_wall_segment():
+		return get_anchor_position() + Vector2(0.0, -_footprint.y * WALL_COLLISION_CENTER_Y)
+	if _block_outline_local.size() >= 3:
+		return global_position + _block_center_local
+	return get_anchor_position() + Vector2(0.0, -_footprint.y * 0.2)
 
 
 func get_interaction_half_size() -> Vector2:
@@ -1040,6 +1114,8 @@ func get_interaction_half_size() -> Vector2:
 			WallTexture.get_block_half_length(),
 			WallTexture.get_block_half_thickness()
 		)
+	if _block_half_size != Vector2.ZERO:
+		return _block_half_size
 	return _footprint * 0.42
 
 
@@ -1090,9 +1166,10 @@ func _setup_selection_indicator() -> void:
 		return
 	var points := PackedVector2Array()
 	const SEGMENTS := 48
-	# Scale with building size and pad past the opaque sprite so the ring stays visible.
-	var radius_x := maxf(maxf(_footprint.x * 0.72, pick_half_size.x * 0.62), 40.0)
-	var radius_y := maxf(maxf(_footprint.y * 0.58, pick_half_size.x * 0.30), 18.0)
+	# Scale with the solid ground plan when known; else DB footprint / sprite AABB.
+	var ground_half := _block_half_size if _block_half_size != Vector2.ZERO else _footprint * 0.42
+	var radius_x := maxf(maxf(ground_half.x * 1.15, pick_half_size.x * 0.55), 40.0)
+	var radius_y := maxf(maxf(ground_half.y * 1.05, pick_half_size.x * 0.28), 18.0)
 	if is_wall_segment():
 		radius_x = maxf(_footprint.x * 0.62, 24.0)
 		radius_y = maxf(_footprint.y * 0.50, 14.0)
@@ -1163,6 +1240,8 @@ func get_footprint() -> Vector2:
 
 
 func get_base_center() -> Vector2:
+	if not is_wall_segment() and _block_outline_local.size() >= 3:
+		return get_interaction_center()
 	return get_anchor_position() + Vector2(0.0, -_footprint.y * 0.2)
 
 
@@ -1617,6 +1696,10 @@ func _update_construction_visual() -> void:
 func get_ground_footprint_polygon() -> PackedVector2Array:
 	if is_wall_segment():
 		return WallTexture.get_ground_outline(get_anchor_position(), _wall_vertical)
+	if _placement_outline_local.size() >= 3:
+		return _outline_to_world(_placement_outline_local)
+	if _block_outline_local.size() >= 3:
+		return _outline_to_world(_block_outline_local)
 	var center := get_interaction_center()
 	var half := _footprint * 0.42
 	return PackedVector2Array([
@@ -1640,6 +1723,9 @@ func get_nav_block_outline() -> PackedVector2Array:
 	if is_wall_segment():
 		return WallTexture.get_block_outline(get_collision_center(), _wall_vertical)
 
+	if _block_outline_local.size() >= 3:
+		return _outline_to_world(_block_outline_local)
+
 	var center := get_interaction_center()
 	var half := get_interaction_half_size()
 	return PackedVector2Array([
@@ -1649,6 +1735,13 @@ func get_nav_block_outline() -> PackedVector2Array:
 		center + Vector2(-half.x, 0.0),
 	])
 
+
+func _outline_to_world(local_outline: PackedVector2Array) -> PackedVector2Array:
+	var world := PackedVector2Array()
+	world.resize(local_outline.size())
+	for i in local_outline.size():
+		world[i] = global_position + local_outline[i]
+	return world
 
 func _destroy() -> void:
 	building_state = BuildingState.DESTROYED
