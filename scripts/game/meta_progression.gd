@@ -615,12 +615,9 @@ func get_unlocked_upgrade_names() -> Array[String]:
 	return names
 
 
-func get_run_start_unlocks_banner_text() -> String:
-	var lines: PackedStringArray = []
+func get_unlocked_upgrade_descriptions() -> Array[String]:
+	var descriptions: Array[String] = []
 	for id in UNLOCKS:
-		if not is_unlocked(id):
-			continue
-		lines.append("• %s" % str(UNLOCKS[id].get("name", id)))
-	if lines.is_empty():
-		return ""
-	return "Mejoras activas en esta partida:\n%s" % "\n".join(lines)
+		if is_unlocked(id):
+			descriptions.append(str(UNLOCKS[id].get("description", "")))
+	return descriptions

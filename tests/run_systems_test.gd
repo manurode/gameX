@@ -111,7 +111,7 @@ func _test_meta_upgrade_application() -> void:
 	var lumber_workers := BuildingDatabase.get_max_workers("lumber_camp")
 	assert(lumber_workers == 4)
 
-	var banner := meta.get_run_start_unlocks_banner_text()
-	assert(banner.contains("Herramientas mejores"))
-	assert(banner.contains("Maestría recolectora"))
+	var descriptions := meta.get_unlocked_upgrade_descriptions()
+	assert(descriptions.has("Recolección permanente +5%."))
+	assert(descriptions.has("Recolección permanente +10% adicional."))
 	meta.unlocked = saved_unlocked

@@ -31,6 +31,8 @@ var _fragments_label: Label
 var _record_label: Label
 var _slots_list: VBoxContainer
 var _shop_list: VBoxContainer
+var _setup_unlocks_section: VBoxContainer
+var _setup_unlocks_list: VBoxContainer
 var _difficulty_button: Button
 var _difficulty_hint: Label
 var _difficulty_modal: Control
@@ -614,6 +616,26 @@ func _build_setup_screen() -> void:
 
 	vbox.add_child(_make_gold_rule(0.0))
 
+	_setup_unlocks_section = VBoxContainer.new()
+	_setup_unlocks_section.add_theme_constant_override("separation", 6)
+	_setup_unlocks_section.visible = false
+	vbox.add_child(_setup_unlocks_section)
+
+	var unlocks_title := _make_section_label("Mejoras activas")
+	unlocks_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_setup_unlocks_section.add_child(unlocks_title)
+
+	var unlocks_scroll := ScrollContainer.new()
+	unlocks_scroll.custom_minimum_size = Vector2(0, 120)
+	unlocks_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	unlocks_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_setup_unlocks_section.add_child(unlocks_scroll)
+
+	_setup_unlocks_list = VBoxContainer.new()
+	_setup_unlocks_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_setup_unlocks_list.add_theme_constant_override("separation", 4)
+	unlocks_scroll.add_child(_setup_unlocks_list)
+
 	var start_btn := _make_primary_button("Empezar", Vector2(0, 52))
 	start_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	start_btn.pressed.connect(_on_start_pressed)
@@ -990,6 +1012,26 @@ func _refresh_setup_header() -> void:
 	_refresh_save_name_label()
 	_refresh_fragments_label()
 	_refresh_record_label()
+	_refresh_setup_unlocks()
+
+
+func _refresh_setup_unlocks() -> void:
+	if _setup_unlocks_list == null:
+		return
+	for child in _setup_unlocks_list.get_children():
+		child.queue_free()
+
+	var descriptions := MetaProgression.get_unlocked_upgrade_descriptions()
+	if _setup_unlocks_section != null:
+		_setup_unlocks_section.visible = not descriptions.is_empty()
+
+	for description in descriptions:
+		var line := Label.new()
+		line.text = "• %s" % description
+		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		line.add_theme_font_size_override("font_size", 12)
+		line.add_theme_color_override("font_color", COL_CREAM)
+		_setup_unlocks_list.add_child(line)
 
 
 func _refresh_save_name_label() -> void:

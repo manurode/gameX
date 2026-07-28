@@ -107,9 +107,6 @@ func on_ground_ready(ground: TinyTilesMap) -> void:
 			night_wave_manager,
 			market_manager
 		)
-		if hud.has_method("show_run_unlocks_at_start"):
-			hud.call("show_run_unlocks_at_start")
-
 
 func _apply_meta_start_resources() -> void:
 	resource_manager.wood = BalanceConfig.INITIAL_WOOD + MetaProgression.get_start_wood_bonus()

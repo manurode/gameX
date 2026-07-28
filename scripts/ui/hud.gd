@@ -996,15 +996,6 @@ func show_banner(text: String, duration: float = 5.0) -> void:
 	_banner_timer = duration
 
 
-func show_run_unlocks_at_start() -> void:
-	var text := MetaProgression.get_run_start_unlocks_banner_text()
-	if text.is_empty():
-		return
-	var line_count := text.count("\n") + 1
-	var duration := clampf(4.0 + float(line_count) * 0.6, 5.0, 12.0)
-	show_banner(text, duration)
-
-
 func _layout_event_banner(text: String) -> void:
 	if _event_banner == null:
 		return
