@@ -143,7 +143,7 @@ const UNLOCKS := {
 	},
 	"grand_bastion": {
 		"name": "Gran bastión",
-		"description": "Empiezas con 6 torres extra y 20 segmentos de muro.",
+		"description": "Empiezas con 6 torres extra, 20 segmentos de muro y una puerta.",
 		"cost": 400,
 	},
 }
@@ -663,6 +663,10 @@ func has_free_tower() -> bool:
 
 func has_starter_walls() -> bool:
 	return get_starter_wall_segments() > 0
+
+
+func has_starter_gate() -> bool:
+	return is_enabled("grand_bastion")
 
 
 func has_free_curfew() -> bool:

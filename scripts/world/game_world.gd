@@ -179,7 +179,7 @@ func _spawn_building_at(
 		var produces: Array = BuildingDatabase.get_definition(type_id).get("produces", [])
 		if not produces.is_empty():
 			production_manager.register_producer(building)
-		if type_id == "wall":
+		if type_id == "wall" or type_id == "gate":
 			building.notify_world_placed()
 	return building
 
@@ -298,15 +298,34 @@ func spawn_starter_walls(count: int) -> void:
 	if ground_layer == null or _town_center == null or count <= 0:
 		return
 	var center := ground_layer.map_to_local(ground_layer.get_town_center_cell())
-	for segment in _starter_wall_ring(WallTexture.post_coords(center), count):
+	var segments := _starter_wall_ring(WallTexture.post_coords(center), count)
+	var gate_index := _starter_gate_index(segments, center) if MetaProgression.has_starter_gate() else -1
+	for i in segments.size():
+		var segment: Dictionary = segments[i]
 		var building := _spawn_building_at(
-			"wall",
+			"gate" if i == gate_index else "wall",
 			segment["pos"],
 			Building.BuildingState.ACTIVE,
 			1.0
 		)
 		building.set_wall_vertical(segment["vertical"])
 	rebuild_navigation()
+
+
+## Front (+Y) horizontal segment closest to the plaza midline — villagers exit there.
+func _starter_gate_index(segments: Array[Dictionary], center: Vector2) -> int:
+	var best := -1
+	var best_score := -INF
+	for i in segments.size():
+		var segment: Dictionary = segments[i]
+		if segment["vertical"]:
+			continue
+		var pos: Vector2 = segment["pos"]
+		var score := (pos.y - center.y) - absf(pos.x - center.x) * 0.01
+		if score > best_score:
+			best_score = score
+			best = i
+	return best
 
 
 ## Ring of lattice edges around the town center, ordered so a partial grant is
