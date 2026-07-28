@@ -80,7 +80,17 @@ func _test_meta_upgrade_application() -> void:
 	var meta := root.get_node_or_null("MetaProgression")
 	assert(meta != null)
 	var saved_unlocked: Dictionary = meta.unlocked.duplicate()
+	var saved_enabled: Dictionary = meta.enabled.duplicate()
 	meta.unlocked = {
+		"gather_boost": true,
+		"gather_mastery": true,
+		"archer_dmg": true,
+		"knight_hp": true,
+		"mage_chain": true,
+		"extra_gather_worker": true,
+		"pop_surge": true,
+	}
+	meta.enabled = {
 		"gather_boost": true,
 		"gather_mastery": true,
 		"archer_dmg": true,
@@ -114,4 +124,14 @@ func _test_meta_upgrade_application() -> void:
 	var descriptions := meta.get_unlocked_upgrade_descriptions()
 	assert(descriptions.has("Recolección permanente +5%."))
 	assert(descriptions.has("Recolección permanente +10% adicional."))
+
+	meta.enabled["gather_boost"] = false
+	assert(not meta.is_enabled("gather_boost"))
+	assert(is_equal_approx(meta.get_gather_multiplier(), 1.10))
+	var active_only := meta.get_unlocked_upgrade_descriptions()
+	assert(not active_only.has("Recolección permanente +5%."))
+	assert(active_only.has("Recolección permanente +10% adicional."))
+	meta.enabled["gather_boost"] = true
+
 	meta.unlocked = saved_unlocked
+	meta.enabled = saved_enabled

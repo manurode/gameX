@@ -55,8 +55,8 @@ func _ready() -> void:
 
 	if not MetaProgression.fragments_changed.is_connected(_on_fragments_changed):
 		MetaProgression.fragments_changed.connect(_on_fragments_changed)
-	if not MetaProgression.unlocks_changed.is_connected(_refresh_shop):
-		MetaProgression.unlocks_changed.connect(_refresh_shop)
+	if not MetaProgression.unlocks_changed.is_connected(_on_unlocks_changed):
+		MetaProgression.unlocks_changed.connect(_on_unlocks_changed)
 	if not MetaProgression.slots_changed.is_connected(_refresh_slots_list):
 		MetaProgression.slots_changed.connect(_refresh_slots_list)
 
@@ -898,7 +898,7 @@ func _build_upgrades_screen() -> void:
 	vbox.add_child(title)
 
 	var hint := Label.new()
-	hint.text = "Gasta fragmentos en ventajas que persisten entre partidas."
+	hint.text = "Gasta fragmentos en ventajas que persisten entre partidas. Las compradas se pueden activar o desactivar."
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.add_theme_font_size_override("font_size", 12)
@@ -1008,6 +1008,11 @@ func _on_fragments_changed(_amount: int) -> void:
 	_refresh_shop()
 
 
+func _on_unlocks_changed() -> void:
+	_refresh_shop()
+	_refresh_setup_unlocks()
+
+
 func _refresh_setup_header() -> void:
 	_refresh_save_name_label()
 	_refresh_fragments_label()
@@ -1083,10 +1088,13 @@ func _refresh_shop() -> void:
 		var unlocked := MetaProgression.is_unlocked(str(unlock_id))
 		var can_buy := MetaProgression.can_purchase(str(unlock_id))
 		var cost := int(def.get("cost", 0))
+		var is_on := unlocked and MetaProgression.is_enabled(str(unlock_id))
 
 		var row := PanelContainer.new()
 		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_theme_stylebox_override("panel", _make_inner_row_style())
+		if unlocked and not is_on:
+			row.modulate = Color(1.0, 1.0, 1.0, 0.72)
 		_shop_list.add_child(row)
 
 		var pad := MarginContainer.new()
@@ -1110,7 +1118,7 @@ func _refresh_shop() -> void:
 		name_lbl.add_theme_font_size_override("font_size", 13)
 		var name_color := COL_CREAM
 		if unlocked:
-			name_color = COL_MUTED
+			name_color = COL_GOLD_SOFT if is_on else COL_MUTED
 		elif cost >= 300:
 			name_color = Color(1.0, 0.72, 0.38, 1.0)
 		elif cost >= 100:
@@ -1125,23 +1133,69 @@ func _refresh_shop() -> void:
 		desc.add_theme_color_override("font_color", Color(0.65, 0.62, 0.52, 1.0))
 		info.add_child(desc)
 
-		var button := Button.new()
-		button.custom_minimum_size = Vector2(100, 36)
-		button.focus_mode = Control.FOCUS_NONE
 		if unlocked:
-			button.text = "Comprado"
-			button.disabled = true
+			h.add_child(_make_unlock_toggle(str(unlock_id), is_on))
 		else:
+			var button := Button.new()
+			button.custom_minimum_size = Vector2(100, 36)
+			button.focus_mode = Control.FOCUS_NONE
 			button.text = "Comprar"
 			button.disabled = not can_buy
 			button.pressed.connect(_on_purchase_pressed.bind(str(unlock_id)))
-		_style_button(button, unlocked or not can_buy)
-		h.add_child(button)
+			_style_button(button, not can_buy)
+			h.add_child(button)
+
+
+func _make_unlock_toggle(unlock_id: String, is_on: bool) -> Button:
+	var button := Button.new()
+	button.custom_minimum_size = Vector2(100, 36)
+	button.focus_mode = Control.FOCUS_NONE
+	button.toggle_mode = true
+	button.button_pressed = is_on
+	button.text = "Activa" if is_on else "Inactiva"
+	_style_unlock_toggle(button, is_on)
+	button.toggled.connect(_on_unlock_toggled.bind(unlock_id))
+	return button
+
+
+func _style_unlock_toggle(button: Button, is_on: bool) -> void:
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = Color(0.18, 0.14, 0.08, 0.95) if is_on else COL_BTN
+	normal.border_color = COL_BORDER if is_on else COL_BORDER_DIM
+	normal.set_border_width_all(2 if is_on else 1)
+	normal.set_corner_radius_all(6)
+	normal.set_content_margin_all(10)
+
+	var hover := normal.duplicate() as StyleBoxFlat
+	hover.bg_color = COL_BTN_HOVER
+	hover.border_color = COL_BORDER
+
+	var pressed := normal.duplicate() as StyleBoxFlat
+	pressed.bg_color = COL_BTN_PRESSED if not is_on else Color(0.22, 0.17, 0.1, 0.98)
+
+	button.add_theme_stylebox_override("normal", normal)
+	button.add_theme_stylebox_override("hover", hover)
+	button.add_theme_stylebox_override("pressed", pressed)
+	button.add_theme_stylebox_override("focus", normal)
+	button.add_theme_font_size_override("font_size", 13)
+	if is_on:
+		button.add_theme_color_override("font_color", COL_GOLD)
+		button.add_theme_color_override("font_hover_color", Color(1.0, 0.95, 0.7, 1.0))
+		button.add_theme_color_override("font_pressed_color", COL_CREAM)
+	else:
+		button.add_theme_color_override("font_color", COL_MUTED)
+		button.add_theme_color_override("font_hover_color", COL_CREAM)
+		button.add_theme_color_override("font_pressed_color", COL_GOLD_SOFT)
+
+
+func _on_unlock_toggled(pressed: bool, unlock_id: String) -> void:
+	MetaProgression.set_unlock_enabled(unlock_id, pressed)
 
 
 func _on_purchase_pressed(unlock_id: String) -> void:
 	MetaProgression.purchase(unlock_id)
 	_refresh_shop()
+	_refresh_setup_unlocks()
 
 
 # ---------------------------------------------------------------------------

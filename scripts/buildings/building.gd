@@ -1186,17 +1186,15 @@ func contains_command_point(world_point: Vector2) -> bool:
 	# Same area as selection so right-click commands (attack/repair) hit the sprite.
 	if not contains_world_point(world_point):
 		return false
-	# Mill: wheat/soil are gather-only when the farm exists and the mill is healthy.
-	# Construction plots are almost all soil-colored, and damaged art flips soil/stone
-	# per pixel — both would shrink the hammer cursor to a tiny tower patch and flicker
-	# between hammer/hoe/default. Keep the full footprint for build and repair.
-	if (
-		building_type_id == "mill"
-		and building_state == BuildingState.ACTIVE
-		and not can_be_repaired()
-		and _is_mill_wheat_pixel(world_point)
-	):
-		return false
+	# Mill farm stays gatherable (hoe cursor) even while the tower needs repair.
+	# Healthy: pixel colors follow the painted wheat/soil. Damaged art flips soil/stone
+	# per pixel, so use the farm ellipse instead — tower/door stay outside for repair.
+	if building_type_id == "mill" and building_state == BuildingState.ACTIVE:
+		if can_be_repaired():
+			if _is_over_mill_farm_zone(world_point):
+				return false
+		elif _is_mill_wheat_pixel(world_point):
+			return false
 	return true
 
 
@@ -1204,6 +1202,15 @@ func _is_mill_wheat_pixel(world_point: Vector2) -> bool:
 	if sprite == null:
 		return false
 	return OcclusionUtils.is_mill_farm_pixel_color(OcclusionUtils.sprite_color_at(sprite, world_point))
+
+
+func _is_over_mill_farm_zone(world_point: Vector2) -> bool:
+	if not has_meta("mill_wheat_node"):
+		return false
+	var farm = get_meta("mill_wheat_node")
+	if not farm is ResourceNode or not is_instance_valid(farm):
+		return false
+	return farm.contains_point(world_point)
 
 
 func should_show_health_bar() -> bool:
