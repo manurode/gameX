@@ -387,8 +387,6 @@ func _ensure_selection_ui() -> void:
 func _ensure_unit_selection_ui() -> void:
 	if _selection_mode == null:
 		return
-	if _unit_selection_row != null:
-		return
 
 	var existing_scroll := _selection_mode.get_node_or_null("UnitSelectionScroll") as ScrollContainer
 	if existing_scroll != null:
@@ -398,18 +396,20 @@ func _ensure_unit_selection_ui() -> void:
 			_unit_selection_row = padding.get_node_or_null("UnitSelectionRow") as HBoxContainer
 		else:
 			_unit_selection_row = existing_scroll.get_node_or_null("UnitSelectionRow") as HBoxContainer
+		_apply_unit_selection_layout_flags()
 		if _unit_selection_row != null:
+			if not _selection_mode.resized.is_connected(_layout_unit_selection_scroll):
+				_selection_mode.resized.connect(_layout_unit_selection_scroll)
 			return
 
 	_unit_selection_scroll = ScrollContainer.new()
 	_unit_selection_scroll.name = "UnitSelectionScroll"
 	_unit_selection_scroll.visible = false
-	_unit_selection_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_unit_selection_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_unit_selection_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	_unit_selection_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_unit_selection_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_selection_mode.add_child(_unit_selection_scroll)
 	_selection_mode.move_child(_unit_selection_scroll, 0)
+	_apply_unit_selection_layout_flags()
 
 	var scroll_padding := MarginContainer.new()
 	scroll_padding.name = "UnitSelectionPadding"
@@ -423,8 +423,45 @@ func _ensure_unit_selection_ui() -> void:
 	_unit_selection_row.name = "UnitSelectionRow"
 	_unit_selection_row.add_theme_constant_override("separation", 10)
 	_unit_selection_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	_unit_selection_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll_padding.add_child(_unit_selection_row)
+
+	if not _selection_mode.resized.is_connected(_layout_unit_selection_scroll):
+		_selection_mode.resized.connect(_layout_unit_selection_scroll)
+
+
+func _apply_unit_selection_layout_flags() -> void:
+	if _unit_selection_scroll == null:
+		return
+	# Match building InfoPanel: shrink to content and let SelectionMode center it.
+	_unit_selection_scroll.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	_unit_selection_scroll.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	if _unit_selection_row != null:
+		_unit_selection_row.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		_unit_selection_row.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+
+
+func _layout_unit_selection_scroll() -> void:
+	if (
+		_unit_selection_scroll == null
+		or _unit_selection_row == null
+		or _selection_mode == null
+		or not _unit_selection_scroll.visible
+	):
+		return
+
+	var pad_w := 4
+	var padding := _unit_selection_scroll.get_node_or_null("UnitSelectionPadding") as MarginContainer
+	if padding != null:
+		pad_w = padding.get_theme_constant("margin_left") + padding.get_theme_constant("margin_right")
+
+	var content_w := _unit_selection_row.get_combined_minimum_size().x + pad_w
+	var available_w := maxf(_selection_mode.size.x - 8.0, 120.0)
+	if content_w > available_w:
+		_unit_selection_scroll.custom_minimum_size.x = available_w
+		_unit_selection_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	else:
+		_unit_selection_scroll.custom_minimum_size.x = content_w
+		_unit_selection_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 
 
 func _ensure_special_actions_box() -> void:
@@ -874,6 +911,7 @@ func _show_unit_selection(units: Array[Unit]) -> void:
 		_actions_panel.visible = false
 	if _unit_selection_scroll != null:
 		_unit_selection_scroll.visible = true
+		call_deferred("_layout_unit_selection_scroll")
 
 	var layout_key := _get_unit_selection_layout_key(units)
 	if layout_key != _unit_selection_layout_key:
@@ -944,6 +982,7 @@ func _rebuild_unit_selection_cards(units: Array[Unit]) -> void:
 	for group_key in _sorted_unit_group_keys(groups):
 		var group_units: Array = groups[group_key]
 		_unit_selection_row.add_child(_create_unit_group_card(group_units))
+	call_deferred("_layout_unit_selection_scroll")
 
 
 func _create_unit_group_card(units: Array) -> Control:
