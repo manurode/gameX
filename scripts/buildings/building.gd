@@ -115,6 +115,11 @@ func get_occlusion_sprites() -> Array[Sprite2D]:
 	return sprites
 
 
+## Building PNGs bake grass/bushes/farm plots — those must not trigger unit silhouettes.
+func occlusion_uses_structure_pixels_only() -> bool:
+	return true
+
+
 ## Distance cull for silhouette collection — large buildings exceed the unit default (220).
 func get_occlusion_cull_radius() -> float:
 	var radius := DEFAULT_OCCLUSION_CULL_RADIUS

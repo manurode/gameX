@@ -6,7 +6,8 @@ extends Node
 ## a yes/no check (full-body tint avoids edge bleed from partial masks).
 ##
 ## Triggers when an occluder's sprite draws in front of the unit (Y-sort), or when the
-## unit is inside a forest stand. Leaf-fringe / edge touches do not count.
+## unit is inside a forest stand. Building grass/plot pixels do not count — only the
+## real structure (walls, roof, wood). Leaf-fringe / edge touches do not count.
 
 const OCCLUDER_REFRESH_INTERVAL := 0.12
 const SILHOUETTE_COLOR := Color(0.12, 0.28, 0.48, 0.82)
@@ -291,6 +292,10 @@ func _collect_overlapping_front_occluders(unit_rect: Rect2) -> Dictionary:
 		if occluder.global_position.distance_squared_to(unit_pos) > cull_r * cull_r:
 			continue
 		var sprites: Array = occluder.call("get_occlusion_sprites")
+		var structure_only := (
+			occluder.has_method("occlusion_uses_structure_pixels_only")
+			and bool(occluder.call("occlusion_uses_structure_pixels_only"))
+		)
 		var matched := false
 		for item in sprites:
 			if not (item is Sprite2D):
@@ -298,6 +303,7 @@ func _collect_overlapping_front_occluders(unit_rect: Rect2) -> Dictionary:
 			var occ_sprite := item as Sprite2D
 			var occ_rect := OcclusionUtils.sprite_global_rect(occ_sprite)
 			if OcclusionUtils.rects_overlap(unit_rect, occ_rect):
+				occ_sprite.set_meta(&"occlusion_structure_only", structure_only)
 				result.append(occ_sprite)
 				matched = true
 		if matched and occluder.has_method("uses_sparse_occlusion"):

@@ -7,6 +7,8 @@ const ALPHA_THRESHOLD := 0.35
 
 static var _image_cache: Dictionary = {}  # RID -> Image
 static var _opaque_sample_cache: Dictionary = {}  # String -> PackedVector2Array of texels
+## Building textures: L8 mask where white = real structure that can hide units.
+static var _structure_mask_cache: Dictionary = {}  # RID -> Image
 
 
 static func get_texture_image(texture: Texture2D) -> Image:
@@ -23,6 +25,42 @@ static func get_texture_image(texture: Texture2D) -> Image:
 		image.decompress()
 	_image_cache[key] = image
 	return image
+
+
+## White = walls/roof/wood that can hide a unit. Black = plot grass, paths, wheat, bushes.
+static func get_structure_occlusion_mask(texture: Texture2D) -> Image:
+	if texture == null:
+		return null
+	var key := texture.get_rid()
+	if _structure_mask_cache.has(key):
+		return _structure_mask_cache[key]
+	var src := get_texture_image(texture)
+	if src == null:
+		return null
+	var mask := _build_structure_occlusion_mask(src)
+	_structure_mask_cache[key] = mask
+	return mask
+
+
+static func sprite_texel_coords(sprite: Sprite2D, world_pos: Vector2) -> Vector2i:
+	if sprite == null or sprite.texture == null:
+		return Vector2i(-1, -1)
+	var image := get_texture_image(sprite.texture)
+	if image == null:
+		return Vector2i(-1, -1)
+	var size := Vector2(image.get_width(), image.get_height())
+	var local := sprite.to_local(world_pos) - sprite.offset
+	if sprite.centered:
+		local += size * 0.5
+	if sprite.flip_h:
+		local.x = size.x - local.x
+	if sprite.flip_v:
+		local.y = size.y - local.y
+	var x := int(floor(local.x))
+	var y := int(floor(local.y))
+	if x < 0 or y < 0 or x >= image.get_width() or y >= image.get_height():
+		return Vector2i(-1, -1)
+	return Vector2i(x, y)
 
 
 static func sprite_global_rect(sprite: Sprite2D) -> Rect2:
@@ -104,19 +142,10 @@ static func sprite_color_at(sprite: Sprite2D, world_pos: Vector2) -> Color:
 	var image := get_texture_image(sprite.texture)
 	if image == null:
 		return Color(0.0, 0.0, 0.0, 0.0)
-	var size := Vector2(image.get_width(), image.get_height())
-	var local := sprite.to_local(world_pos) - sprite.offset
-	if sprite.centered:
-		local += size * 0.5
-	if sprite.flip_h:
-		local.x = size.x - local.x
-	if sprite.flip_v:
-		local.y = size.y - local.y
-	var x := int(floor(local.x))
-	var y := int(floor(local.y))
-	if x < 0 or y < 0 or x >= image.get_width() or y >= image.get_height():
+	var texel := sprite_texel_coords(sprite, world_pos)
+	if texel.x < 0:
 		return Color(0.0, 0.0, 0.0, 0.0)
-	return image.get_pixel(x, y)
+	return image.get_pixel(texel.x, texel.y)
 
 
 static func sprite_opaque_at(sprite: Sprite2D, world_pos: Vector2, threshold: float = ALPHA_THRESHOLD) -> bool:
@@ -148,9 +177,172 @@ static func is_mill_farm_pixel_color(color: Color) -> bool:
 	return is_wheat or is_soil
 
 
+## Grass / bushes / farm plot baked into building sprites — not walls, roof, or wood.
+static func is_building_plot_pixel_color(color: Color) -> bool:
+	if color.a < ALPHA_THRESHOLD:
+		return false
+	if is_mill_farm_pixel_color(color):
+		return true
+	var r := color.r
+	var g := color.g
+	var b := color.b
+	var mx := maxf(r, maxf(g, b))
+	if g > r + 0.04 and g > b + 0.04 and g > 0.14:
+		return true
+	if (
+		b < 0.28
+		and r > 0.14
+		and g > 0.14
+		and absf(r - g) < 0.10
+		and (r + g) > 2.6 * b
+		and mx < 0.72
+	):
+		return true
+	return false
+
+
+static func _is_groundish_plot_pixel(color: Color, tex_y: int, height: int) -> bool:
+	if color.a < ALPHA_THRESHOLD:
+		return false
+	if is_building_plot_pixel_color(color):
+		return true
+	# Upper sprite is never treated as walkable plot (walls, sails, roofs).
+	if tex_y < int(float(height) * 0.40):
+		return false
+	var r := color.r
+	var g := color.g
+	var b := color.b
+	var mx := maxf(r, maxf(g, b))
+	var mn := minf(r, minf(g, b))
+	var sat := ((mx - mn) / mx) if mx > 0.00001 else 0.0
+	# Bright plaster walls.
+	if mx > 0.78 and sat < 0.25 and b > 0.55:
+		return false
+	# Terracotta roof.
+	if r > 0.65 and g < 0.55 and b < 0.40 and r > g + 0.15:
+		return false
+	# Dark wood.
+	if mx < 0.35 and r >= g and g >= b:
+		return false
+	if tex_y > int(float(height) * 0.50):
+		# Path / border stones.
+		if mx >= 0.30 and mx <= 0.75 and sat < 0.20:
+			return true
+		# Warm dirt / courtyard.
+		if (
+			r >= g
+			and g >= b - 0.02
+			and (r - b) > 0.10
+			and mx >= 0.35
+			and mx <= 0.90
+			and sat < 0.45
+			and g > 0.28
+		):
+			return true
+	return false
+
+
+static func _build_structure_occlusion_mask(src: Image) -> Image:
+	var width := src.get_width()
+	var height := src.get_height()
+	var ground: PackedByteArray = PackedByteArray()
+	ground.resize(width * height)
+	ground.fill(0)
+	var queue: Array[Vector2i] = []
+	var y0 := int(float(height) * 0.35)
+	var seed_bottom := int(float(height) * 0.70)
+	for y in range(y0, height):
+		for x in range(width):
+			var color := src.get_pixel(x, y)
+			if is_building_plot_pixel_color(color) or (
+				y > seed_bottom and _is_groundish_plot_pixel(color, y, height)
+			):
+				ground[y * width + x] = 1
+				queue.append(Vector2i(x, y))
+	var head := 0
+	while head < queue.size():
+		var cell: Vector2i = queue[head]
+		head += 1
+		for dy in range(-1, 2):
+			for dx in range(-1, 2):
+				if dx == 0 and dy == 0:
+					continue
+				var nx := cell.x + dx
+				var ny := cell.y + dy
+				if nx < 0 or ny < 0 or nx >= width or ny >= height:
+					continue
+				var idx := ny * width + nx
+				if ground[idx] != 0:
+					continue
+				var ncolor := src.get_pixel(nx, ny)
+				if _is_groundish_plot_pixel(ncolor, ny, height):
+					ground[idx] = 1
+					queue.append(Vector2i(nx, ny))
+	# Upper region: only vegetation stays non-occluding (trees beside stables, etc.).
+	var y_cut := int(float(height) * 0.45)
+	for y in range(0, y_cut):
+		for x in range(width):
+			var idx := y * width + x
+			if ground[idx] == 0:
+				continue
+			if not is_building_plot_pixel_color(src.get_pixel(x, y)):
+				ground[idx] = 0
+	var mask := Image.create(width, height, false, Image.FORMAT_L8)
+	mask.fill(Color(1, 1, 1, 1))
+	for y in range(height):
+		for x in range(width):
+			var color := src.get_pixel(x, y)
+			if color.a < ALPHA_THRESHOLD:
+				mask.set_pixel(x, y, Color(0, 0, 0, 1))
+			elif ground[y * width + x] != 0:
+				mask.set_pixel(x, y, Color(0, 0, 0, 1))
+			else:
+				mask.set_pixel(x, y, Color(1, 1, 1, 1))
+	return mask
+
+
+## Opaque occluder pixel that should hide a unit (optional: ignore building plot decor).
+static func sprite_occludes_at(
+	sprite: Sprite2D,
+	world_pos: Vector2,
+	threshold: float = ALPHA_THRESHOLD,
+	structure_only: bool = false
+) -> bool:
+	if not sprite_opaque_at(sprite, world_pos, threshold):
+		return false
+	if not structure_only:
+		return true
+	var texel := sprite_texel_coords(sprite, world_pos)
+	if texel.x < 0:
+		return false
+	var mask := get_structure_occlusion_mask(sprite.texture)
+	if mask != null:
+		return mask.get_pixel(texel.x, texel.y).r >= 0.5
+	# Fallback if mask build failed: color heuristic only.
+	return not is_building_plot_pixel_color(sprite_color_at(sprite, world_pos))
+
+
 static func any_sprite_opaque_at(sprites: Array, world_pos: Vector2, threshold: float = ALPHA_THRESHOLD) -> bool:
 	for item in sprites:
 		if item is Sprite2D and sprite_opaque_at(item, world_pos, threshold):
+			return true
+	return false
+
+
+static func any_sprite_occludes_at(
+	sprites: Array,
+	world_pos: Vector2,
+	threshold: float = ALPHA_THRESHOLD
+) -> bool:
+	for item in sprites:
+		if not (item is Sprite2D):
+			continue
+		var sprite := item as Sprite2D
+		var structure_only := (
+			sprite.has_meta(&"occlusion_structure_only")
+			and bool(sprite.get_meta(&"occlusion_structure_only"))
+		)
+		if sprite_occludes_at(sprite, world_pos, threshold, structure_only):
 			return true
 	return false
 
@@ -212,7 +404,7 @@ static func animated_sprite_occlusion_ratio(
 		var dx := (width - 1 - tx) if unit_sprite.flip_h else tx
 		var dy := (height - 1 - ty) if unit_sprite.flip_v else ty
 		var world_pos := animated_display_pixel_to_world(unit_sprite, dx, dy)
-		if any_sprite_opaque_at(occluder_sprites, world_pos):
+		if any_sprite_occludes_at(occluder_sprites, world_pos):
 			covered_samples += 1
 		checked += 1
 		if early_exit_ratio > 0.0:
@@ -259,7 +451,7 @@ static func build_occlusion_mask_image(
 			var dx := (width - 1 - tx) if unit_sprite.flip_h else tx
 			var dy := (height - 1 - ty) if unit_sprite.flip_v else ty
 			var world_pos := animated_display_pixel_to_world(unit_sprite, dx, dy)
-			if not any_sprite_opaque_at(occluder_sprites, world_pos):
+			if not any_sprite_occludes_at(occluder_sprites, world_pos):
 				continue
 			any_hit = true
 			for oy in range(step):
@@ -306,7 +498,7 @@ static func build_occlusion_composite_image(
 			if src_color.a < ALPHA_THRESHOLD:
 				continue
 			var world_pos := animated_display_pixel_to_world(unit_sprite, dx, dy)
-			var covered := any_sprite_opaque_at(occluder_sprites, world_pos)
+			var covered := any_sprite_occludes_at(occluder_sprites, world_pos)
 			if covered:
 				any_hit = true
 			var paint := silhouette_color if covered else src_color
