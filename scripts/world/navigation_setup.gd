@@ -270,6 +270,45 @@ func get_navigation_path(from_position: Vector2, target_position: Vector2) -> Pa
 	return PackedVector2Array()
 
 
+## Sync path metrics for AI decisions. Uses the path cache when warm; otherwise
+## computes immediately and stores the result so later movers share the work.
+## `reachable` means the path end lands near the requested target (not merely
+## the closest walkable cell outside a wall ring).
+func query_path_metrics(from_position: Vector2, target_position: Vector2) -> Dictionary:
+	var cache_key := _make_path_cache_key(from_position, target_position)
+	var path: PackedVector2Array
+	if _path_cache.has(cache_key):
+		path = _path_cache[cache_key]
+	else:
+		path = _compute_navigation_path(from_position, target_position)
+		_path_cache[cache_key] = path
+		if _path_cache.size() > PATH_CACHE_LIMIT:
+			_evict_path_cache()
+
+	if path.is_empty():
+		return {
+			"reachable": false,
+			"length": INF,
+			"end": from_position,
+			"path": path,
+		}
+
+	var length := 0.0
+	for i in range(1, path.size()):
+		length += path[i - 1].distance_to(path[i])
+	var end: Vector2 = path[path.size() - 1]
+	# Generous so large building surfaces still count as reached; walls that fully
+	# enclose a goal leave the path end clearly farther than this.
+	var reach_tol := maxf(PATH_CELL_SIZE.x * 4.0, 96.0)
+	var reachable := end.distance_squared_to(target_position) <= reach_tol * reach_tol
+	return {
+		"reachable": reachable,
+		"length": length,
+		"end": end,
+		"path": path,
+	}
+
+
 func queue_navigation_path(from_position: Vector2, target_position: Vector2) -> void:
 	if _path_grid_size == Vector2i.ZERO:
 		return

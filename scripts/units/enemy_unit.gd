@@ -6,6 +6,19 @@ const PlayerBuildingIndex = preload("res://scripts/game/player_building_index.gd
 
 const UNIT_AGGRO_RANGE := 180.0
 const VISIBILITY_LINGER := 0.4
+## Walk around fortifications when the real path is at most this × straight-line.
+const DETOUR_RATIO_DEFAULT := 1.55
+const DETOUR_RATIO_SIEGE := 1.28
+## Absolute slack so short / open walls are walked around (straight through a
+## muralla is tiny, the real walk around the end is not — don't treat that as
+## "too expensive").
+const DETOUR_MIN_SLACK := 220.0
+## Abort an in-progress wall chop / squeeze into a packed hole within this range.
+const GAP_ABORT_RANGE := 115.0
+## Enemies closer than this to the hole count against its capacity.
+const GAP_CROWD_RADIUS := 95.0
+const GAP_CAPACITY_DEFAULT := 4
+const GAP_CAPACITY_SIEGE_LANE := 2
 const PRIORITY_BUILDING_TYPES: Array[String] = [
 	"town_center",
 	"mill",
@@ -34,6 +47,8 @@ var wall_damage_bonus: float = 1.0
 var steals_resources: bool = false
 ## Hexala prioritizes military units over buildings when no nearby threat.
 var hunts_military: bool = false
+## Non-wall raid / chase goal kept while chopping a muralla so we can repath.
+var _assault_goal_building: Building = null
 
 var _player_visible: bool = true
 var _visibility_linger: float = 0.0
@@ -247,6 +262,21 @@ func _set_player_visible(visible: bool) -> void:
 		health_bar.notify_selection_changed()
 
 
+func attack_target_building_node(target: Building) -> void:
+	if (
+		target != null
+		and is_instance_valid(target)
+		and not target.is_wall_segment()
+	):
+		_assault_goal_building = target
+	super.attack_target_building_node(target)
+
+
+func attack_target_unit(target: Unit) -> void:
+	_assault_goal_building = null
+	super.attack_target_unit(target)
+
+
 func _evaluate_combat_target() -> void:
 	_clear_open_gate_breach_target()
 
@@ -258,12 +288,11 @@ func _evaluate_combat_target() -> void:
 			if attack_target_building != barrier:
 				attack_target_building_node(barrier)
 			return
+		if _is_breaching_barrier():
+			attack_target_unit(nearby_player)
+			return
 		if attack_target != nearby_player:
 			attack_target_unit(nearby_player)
-		return
-
-	# Keep chopping a closed muralla / puerta until it falls or opens.
-	if _is_breaching_barrier():
 		return
 
 	if _has_valid_combat_target():
@@ -271,8 +300,22 @@ func _evaluate_combat_target() -> void:
 		if goal != Vector2.INF:
 			var barrier := _find_breach_barrier_toward(goal)
 			if barrier != null:
-				attack_target_building_node(barrier)
+				if attack_target_building != barrier:
+					attack_target_building_node(barrier)
 				return
+			if _is_breaching_barrier():
+				_retarget_assault_goal()
+				return
+		elif _is_breaching_barrier():
+			# Wall was picked as a primary goal (legacy / proximity). Force a real
+			# raid target, then decide whether that still needs a breach.
+			_acquire_target()
+			var refreshed_goal := _get_breach_goal_position()
+			if refreshed_goal != Vector2.INF:
+				var barrier := _find_breach_barrier_toward(refreshed_goal)
+				if barrier != null:
+					attack_target_building_node(barrier)
+			return
 		return
 
 	_acquire_target()
@@ -281,6 +324,18 @@ func _evaluate_combat_target() -> void:
 		var barrier := _find_breach_barrier_toward(acquired_goal)
 		if barrier != null:
 			attack_target_building_node(barrier)
+
+
+func _retarget_assault_goal() -> void:
+	if (
+		_assault_goal_building != null
+		and is_instance_valid(_assault_goal_building)
+		and _assault_goal_building.can_be_damaged()
+	):
+		attack_target_building_node(_assault_goal_building)
+		return
+	_assault_goal_building = null
+	_acquire_target()
 
 
 func _get_aggro_range() -> float:
@@ -345,17 +400,100 @@ func _get_breach_goal_position() -> Vector2:
 	if attack_target != null and is_instance_valid(attack_target):
 		return attack_target.global_position
 	if attack_target_building != null and is_instance_valid(attack_target_building):
-		if attack_target_building.is_wall_segment():
-			return Vector2.INF
-		return attack_target_building.get_closest_surface_point(global_position)
+		if not attack_target_building.is_wall_segment():
+			_assault_goal_building = attack_target_building
+			return attack_target_building.get_closest_surface_point(global_position)
+	if (
+		_assault_goal_building != null
+		and is_instance_valid(_assault_goal_building)
+		and _assault_goal_building.can_be_damaged()
+	):
+		return _assault_goal_building.get_closest_surface_point(global_position)
+	_assault_goal_building = null
 	return Vector2.INF
 
 
-## Prefer the closed gate / muralla blocking the path instead of idling against it.
+func _get_detour_ratio() -> float:
+	if enemy_kind == "siege" or enemy_kind == "mire":
+		return DETOUR_RATIO_SIEGE
+	return DETOUR_RATIO_DEFAULT
+
+
+func _get_gap_capacity() -> int:
+	if enemy_kind == "siege" or enemy_kind == "mire":
+		# Siege prefers opening its own lane instead of joining a packed hole.
+		return GAP_CAPACITY_SIEGE_LANE
+	return GAP_CAPACITY_DEFAULT
+
+
+func _query_goal_path_metrics(goal: Vector2) -> Dictionary:
+	var navigation_manager := _get_navigation_manager()
+	if navigation_manager == null or not navigation_manager.has_method("query_path_metrics"):
+		return {"reachable": false, "length": INF, "end": global_position, "path": PackedVector2Array()}
+	return navigation_manager.call("query_path_metrics", global_position, goal)
+
+
+func _is_detour_acceptable(metrics: Dictionary, goal: Vector2) -> bool:
+	if not bool(metrics.get("reachable", false)):
+		return false
+	var path_length := float(metrics.get("length", INF))
+	if not is_finite(path_length):
+		return false
+	var straight := global_position.distance_to(goal)
+	var budget := maxf(straight * _get_detour_ratio(), straight + DETOUR_MIN_SLACK)
+	return path_length <= budget
+
+
+## Prefer the closed gate / muralla blocking the assault — but only when the
+## real detour is too expensive, or when an existing hole is overcrowded.
 func _find_breach_barrier_toward(goal: Vector2) -> Building:
 	if _can_attack_through_walls():
 		return null
 
+	var local_barrier := _get_local_barrier_toward(goal)
+	var currently_breaching := _is_breaching_barrier()
+	if local_barrier == null and not currently_breaching:
+		return null
+
+	var metrics := _query_goal_path_metrics(goal)
+	if not _is_detour_acceptable(metrics, goal):
+		# No usable path around — open / keep a breach.
+		if local_barrier != null:
+			return local_barrier
+		if currently_breaching:
+			return attack_target_building
+		return null
+
+	# Path around / through is cheap enough. Do NOT smash just because a wall is
+	# closer than the gap (that trapped units on open wall ends). Only open a
+	# second lane when the existing hole is actually overcrowded.
+	var path: PackedVector2Array = metrics.get("path", PackedVector2Array())
+	var gap_point := _estimate_opening_point(path, goal)
+	var dist_to_gap := global_position.distance_to(gap_point)
+	var gap_full := _count_gap_users(gap_point) >= _get_gap_capacity()
+
+	if not gap_full:
+		return null
+
+	# Packed hole but we are already at its mouth — keep funneling in.
+	if dist_to_gap <= GAP_ABORT_RANGE:
+		return null
+
+	# Packed hole and we are standing on a muralla → carve another lane.
+	var barrier_for_lane: Building = local_barrier
+	if currently_breaching and _is_breachable_barrier(attack_target_building):
+		barrier_for_lane = attack_target_building
+	if barrier_for_lane == null:
+		return null
+
+	var wall_pt := barrier_for_lane.get_closest_surface_point(global_position)
+	if global_position.distance_to(wall_pt) <= melee_range * 2.25:
+		return barrier_for_lane
+
+	return null
+
+
+func _get_local_barrier_toward(goal: Vector2) -> Building:
 	var ignore: Building = null
 	if (
 		attack_target_building != null
@@ -363,22 +501,76 @@ func _find_breach_barrier_toward(goal: Vector2) -> Building:
 		and not attack_target_building.is_wall_segment()
 	):
 		ignore = attack_target_building
+	elif (
+		_assault_goal_building != null
+		and is_instance_valid(_assault_goal_building)
+	):
+		ignore = _assault_goal_building
 
+	# Prefer the muralla actually sitting on the line to the goal.
 	var blocker := _get_blocking_wall_building(global_position, goal, ignore)
 	if _is_breachable_barrier(blocker):
 		return blocker
 
-	var reach := melee_range * 1.75
-	if combat_style == CombatStyle.RANGED:
-		reach = maxf(reach, 72.0)
+	# Bump assist only — do not grab a side wall that we can already walk past.
+	var reach := melee_range * 1.15
 	var nearby := _find_nearest_breachable_wall(reach)
 	if nearby == null:
 		return null
 	var wall_pt := nearby.get_closest_surface_point(global_position)
-	# Only smash fortifications that lie toward the goal (not walls behind us).
 	if (goal - global_position).dot(wall_pt - global_position) <= 0.0:
 		return null
 	return nearby
+
+
+## Path point that skims nearest remaining muralla — proxy for the breach gap.
+func _estimate_opening_point(path: PackedVector2Array, goal: Vector2) -> Vector2:
+	if path.is_empty():
+		return goal
+	var early_index := mini(path.size() - 1, maxi(1, int(path.size() / 3.0)))
+	var best_pt: Vector2 = path[early_index]
+	var best_wall_dist := INF
+	var limit := maxi(1, int(ceil(float(path.size()) * 0.85)))
+	var step := maxi(1, int(ceil(float(limit) / 12.0)))
+	var i := 0
+	while i < limit:
+		var point: Vector2 = path[i]
+		var wall_dist := _distance_to_nearest_wall_surface(point)
+		if wall_dist < best_wall_dist:
+			best_wall_dist = wall_dist
+			best_pt = point
+		i += step
+	# No fortification near the route (open field) — use an early waypoint.
+	if best_wall_dist > 140.0:
+		return path[early_index]
+	return best_pt
+
+
+func _distance_to_nearest_wall_surface(origin: Vector2) -> float:
+	var best := INF
+	for building in PlayerBuildingIndex.get_targets(get_tree()):
+		if not _is_breachable_barrier(building):
+			continue
+		var surface := building.get_closest_surface_point(origin)
+		var dist := origin.distance_to(surface)
+		if dist < best:
+			best = dist
+	return best
+
+
+func _count_gap_users(gap_point: Vector2) -> int:
+	var count := 0
+	for item in UnitSpatialIndex.query_nearby(get_tree(), gap_point, GAP_CROWD_RADIUS):
+		if not item is EnemyUnit:
+			continue
+		var other := item as EnemyUnit
+		if other == self or other.hp <= 0 or other._is_dying:
+			continue
+		# Units still chopping a distant muralla are opening other lanes.
+		if other._is_breaching_barrier():
+			continue
+		count += 1
+	return count
 
 
 func _find_nearest_breachable_wall(max_range: float) -> Building:
@@ -450,14 +642,15 @@ func _find_best_player_building() -> Building:
 	for building in PlayerBuildingIndex.get_targets(get_tree()):
 		if not is_instance_valid(building) or not building.can_be_damaged():
 			continue
+		# Murallas / puertas are never raid goals — only temporary breach targets.
+		if building.is_wall_segment():
+			continue
 
 		var distance := origin.distance_to(building.global_position)
 		var priority_bonus := 0.0
 		var type_index := priorities.find(building.building_type_id)
 		if type_index >= 0:
 			priority_bonus = -300.0 - float(type_index) * 50.0
-		if (enemy_kind == "siege" or enemy_kind == "mire") and building.is_wall_segment():
-			priority_bonus -= 200.0
 		if enemy_kind == "hexwing" and building.building_type_id in ["barracks", "stable", "arcanum", "tower"]:
 			priority_bonus -= 180.0
 
