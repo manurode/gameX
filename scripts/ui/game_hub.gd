@@ -13,6 +13,7 @@ const SLOT_SIZE := Vector2(108, 132)
 const ICON_SIZE := Vector2(72, 60)
 const RESOURCE_ICON_SIZE := Vector2(56, 56)
 const ACTION_SLOT_SIZE := Vector2(88, 92)
+const UNIT_CARD_ICON_SIZE := Vector2(56, 50)
 
 # Palette aligned with menu / dialog panels
 const COL_PANEL_INNER := Color(0.12, 0.1, 0.075, 0.9)
@@ -22,6 +23,7 @@ const COL_GOLD := Color(1.0, 0.9, 0.55, 1.0)
 const COL_GOLD_SOFT := Color(0.92, 0.82, 0.52, 1.0)
 const COL_CREAM := Color(0.9, 0.86, 0.74, 1.0)
 const COL_MUTED := Color(0.78, 0.74, 0.64, 1.0)
+const COL_ENEMY_ACCENT := Color(0.95, 0.42, 0.38, 1.0)
 const COL_BTN := Color(0.14, 0.11, 0.08, 0.95)
 const COL_BTN_HOVER := Color(0.22, 0.17, 0.1, 0.98)
 const COL_BTN_PRESSED := Color(0.1, 0.08, 0.05, 1.0)
@@ -37,6 +39,10 @@ var _selection_info: VBoxContainer
 var _selection_icon: TextureRect
 var _selection_title: Label
 var _selection_meta: Label
+var _building_info_panel: PanelContainer
+var _unit_selection_scroll: ScrollContainer
+var _unit_selection_row: HBoxContainer
+var _unit_selection_layout_key: String = ""
 var _actions_panel: PanelContainer
 var _selection_actions: HBoxContainer
 var _production_box: VBoxContainer
@@ -73,6 +79,7 @@ var _gather_bonus_label: Label
 var _production_double_label: Label
 var _active_build_type: String = ""
 var _selected_building: Building = null
+var _selected_units: Array[Unit] = []
 var _special_actions_box: HBoxContainer
 var _special_action_buttons: Dictionary = {}
 
@@ -114,6 +121,8 @@ func setup(
 	if _selection_manager != null:
 		if _selection_manager.has_signal("building_selection_changed"):
 			_selection_manager.building_selection_changed.connect(_on_building_selection_changed)
+		if _selection_manager.has_signal("selection_changed"):
+			_selection_manager.selection_changed.connect(_on_unit_selection_changed)
 	if _population_manager != null:
 		_population_manager.population_changed.connect(_on_population_changed)
 		_population_manager.food_shortage.connect(_on_food_shortage)
@@ -230,6 +239,9 @@ func _ensure_selection_ui() -> void:
 		return
 	if _selection_info != null:
 		_ensure_special_actions_box()
+		_ensure_unit_selection_ui()
+		if _building_info_panel == null:
+			_building_info_panel = _selection_mode.get_node_or_null("InfoPanel") as PanelContainer
 		return
 
 	var info_panel := PanelContainer.new()
@@ -239,6 +251,7 @@ func _ensure_selection_ui() -> void:
 	info_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	info_panel.add_theme_stylebox_override("panel", _make_inner_panel_style())
 	_selection_mode.add_child(info_panel)
+	_building_info_panel = info_panel
 
 	var info_margin := MarginContainer.new()
 	info_margin.add_theme_constant_override("margin_left", 10)
@@ -367,6 +380,51 @@ func _ensure_selection_ui() -> void:
 	_market_limit_label.add_theme_font_size_override("font_size", 12)
 	_market_limit_label.add_theme_color_override("font_color", Color(0.65, 0.74, 0.82))
 	_market_box.add_child(_market_limit_label)
+
+	_ensure_unit_selection_ui()
+
+
+func _ensure_unit_selection_ui() -> void:
+	if _selection_mode == null:
+		return
+	if _unit_selection_row != null:
+		return
+
+	var existing_scroll := _selection_mode.get_node_or_null("UnitSelectionScroll") as ScrollContainer
+	if existing_scroll != null:
+		_unit_selection_scroll = existing_scroll
+		var padding := existing_scroll.get_node_or_null("UnitSelectionPadding") as MarginContainer
+		if padding != null:
+			_unit_selection_row = padding.get_node_or_null("UnitSelectionRow") as HBoxContainer
+		else:
+			_unit_selection_row = existing_scroll.get_node_or_null("UnitSelectionRow") as HBoxContainer
+		if _unit_selection_row != null:
+			return
+
+	_unit_selection_scroll = ScrollContainer.new()
+	_unit_selection_scroll.name = "UnitSelectionScroll"
+	_unit_selection_scroll.visible = false
+	_unit_selection_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_unit_selection_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_unit_selection_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	_unit_selection_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_selection_mode.add_child(_unit_selection_scroll)
+	_selection_mode.move_child(_unit_selection_scroll, 0)
+
+	var scroll_padding := MarginContainer.new()
+	scroll_padding.name = "UnitSelectionPadding"
+	scroll_padding.add_theme_constant_override("margin_left", 2)
+	scroll_padding.add_theme_constant_override("margin_right", 2)
+	scroll_padding.add_theme_constant_override("margin_top", 4)
+	scroll_padding.add_theme_constant_override("margin_bottom", 6)
+	_unit_selection_scroll.add_child(scroll_padding)
+
+	_unit_selection_row = HBoxContainer.new()
+	_unit_selection_row.name = "UnitSelectionRow"
+	_unit_selection_row.add_theme_constant_override("separation", 10)
+	_unit_selection_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	_unit_selection_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll_padding.add_child(_unit_selection_row)
 
 
 func _ensure_special_actions_box() -> void:
@@ -666,8 +724,20 @@ func _on_food_shortage(_active: bool) -> void:
 
 func _on_building_selection_changed(building: Building) -> void:
 	_selected_building = building
+	if building != null:
+		_selected_units.clear()
 	_production_feedback_text = ""
 	_production_feedback_timer = 0.0
+	_refresh_selection_panel()
+
+
+func _on_unit_selection_changed(units: Array) -> void:
+	_selected_units.clear()
+	for node in units:
+		if node is Unit and is_instance_valid(node):
+			_selected_units.append(node)
+	if not _selected_units.is_empty():
+		_selected_building = null
 	_refresh_selection_panel()
 
 
@@ -690,6 +760,20 @@ func _process(delta: float) -> void:
 				_update_production_status_labels()
 	if _selected_building != null and is_instance_valid(_selected_building):
 		_update_selection_meta()
+	if not _selected_units.is_empty():
+		var valid_units := _get_valid_selected_units()
+		if valid_units.is_empty():
+			_refresh_selection_panel()
+		else:
+			var layout_key := _get_unit_selection_layout_key(valid_units)
+			if (
+				_selection_mode != null
+				and _selection_mode.visible
+				and layout_key != _unit_selection_layout_key
+			):
+				_show_unit_selection(valid_units)
+			else:
+				_update_unit_selection_meta()
 	if _selection_mode == null or not _selection_mode.visible:
 		return
 	_update_production_progress_label()
@@ -700,12 +784,27 @@ func _refresh_selection_panel() -> void:
 	if _selection_mode == null:
 		return
 
-	if _selected_building == null or not is_instance_valid(_selected_building):
-		_show_build_mode()
-		_production_panel_key = ""
+	if _selected_building != null and is_instance_valid(_selected_building):
+		_show_building_selection()
 		return
 
+	var valid_units := _get_valid_selected_units()
+	if not valid_units.is_empty():
+		_show_unit_selection(valid_units)
+		return
+
+	_show_build_mode()
+	_unit_selection_layout_key = ""
+	_production_panel_key = ""
+
+
+func _show_building_selection() -> void:
 	_show_selection_mode()
+	if _building_info_panel != null:
+		_building_info_panel.visible = true
+	if _unit_selection_scroll != null:
+		_unit_selection_scroll.visible = false
+	_unit_selection_layout_key = ""
 
 	var building := _selected_building
 	var building_name := building.get_display_name()
@@ -765,6 +864,229 @@ func _refresh_selection_panel() -> void:
 	_update_production_status_labels()
 	_update_market_status()
 	_update_special_action_affordability()
+
+
+func _show_unit_selection(units: Array[Unit]) -> void:
+	_show_selection_mode()
+	if _building_info_panel != null:
+		_building_info_panel.visible = false
+	if _actions_panel != null:
+		_actions_panel.visible = false
+	if _unit_selection_scroll != null:
+		_unit_selection_scroll.visible = true
+
+	var layout_key := _get_unit_selection_layout_key(units)
+	if layout_key != _unit_selection_layout_key:
+		_rebuild_unit_selection_cards(units)
+		_unit_selection_layout_key = layout_key
+	else:
+		_update_unit_selection_meta()
+
+
+func _get_valid_selected_units() -> Array[Unit]:
+	var valid: Array[Unit] = []
+	for unit in _selected_units:
+		if unit != null and is_instance_valid(unit) and unit.hp > 0:
+			valid.append(unit)
+	return valid
+
+
+func _get_unit_group_key(unit: Unit) -> String:
+	if unit is EnemyUnit:
+		return "enemy:%s" % (unit as EnemyUnit).enemy_kind
+	return "ally:%s" % unit.unit_type_id
+
+
+func _get_unit_selection_layout_key(units: Array[Unit]) -> String:
+	var groups := _group_selected_units(units)
+	var parts: PackedStringArray = []
+	for group_key in groups.keys():
+		parts.append("%s=%d" % [group_key, (groups[group_key] as Array).size()])
+	parts.sort()
+	return "|".join(parts)
+
+
+func _group_selected_units(units: Array[Unit]) -> Dictionary:
+	var groups: Dictionary = {}
+	for unit in units:
+		var key := _get_unit_group_key(unit)
+		if not groups.has(key):
+			groups[key] = []
+		(groups[key] as Array).append(unit)
+	return groups
+
+
+func _sorted_unit_group_keys(groups: Dictionary) -> Array[String]:
+	var keys: Array[String] = []
+	for key in groups.keys():
+		keys.append(key)
+	keys.sort_custom(func(a: String, b: String) -> bool:
+		var a_enemy := a.begins_with("enemy:")
+		var b_enemy := b.begins_with("enemy:")
+		if a_enemy != b_enemy:
+			return not a_enemy
+		var a_units: Array = groups[a]
+		var b_units: Array = groups[b]
+		if a_units.is_empty() or b_units.is_empty():
+			return a < b
+		return UnitDatabase.get_unit_display_name(a_units[0]) < UnitDatabase.get_unit_display_name(b_units[0])
+	)
+	return keys
+
+
+func _rebuild_unit_selection_cards(units: Array[Unit]) -> void:
+	if _unit_selection_row == null:
+		return
+	for child in _unit_selection_row.get_children():
+		child.queue_free()
+
+	var groups := _group_selected_units(units)
+	for group_key in _sorted_unit_group_keys(groups):
+		var group_units: Array = groups[group_key]
+		_unit_selection_row.add_child(_create_unit_group_card(group_units))
+
+
+func _create_unit_group_card(units: Array) -> Control:
+	var sample: Unit = units[0]
+	var count: int = units.size()
+	var is_enemy := sample.team_id == Team.ENEMY
+
+	var card := PanelContainer.new()
+	card.custom_minimum_size = Vector2(220, 0)
+	card.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	card.set_meta("units", units)
+	var card_style := _make_inner_panel_style()
+	if is_enemy:
+		card_style.border_color = COL_ENEMY_ACCENT
+	card.add_theme_stylebox_override("panel", card_style)
+
+	var card_margin := MarginContainer.new()
+	card_margin.add_theme_constant_override("margin_left", 10)
+	card_margin.add_theme_constant_override("margin_right", 10)
+	card_margin.add_theme_constant_override("margin_top", 8)
+	card_margin.add_theme_constant_override("margin_bottom", 8)
+	card.add_child(card_margin)
+
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation", 10)
+	card_margin.add_child(header)
+
+	var icon := TextureRect.new()
+	icon.custom_minimum_size = UNIT_CARD_ICON_SIZE
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	var icon_type_id := UnitDatabase.get_icon_type_id_for_unit(sample)
+	icon.texture = UnitDatabase.get_unit_icon(icon_type_id)
+	header.add_child(icon)
+
+	var titles := VBoxContainer.new()
+	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	titles.add_theme_constant_override("separation", 2)
+	header.add_child(titles)
+
+	var title_row := HBoxContainer.new()
+	title_row.add_theme_constant_override("separation", 8)
+	titles.add_child(title_row)
+
+	var title := Label.new()
+	title.name = "UnitTitle"
+	title.text = UnitDatabase.get_unit_display_name(sample)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 16)
+	title.add_theme_color_override(
+		"font_color",
+		COL_ENEMY_ACCENT if is_enemy else COL_GOLD_SOFT
+	)
+	title.clip_text = false
+	title.autowrap_mode = TextServer.AUTOWRAP_OFF
+	title_row.add_child(title)
+
+	if count > 1:
+		title_row.add_child(_create_unit_count_chip(count, is_enemy))
+
+	var meta := Label.new()
+	meta.name = "UnitMeta"
+	meta.text = _format_unit_group_meta(units)
+	meta.add_theme_font_size_override("font_size", 13)
+	meta.add_theme_color_override("font_color", COL_MUTED)
+	meta.autowrap_mode = TextServer.AUTOWRAP_OFF
+	titles.add_child(meta)
+
+	return card
+
+
+func _create_unit_count_chip(count: int, is_enemy: bool) -> PanelContainer:
+	var chip := PanelContainer.new()
+	chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var chip_style := StyleBoxFlat.new()
+	chip_style.bg_color = COL_BTN
+	chip_style.border_color = COL_ENEMY_ACCENT if is_enemy else COL_BORDER_DIM
+	chip_style.set_border_width_all(1)
+	chip_style.set_corner_radius_all(5)
+	chip_style.set_content_margin_all(4)
+	chip.add_theme_stylebox_override("panel", chip_style)
+
+	var chip_label := Label.new()
+	chip_label.text = "×%d" % count
+	chip_label.add_theme_font_size_override("font_size", 13)
+	chip_label.add_theme_color_override(
+		"font_color",
+		COL_ENEMY_ACCENT if is_enemy else COL_GOLD
+	)
+	chip.add_child(chip_label)
+	return chip
+
+
+func _format_unit_group_meta(units: Array) -> String:
+	if units.is_empty():
+		return ""
+	var sample: Unit = units[0]
+	var total_hp := 0
+	var total_max_hp := 0
+	for unit in units:
+		if unit == null or not is_instance_valid(unit):
+			continue
+		total_hp += unit.hp
+		total_max_hp += unit.max_hp
+
+	var parts: PackedStringArray = ["PV %d/%d" % [total_hp, total_max_hp]]
+	if sample.can_attack:
+		var attack_value := sample.get_attack_damage()
+		parts.append("ATK %d" % attack_value)
+		if sample.combat_style == Unit.CombatStyle.RANGED:
+			parts.append("Alcance %.0f" % sample.attack_range_max)
+		else:
+			parts.append("Cuerpo a cuerpo")
+	else:
+		var roles: PackedStringArray = []
+		if sample.can_gather:
+			roles.append("Recolector")
+		if sample.can_build:
+			roles.append("Constructor")
+		if not roles.is_empty():
+			parts.append(" · ".join(roles))
+		else:
+			parts.append("Sin combate")
+	return "\n".join(parts)
+
+
+func _update_unit_selection_meta() -> void:
+	if _unit_selection_row == null:
+		return
+	for card in _unit_selection_row.get_children():
+		if not card.has_meta("units"):
+			continue
+		var units: Array = card.get_meta("units")
+		var live_units: Array[Unit] = []
+		for unit in units:
+			if unit is Unit and is_instance_valid(unit) and unit.hp > 0:
+				live_units.append(unit)
+		if live_units.is_empty():
+			continue
+		var meta := card.find_child("UnitMeta", true, false) as Label
+		if meta != null:
+			meta.text = _format_unit_group_meta(live_units)
 
 
 func _get_special_actions_for_building(building: Building) -> Array[String]:
@@ -1386,19 +1708,32 @@ func _on_production_pressed(item_id: String) -> void:
 	_update_production_status_labels()
 
 
-func _show_build_mode() -> void:
-	if _build_mode != null:
-		_build_mode.visible = true
-	if _selection_mode != null:
-		_selection_mode.visible = false
-	_set_production_status_message("")
-
-
 func _show_selection_mode() -> void:
 	if _build_mode != null:
 		_build_mode.visible = false
 	if _selection_mode != null:
 		_selection_mode.visible = true
+		_selection_mode.clip_contents = false
+	var center_area := _selection_mode.get_parent() if _selection_mode != null else null
+	if center_area is Control:
+		(center_area as Control).clip_contents = false
+
+
+func _show_build_mode() -> void:
+	if _build_mode != null:
+		_build_mode.visible = true
+	if _selection_mode != null:
+		_selection_mode.visible = false
+	var center_area := _selection_mode.get_parent() if _selection_mode != null else null
+	if center_area is Control:
+		(center_area as Control).clip_contents = true
+	if _building_info_panel != null:
+		_building_info_panel.visible = false
+	if _unit_selection_scroll != null:
+		_unit_selection_scroll.visible = false
+	if _actions_panel != null:
+		_actions_panel.visible = false
+	_set_production_status_message("")
 
 
 func _show_build_panel() -> void:

@@ -715,7 +715,7 @@ func _build_difficulty_modal() -> void:
 		{
 			"id": GameSettings.Difficulty.EXPERT,
 			"title": "Experto",
-			"blurb": "Para quien busca retos enormes. El doble de enemigos, la misma escalada letal… y recompensas a ×4. Si caes, que sea con gloria.",
+			"blurb": "Para quien busca retos enormes. El doble de enemigos, la misma escalada letal… pero recibirás cuatro veces mas fragmentos. Si caes, que sea con gloria.",
 		},
 	]
 	for opt in options:

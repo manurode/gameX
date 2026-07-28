@@ -322,7 +322,13 @@ func _exit_garrison_for_selected() -> void:
 
 
 func _move_selected_units(world_point: Vector2) -> void:
-	Unit.assign_move_destinations(selected_units, world_point)
+	var movable: Array[Unit] = []
+	for unit in selected_units:
+		if is_instance_valid(unit) and unit.team_id == Team.PLAYER:
+			movable.append(unit)
+	if movable.is_empty():
+		return
+	Unit.assign_move_destinations(movable, world_point)
 
 
 func _notify_selection_changed() -> void:
@@ -353,7 +359,7 @@ func _expand_selection_to_squads() -> void:
 
 func _attack_selected_units(target: Unit) -> void:
 	for unit in selected_units:
-		if is_instance_valid(unit) and unit.can_attack:
+		if is_instance_valid(unit) and unit.team_id == Team.PLAYER and unit.can_attack:
 			unit.attack_target_unit(target)
 
 
@@ -425,7 +431,18 @@ func _pick_unit_at(world_point: Vector2) -> Unit:
 	var unit := _pick_unit_in_group(world_point, "selectable_units")
 	if unit != null and unit.is_in_group("selectable_units"):
 		return unit
+	unit = _pick_unit_in_group(world_point, "enemies")
+	if unit != null and _can_inspect_enemy(unit):
+		return unit
 	return null
+
+
+func _can_inspect_enemy(unit: Unit) -> bool:
+	if unit == null or not is_instance_valid(unit) or unit._is_dying:
+		return false
+	if not unit is EnemyUnit:
+		return false
+	return (unit as EnemyUnit).is_player_visible()
 
 
 func _pick_attackable_unit_at(world_point: Vector2) -> Unit:
@@ -439,7 +456,7 @@ func _pick_attackable_unit_at(world_point: Vector2) -> Unit:
 		return null
 
 	for selected in selected_units:
-		if is_instance_valid(selected) and selected.can_attack and selected.is_hostile_to(unit):
+		if is_instance_valid(selected) and selected.team_id == Team.PLAYER and selected.can_attack and selected.is_hostile_to(unit):
 			return unit
 
 	return null
@@ -666,6 +683,16 @@ func _pick_units_in_rect(world_rect: Rect2) -> Array[Unit]:
 				continue
 			if unit.intersects_world_rect(world_rect):
 				picked.append(unit)
+
+	for node in get_tree().get_nodes_in_group("enemies"):
+		if node is Unit:
+			var enemy := node as Unit
+			if enemy.garrisoned_building != null or enemy._is_dying:
+				continue
+			if not _can_inspect_enemy(enemy):
+				continue
+			if enemy.intersects_world_rect(world_rect):
+				picked.append(enemy)
 
 	return picked
 

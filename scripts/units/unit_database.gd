@@ -193,6 +193,25 @@ const DEFINITIONS: Dictionary = {
 	},
 }
 
+const ENEMY_KIND_NAMES: Dictionary = {
+	"normal": "Monstruo",
+	"swarm": "Enjambre",
+	"siege": "Asediante",
+	"elite": "Élite",
+	"raider": "Saqueador",
+	"ember": "Brasal",
+	"mire": "Lodoso",
+	"hexwing": "Hexala",
+}
+
+const ENEMY_KIND_VISUAL: Dictionary = {
+	"ember": "ember",
+	"mire": "mire",
+	"hexwing": "hexwing",
+}
+
+const UNIT_ICON_FRAME_SIZE := 80
+
 const SPAWN_HOTKEYS: Dictionary = {
 	KEY_F1: "knight",
 	KEY_F2: "archer",
@@ -208,6 +227,38 @@ const SPAWN_HOTKEYS: Dictionary = {
 
 static func get_definition(type_id: String) -> Dictionary:
 	return DEFINITIONS.get(type_id, {})
+
+
+static func get_enemy_kind_name(kind: String) -> String:
+	return ENEMY_KIND_NAMES.get(kind, kind.capitalize())
+
+
+static func get_unit_display_name(unit: Unit) -> String:
+	if unit is EnemyUnit:
+		return get_enemy_kind_name((unit as EnemyUnit).enemy_kind)
+	var def := get_definition(unit.unit_type_id)
+	return def.get("name", unit.unit_type_id)
+
+
+static func get_icon_type_id_for_unit(unit: Unit) -> String:
+	if unit is EnemyUnit:
+		var kind := (unit as EnemyUnit).enemy_kind
+		return str(ENEMY_KIND_VISUAL.get(kind, "enemy"))
+	return unit.unit_type_id
+
+
+static func get_unit_icon(type_id: String) -> Texture2D:
+	var def := get_definition(type_id)
+	var sheet_path: String = def.get("preview", def.get("idle_sheet", ""))
+	if sheet_path.is_empty():
+		return null
+	var sheet := load(sheet_path) as Texture2D
+	if sheet == null:
+		return null
+	var atlas := AtlasTexture.new()
+	atlas.atlas = sheet
+	atlas.region = Rect2(0, 0, UNIT_ICON_FRAME_SIZE, UNIT_ICON_FRAME_SIZE)
+	return atlas
 
 
 static func get_all_type_ids() -> Array[String]:
