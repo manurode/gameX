@@ -65,7 +65,7 @@ const DEFINITIONS: Dictionary = {
 		"can_garrison": true,
 		"blocks_nav": true,
 		"visual_scale": 1.35,
-		# Fallback only — runtime prefers town_center art bottom-band outline.
+		# Fallback only — runtime prefers town_center_plot.png ground plan.
 		"footprint": Vector2(320.0, 150.0),
 		"pick_half_size": Vector2(259.0, 259.0),
 		"is_core": true,

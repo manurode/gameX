@@ -1133,6 +1133,24 @@ func get_interaction_half_size() -> Vector2:
 
 
 func get_closest_surface_point(from_position: Vector2) -> Vector2:
+	# Prefer the real ground-plan perimeter. AABB clamp sticks out past iso
+	# diamonds (Ciudadela especially), so melee units stop/attack far from walls.
+	if not is_wall_segment() and _block_outline_local.size() >= 3:
+		var outline := _outline_to_world(_block_outline_local)
+		var best := outline[0]
+		var best_dist := from_position.distance_squared_to(best)
+		for i in outline.size():
+			var closest := Geometry2D.get_closest_point_to_segment(
+				from_position,
+				outline[i],
+				outline[(i + 1) % outline.size()]
+			)
+			var dist := from_position.distance_squared_to(closest)
+			if dist < best_dist:
+				best_dist = dist
+				best = closest
+		return best
+
 	var center := get_interaction_center()
 	var half := get_interaction_half_size()
 	var local := from_position - center
@@ -1180,9 +1198,14 @@ func _setup_selection_indicator() -> void:
 	var points := PackedVector2Array()
 	const SEGMENTS := 48
 	# Scale with the solid ground plan when known; else DB footprint / sprite AABB.
+	# Do not inflate with pick_half_size — that tracks the tall sprite and made the
+	# Ciudadela ring look like a huge melee radius far past the fence.
 	var ground_half := _block_half_size if _block_half_size != Vector2.ZERO else _footprint * 0.42
-	var radius_x := maxf(maxf(ground_half.x * 1.15, pick_half_size.x * 0.55), 40.0)
-	var radius_y := maxf(maxf(ground_half.y * 1.05, pick_half_size.x * 0.28), 18.0)
+	var radius_x := maxf(ground_half.x * 1.08, 40.0)
+	var radius_y := maxf(ground_half.y * 1.05, 18.0)
+	if _block_half_size == Vector2.ZERO:
+		radius_x = maxf(radius_x, pick_half_size.x * 0.55)
+		radius_y = maxf(radius_y, pick_half_size.x * 0.28)
 	if is_wall_segment():
 		radius_x = maxf(_footprint.x * 0.62, 24.0)
 		radius_y = maxf(_footprint.y * 0.50, 14.0)
