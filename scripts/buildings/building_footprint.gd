@@ -9,8 +9,13 @@ const POLYGON_EPSILON := 2.5
 ## Slightly inset so unit circles can graze the stone edge without snagging.
 const HULL_INSET := 0.94
 const BOTTOM_BAND := 0.42
+## Half the walk corridor between building ground plans. Applied to both sides so
+## the gap stays wider than NavigationSetup.AGENT_CLEARANCE (units can pass).
+const PLACEMENT_WALK_CLEARANCE := 30.0
 
 static var _tex_poly_cache: Dictionary = {}
+## type_id -> building-local placement outline (matches Building._placement_outline_local).
+static var _local_placement_cache: Dictionary = {}
 
 
 static func plot_texture_path(building_texture_path: String) -> String:
@@ -94,6 +99,74 @@ static func polygon_half_extents(poly: PackedVector2Array, center: Vector2) -> V
 		max_x = maxf(max_x, absf(d.x))
 		max_y = maxf(max_y, absf(d.y))
 	return Vector2(max_x, max_y)
+
+
+## Building-local ground plan for placement (plot art, not the tall sprite AABB).
+static func local_placement_outline(type_id: String) -> PackedVector2Array:
+	if type_id.is_empty() or type_id == "wall" or type_id == "gate":
+		return PackedVector2Array()
+	if _local_placement_cache.has(type_id):
+		return _local_placement_cache[type_id]
+
+	var def := BuildingDatabase.get_definition(type_id)
+	var visual_scale: float = def.get("visual_scale", 1.0)
+	var sort_dy := DepthSort.plant_sort_dy(DepthSort.ISO_HALF_TILE, visual_scale)
+	var texture_path: String = def.get("texture", "")
+	var plot_tex := load_plot_texture(texture_path)
+	var local := PackedVector2Array()
+	if plot_tex != null:
+		var place_tex := get_tex_local_outline(plot_tex, "opaque")
+		local = to_building_local(
+			place_tex, plot_tex, visual_scale, DepthSort.ISO_HALF_TILE, sort_dy
+		)
+
+	_local_placement_cache[type_id] = local
+	return local
+
+
+## World-space ground footprint for a building type at its `place_at` anchor.
+static func world_placement_outline(anchor: Vector2, type_id: String) -> PackedVector2Array:
+	var local := local_placement_outline(type_id)
+	if local.size() >= 3:
+		var def := BuildingDatabase.get_definition(type_id)
+		var visual_scale: float = def.get("visual_scale", 1.0)
+		var sort_dy := DepthSort.plant_sort_dy(DepthSort.ISO_HALF_TILE, visual_scale)
+		var origin := anchor + Vector2(0.0, sort_dy)
+		var world := PackedVector2Array()
+		world.resize(local.size())
+		for i in local.size():
+			world[i] = origin + local[i]
+		return world
+
+	# Diamond fallback matching Building.get_ground_footprint_polygon().
+	var def := BuildingDatabase.get_definition(type_id)
+	var footprint: Vector2 = def.get("footprint", Vector2(70.0, 45.0))
+	var half := footprint * 0.42
+	var center := anchor + Vector2(0.0, -footprint.y * 0.2)
+	return PackedVector2Array([
+		center + Vector2(0.0, -half.y),
+		center + Vector2(half.x, 0.0),
+		center + Vector2(0.0, half.y),
+		center + Vector2(-half.x, 0.0),
+	])
+
+
+## Grows a polygon outward so placement can reserve a walk corridor.
+static func expand_polygon(poly: PackedVector2Array, amount: float) -> PackedVector2Array:
+	if poly.size() < 3 or amount <= 0.0:
+		return poly
+	var results := Geometry2D.offset_polygon(poly, amount)
+	if results.is_empty():
+		return poly
+	var best: PackedVector2Array = results[0]
+	var best_area := _polygon_area(best)
+	for i in range(1, results.size()):
+		var candidate: PackedVector2Array = results[i]
+		var area := _polygon_area(candidate)
+		if area > best_area:
+			best_area = area
+			best = candidate
+	return best
 
 
 static func _outline_from_alpha(image: Image) -> PackedVector2Array:

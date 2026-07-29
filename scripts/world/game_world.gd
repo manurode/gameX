@@ -243,15 +243,11 @@ func _can_spawn_building_at(cell: Vector2i, type_id: String) -> bool:
 	if ground_layer.is_water_at(world_pos):
 		return false
 
-	var def := BuildingDatabase.get_definition(type_id)
-	var footprint: Vector2 = def.get("footprint", Vector2(70.0, 45.0))
-	var pick: Vector2 = def.get("pick_half_size", Vector2(55.0, 50.0))
-	# Approximate the future selection rect so sprites do not stack visually.
-	var sprite_center := world_pos + Vector2(0.0, -pick.y * 0.45)
-	var visual_half := pick + Vector2(10.0, 10.0)
-	var visual_rect := Rect2(sprite_center - visual_half, visual_half * 2.0)
-	var footprint_half := footprint * 0.55
-	var footprint_rect := Rect2(world_pos - footprint_half, footprint_half * 2.0)
+	# Same ground-plan + walk-corridor rule as BuildManager (not sprite AABB).
+	var test_poly := BuildingFootprint.world_placement_outline(world_pos, type_id)
+	if test_poly.size() < 3:
+		return false
+	var reserved := BuildingFootprint.expand_polygon(test_poly, BuildingFootprint.PLACEMENT_WALK_CLEARANCE)
 
 	for node in get_tree().get_nodes_in_group("buildings"):
 		if not (node is Building):
@@ -259,38 +255,31 @@ func _can_spawn_building_at(cell: Vector2i, type_id: String) -> bool:
 		var other := node as Building
 		if other.building_state == Building.BuildingState.DESTROYED:
 			continue
-		if visual_rect.intersects(other.get_selection_rect(), true):
+		var other_poly := other.get_ground_footprint_polygon()
+		if other.is_wall_segment():
+			if not Geometry2D.intersect_polygons(test_poly, other_poly).is_empty():
+				return false
+		elif not Geometry2D.intersect_polygons(
+			reserved,
+			BuildingFootprint.expand_polygon(other_poly, BuildingFootprint.PLACEMENT_WALK_CLEARANCE)
+		).is_empty():
 			return false
 
 	for node in get_tree().get_nodes_in_group("terrain_obstacles"):
-		if node is TerrainObstacle and _spawn_overlaps_obstacle(world_pos, footprint_rect, node as TerrainObstacle):
+		if node is TerrainObstacle and _spawn_overlaps_obstacle_poly(test_poly, node as TerrainObstacle):
 			return false
 	return true
 
 
-func _spawn_overlaps_obstacle(world_pos: Vector2, test_rect: Rect2, obstacle: TerrainObstacle) -> bool:
-	if obstacle == null or not obstacle.blocks_movement:
+func _spawn_overlaps_obstacle_poly(outline: PackedVector2Array, obstacle: TerrainObstacle) -> bool:
+	if obstacle == null or not obstacle.blocks_movement or outline.size() < 3:
 		return false
 	var outlines := obstacle.get_nav_block_outlines()
 	if outlines.is_empty():
-		return test_rect.has_point(obstacle.global_position)
-	var corners := [
-		test_rect.position,
-		test_rect.position + Vector2(test_rect.size.x, 0.0),
-		test_rect.position + test_rect.size,
-		test_rect.position + Vector2(0.0, test_rect.size.y),
-	]
-	for outline in outlines:
-		if outline.size() < 3:
-			continue
-		if Geometry2D.is_point_in_polygon(world_pos, outline):
+		return Geometry2D.is_point_in_polygon(obstacle.global_position, outline)
+	for other in outlines:
+		if other.size() >= 3 and not Geometry2D.intersect_polygons(outline, other).is_empty():
 			return true
-		for point in outline:
-			if test_rect.has_point(point):
-				return true
-		for corner in corners:
-			if Geometry2D.is_point_in_polygon(corner, outline):
-				return true
 	return false
 
 

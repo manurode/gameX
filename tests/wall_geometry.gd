@@ -96,6 +96,7 @@ func _test_world_placement() -> void:
 		await get_tree().physics_frame
 
 	_assert_tall_art_does_not_reserve_ground(world)
+	_assert_tower_uses_ground_not_sprite(world)
 	_assert_starter_ring_is_closed(world)
 	world.queue_free()
 
@@ -133,6 +134,62 @@ func _assert_tall_art_does_not_reserve_ground(world: Node) -> void:
 		not build_manager._is_valid_wall_segment(on_top["pos"], on_top["vertical"]),
 		"a wall on top of the town center was accepted"
 	)
+
+
+## Towers reserve their plot, not the tall sprite AABB. A nearby open tile that
+## the old selection-rect rule would reject must remain buildable, while stacking
+## on the same ground plan stays rejected. Walk clearance keeps a unit gap.
+func _assert_tower_uses_ground_not_sprite(world: Node) -> void:
+	var build_manager: Node = world.get_node("BuildManager")
+	var building_scene: PackedScene = load("res://scenes/buildings/building.tscn")
+	var tower: Building = building_scene.instantiate()
+	tower.configure("tower", Building.BuildingState.ACTIVE, 1.0)
+	world.buildings.add_child(tower)
+	var town_cell: Vector2i = world.ground_layer.get_town_center_cell()
+	var tower_anchor: Vector2 = world.ground_layer.map_to_local(town_cell + Vector2i(4, 2))
+	tower.place_at(tower_anchor)
+	tower.notify_world_placed()
+	build_manager.grant_free_placements("tower", 2)
+
+	var ground := tower.get_ground_footprint_polygon()
+	assert(ground.size() >= 3, "tower has no ground footprint")
+
+	assert(
+		not build_manager._is_valid_placement_at(tower_anchor, "tower", false),
+		"a tower stacked on another tower's ground plan was accepted"
+	)
+
+	# Search for a spot the old footprint×0.55 vs selection-rect rule would block,
+	# but ground plans + walk corridor leave open.
+	var def := BuildingDatabase.get_definition("tower")
+	var footprint: Vector2 = def.get("footprint", Vector2(233.0, 145.0))
+	var old_half := footprint * 0.55
+	var selection := tower.get_selection_rect()
+	var candidate := Vector2.INF
+	for dist in range(70, 320, 6):
+		var probe := tower_anchor + Vector2(float(dist), 0.0)
+		var old_rect := Rect2(probe - old_half, old_half * 2.0)
+		if not old_rect.intersects(selection, true):
+			continue
+		var probe_poly := BuildingFootprint.world_placement_outline(probe, "tower")
+		var reserved := BuildingFootprint.expand_polygon(
+			probe_poly, BuildingFootprint.PLACEMENT_WALK_CLEARANCE
+		)
+		var other_reserved := BuildingFootprint.expand_polygon(
+			ground, BuildingFootprint.PLACEMENT_WALK_CLEARANCE
+		)
+		if not Geometry2D.intersect_polygons(reserved, other_reserved).is_empty():
+			continue
+		candidate = probe
+		break
+
+	assert(candidate != Vector2.INF, "test setup: no tile freed by ground-plan placement")
+	assert(
+		build_manager._is_valid_placement_at(candidate, "tower", false),
+		"a tower clear of another tower's ground plan was rejected"
+	)
+
+	tower.queue_free()
 
 
 func _assert_starter_ring_is_closed(world: Node) -> void:

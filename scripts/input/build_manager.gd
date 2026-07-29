@@ -42,7 +42,6 @@ var _building_scene: PackedScene = preload("res://scenes/buildings/building.tscn
 var _wall_cache_frame: int = -1
 var _wall_segment_keys: Dictionary = {}
 var _wall_connect_posts: Array[Vector2i] = []
-var _last_ghost_cell := Vector2i(1 << 30, 1 << 30)
 var _last_ghost_type := ""
 var _last_ghost_wall_key := ""
 ## Free placements granted by boons (type_id -> remaining count).
@@ -146,7 +145,6 @@ func _process(_delta: float) -> void:
 	if not build_mode_active:
 		_ghost_sprite.visible = false
 		_clear_wall_ghosts()
-		_last_ghost_cell = Vector2i(1 << 30, 1 << 30)
 		return
 
 	if selected_building_type == "wall":
@@ -168,12 +166,11 @@ func _process(_delta: float) -> void:
 		return
 
 	var world_pos := _screen_to_world(get_viewport().get_mouse_position())
-	var place_cell := _ground_layer.get_cell_at_world(world_pos) if _ground_layer != null else Vector2i.ZERO
 	_ghost_sprite.global_position = world_pos
-	if place_cell != _last_ghost_cell or _last_ghost_type != selected_building_type:
-		_last_ghost_cell = place_cell
-		_last_ghost_type = selected_building_type
-		ghost_valid = _is_valid_placement(world_pos)
+	# Free-form anchors move inside a cell; validity must track world_pos, not the
+	# iso cell cache (that let a green ghost slide into a neighbour's footprint).
+	ghost_valid = _is_valid_placement(world_pos)
+	_last_ghost_type = selected_building_type
 	_ghost_sprite.modulate = Color(0.4, 0.95, 0.55, 0.65) if ghost_valid else Color(0.95, 0.35, 0.35, 0.55)
 	_ghost_sprite.visible = true
 
@@ -252,8 +249,10 @@ func _update_ghost_texture() -> void:
 
 
 func _try_place_building(world_pos: Vector2) -> void:
-	if not ghost_valid or not _is_construction_allowed():
+	# Re-check at click pos — do not trust a stale ghost_valid from a prior frame.
+	if not _is_valid_placement(world_pos) or not _is_construction_allowed():
 		return
+	ghost_valid = true
 	_place_single_building(world_pos, false)
 
 
@@ -592,15 +591,6 @@ func _is_valid_wall_segment(
 	return true
 
 
-func _rect_polygon(rect: Rect2) -> PackedVector2Array:
-	return PackedVector2Array([
-		rect.position,
-		rect.position + Vector2(rect.size.x, 0.0),
-		rect.end,
-		rect.position + Vector2(0.0, rect.size.y),
-	])
-
-
 func _polygons_overlap(a: PackedVector2Array, b: PackedVector2Array) -> bool:
 	if a.size() < 3 or b.size() < 3:
 		return false
@@ -616,32 +606,6 @@ func _polygon_overlaps_obstacle(outline: PackedVector2Array, obstacle: TerrainOb
 	for other in outlines:
 		if _polygons_overlap(outline, other):
 			return true
-	return false
-
-
-func _placement_overlaps_obstacle(world_pos: Vector2, test_rect: Rect2, obstacle: TerrainObstacle) -> bool:
-	if obstacle == null or not obstacle.blocks_movement:
-		return false
-	var outlines := obstacle.get_nav_block_outlines()
-	if outlines.is_empty():
-		return test_rect.has_point(obstacle.global_position)
-	var corners := [
-		test_rect.position,
-		test_rect.position + Vector2(test_rect.size.x, 0.0),
-		test_rect.position + test_rect.size,
-		test_rect.position + Vector2(0.0, test_rect.size.y),
-	]
-	for outline in outlines:
-		if outline.size() < 3:
-			continue
-		if Geometry2D.is_point_in_polygon(world_pos, outline):
-			return true
-		for point in outline:
-			if test_rect.has_point(point):
-				return true
-		for corner in corners:
-			if Geometry2D.is_point_in_polygon(corner, outline):
-				return true
 	return false
 
 
@@ -661,24 +625,29 @@ func _is_valid_placement_at(world_pos: Vector2, type_id: String, _vertical: bool
 	if _ground_layer.is_water_at(world_pos):
 		return false
 
-	var def := BuildingDatabase.get_definition(type_id)
-	var footprint: Vector2 = def.get("footprint", Vector2(70.0, 45.0))
-	var overlap_scale := 0.55
-	var half: Vector2 = footprint * overlap_scale
-	var test_rect := Rect2(world_pos - half, half * 2.0)
+	# Ground plan only — tall sprite AABBs (roofs, towers) must not reserve open tiles.
+	var test_poly := BuildingFootprint.world_placement_outline(world_pos, type_id)
+	if test_poly.size() < 3:
+		return false
+	# Inflate both sides so finished nav clearances leave a unit-wide corridor.
+	var reserved := BuildingFootprint.expand_polygon(test_poly, BuildingFootprint.PLACEMENT_WALK_CLEARANCE)
 
 	for node in get_tree().get_nodes_in_group("buildings"):
 		if node is Building and (node as Building).building_state != Building.BuildingState.DESTROYED:
 			var other := node as Building
+			var other_poly := other.get_ground_footprint_polygon()
 			if other.is_wall_segment():
 				# A wall only reserves its painted base, so buildings may sit against it.
-				if _polygons_overlap(_rect_polygon(test_rect), other.get_ground_footprint_polygon()):
+				if _polygons_overlap(test_poly, other_poly):
 					return false
-			elif test_rect.intersects(other.get_selection_rect(), true):
+			elif _polygons_overlap(
+				reserved,
+				BuildingFootprint.expand_polygon(other_poly, BuildingFootprint.PLACEMENT_WALK_CLEARANCE)
+			):
 				return false
 
 	for node in get_tree().get_nodes_in_group("terrain_obstacles"):
-		if node is TerrainObstacle and _placement_overlaps_obstacle(world_pos, test_rect, node as TerrainObstacle):
+		if node is TerrainObstacle and _polygon_overlaps_obstacle(test_poly, node as TerrainObstacle):
 			return false
 
 	if get_free_placements(type_id) <= 0:
