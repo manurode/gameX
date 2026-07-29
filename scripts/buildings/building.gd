@@ -1646,6 +1646,30 @@ func is_core_building() -> bool:
 	return _definition.get("is_core", false) or building_type_id == "town_center"
 
 
+func can_demolish() -> bool:
+	return (
+		team_id == Team.PLAYER
+		and building_state == BuildingState.ACTIVE
+		and not is_core_building()
+	)
+
+
+func get_demolish_refund() -> Dictionary:
+	return BuildingDatabase.get_demolish_refund(building_type_id, upgrade_level)
+
+
+## Player-initiated teardown: refund resources, then same VFX/cleanup as combat destroy.
+func demolish(resource_manager: ResourceManager) -> bool:
+	if not can_demolish():
+		return false
+	if resource_manager != null:
+		var refund := get_demolish_refund()
+		if resource_manager.has_any_cost(refund):
+			resource_manager.add_resources(refund)
+	_destroy()
+	return true
+
+
 func get_production_items() -> Array[String]:
 	var produces: Array = _definition.get("produces", [])
 	var result: Array[String] = []

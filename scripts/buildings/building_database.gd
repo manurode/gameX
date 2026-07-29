@@ -392,6 +392,23 @@ static func get_cost(type_id: String) -> Dictionary:
 
 ## Repair costs this fraction of the proportional construction cost (0.5 = 50% cheaper).
 const REPAIR_COST_FACTOR := 0.5
+## Demolishing refunds this fraction of construction (+ paid upgrade) cost.
+const DEMOLISH_REFUND_FACTOR := 0.5
+
+
+static func get_demolish_refund(type_id: String, upgrade_level: int = 0) -> Dictionary:
+	var paid := get_cost(type_id).duplicate()
+	var path: Array = get_upgrade_path(type_id)
+	for level in range(1, mini(upgrade_level + 1, path.size())):
+		var tier: Dictionary = path[level]
+		paid["wood"] = int(paid.get("wood", 0)) + int(tier.get("wood", 0))
+		paid["gold"] = int(paid.get("gold", 0)) + int(tier.get("gold", 0))
+		paid["food"] = int(paid.get("food", 0)) + int(tier.get("food", 0))
+	return {
+		"wood": int(round(float(paid.get("wood", 0)) * DEMOLISH_REFUND_FACTOR)),
+		"gold": int(round(float(paid.get("gold", 0)) * DEMOLISH_REFUND_FACTOR)),
+		"food": int(round(float(paid.get("food", 0)) * DEMOLISH_REFUND_FACTOR)),
+	}
 
 
 static func get_repair_cost(type_id: String, current_hp: int, max_hp: int) -> Dictionary:

@@ -1142,6 +1142,8 @@ func _get_special_actions_for_building(building: Building) -> Array[String]:
 		and building.building_state == Building.BuildingState.ACTIVE
 	):
 		actions.append("toggle_gate_lock")
+	if building.can_demolish():
+		actions.append("demolish")
 	return actions
 
 
@@ -1183,6 +1185,8 @@ func _special_action_label(action_id: String) -> String:
 			if _selected_building != null and _selected_building.is_gate_locked():
 				return "Desbloquear"
 			return "Bloquear"
+		"demolish":
+			return "Demoler"
 		_:
 			return action_id
 
@@ -1201,8 +1205,20 @@ func _special_action_tooltip(action_id: String) -> String:
 			if _selected_building != null and _selected_building.is_gate_locked():
 				return "Desbloquear\nSe abrirá cuando un aliado se acerque"
 			return "Bloquear cerrada\nPermanecerá cerrada aunque haya aliados cerca"
+		"demolish":
+			return _format_demolish_tooltip()
 		_:
 			return ""
+
+
+func _format_demolish_tooltip() -> String:
+	if _selected_building == null or not is_instance_valid(_selected_building):
+		return "Demoler"
+	var refund := _selected_building.get_demolish_refund()
+	var parts := _format_cost_parts(refund)
+	if parts.is_empty():
+		return "Demoler\nNo recuperas recursos"
+	return "Demoler\nRecuperas: %s" % " · ".join(parts)
 
 
 func _on_special_action_pressed(action_id: String) -> void:
@@ -1216,6 +1232,17 @@ func _on_special_action_pressed(action_id: String) -> void:
 			_selected_building.toggle_gate_locked()
 			_production_panel_key = ""
 			_refresh_selection_panel()
+		"demolish":
+			_demolish_selected_building()
+
+
+func _demolish_selected_building() -> void:
+	var building := _selected_building
+	if building == null or not is_instance_valid(building) or not building.can_demolish():
+		return
+	if _selection_manager != null and _selection_manager.has_method("clear_selection"):
+		_selection_manager.clear_selection()
+	building.demolish(_resource_manager)
 
 
 func _update_special_action_affordability() -> void:
