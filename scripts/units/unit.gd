@@ -18,11 +18,14 @@ const VISUAL_SCALE := 0.92
 ## Soft contact shadow sits on the feet (frame bottom after sprite_offset + scale).
 const SHADOW_FOOT_Y := 4.0
 const STUCK_TIME_SECONDS := 0.75
+const GROUP_STUCK_TIME_SECONDS := 0.3
+const GROUP_LANE_FAIL_LIMIT := 6
 const STUCK_MOVE_EPSILON_SQ := 2.0
 const STUCK_REPATH_MAX := 4
 const BLOCKED_SPEED_RATIO := 0.35
 const TARGET_PROGRESS_MIN := 2.5
 const PATH_TARGET_REFRESH_DISTANCE := 18.0
+const COMBAT_PATH_TARGET_REFRESH_DISTANCE := 48.0
 const PATH_WAYPOINT_REACHED := 14.0
 const MELEE_DAMAGE_FRAME := 5
 const RANGED_DAMAGE_FRAME := 6
@@ -138,6 +141,13 @@ var _navigation_path_index := 0
 var _navigation_path_target := Vector2.INF
 var _resolved_navigation_target := Vector2.INF
 var _navigation_map_version := -1
+var _group_move_active := false
+var _group_nav_origin := Vector2.INF
+var _group_nav_destination := Vector2.INF
+var _group_formation_offset := Vector2.ZERO
+var _group_lane_failures := 0
+var _combat_range_latched := false
+var _attack_slot_offset := Vector2.INF
 var _scan_timer := 0.0
 var _separation_timer := 0.0
 var _embed_check_timer := 0.0
@@ -595,20 +605,31 @@ static func assign_move_destinations(units: Array, destination: Vector2) -> void
 	if tree != null:
 		navigation_manager = tree.get_first_node_in_group("navigation_manager")
 
+	var centroid := Vector2.ZERO
+	for unit in valid_units:
+		centroid += unit.global_position
+	centroid /= float(valid_units.size())
+
 	# Spread destinations so a group order does not pile every unit on one pixel.
 	var offsets := _formation_offsets(valid_units.size(), FORMATION_SLOT_SPACING)
-	var path_requests: Array = []
+	var use_shared_path := valid_units.size() >= 2
 	for i in valid_units.size():
 		var unit := valid_units[i]
 		var slot_destination := destination + offsets[i]
-		unit.move_to(slot_destination)
-		path_requests.append({
-			"from": unit.global_position,
-			"to": slot_destination,
-		})
+		if use_shared_path:
+			unit._begin_group_move(slot_destination, centroid, destination)
+		else:
+			unit.move_to(slot_destination)
 
-	if navigation_manager != null and navigation_manager.has_method("queue_navigation_paths"):
-		navigation_manager.call("queue_navigation_paths", path_requests)
+	if use_shared_path and navigation_manager != null:
+		if navigation_manager.has_method("queue_navigation_paths"):
+			navigation_manager.call(
+				"queue_navigation_paths",
+				[{"from": centroid, "to": destination}],
+				true
+			)
+		elif navigation_manager.has_method("queue_navigation_path"):
+			navigation_manager.call("queue_navigation_path", centroid, destination)
 
 
 static func _formation_offsets(count: int, spacing: float) -> Array[Vector2]:
@@ -737,6 +758,11 @@ func intersects_world_rect(world_rect: Rect2) -> bool:
 
 
 func move_to(target: Vector2) -> void:
+	_group_move_active = false
+	_group_nav_origin = Vector2.INF
+	_group_nav_destination = Vector2.INF
+	_group_formation_offset = Vector2.ZERO
+	_group_lane_failures = 0
 	cancel_recruitment()
 	if garrisoned_building != null:
 		exit_garrison()
@@ -754,9 +780,28 @@ func move_to(target: Vector2) -> void:
 	_unit_state = UnitState.MOVING
 	_is_attack_animating = false
 	_move_destination = target
+	_combat_range_latched = false
+	_invalidate_attack_slot()
 	_reset_navigation_recovery()
 	navigation_agent.target_desired_distance = PERSONAL_SPACE_RADIUS * 0.85
 	navigation_agent.target_position = target
+
+
+func _invalidate_attack_slot() -> void:
+	_attack_slot_offset = Vector2.INF
+
+
+func _begin_group_move(
+	slot_destination: Vector2,
+	nav_origin: Vector2,
+	nav_destination: Vector2
+) -> void:
+	move_to(slot_destination)
+	_group_move_active = true
+	_group_nav_origin = nav_origin
+	_group_nav_destination = nav_destination
+	_group_formation_offset = slot_destination - nav_destination
+	_group_lane_failures = 0
 
 
 func attack_target_unit(target: Unit) -> void:
@@ -784,6 +829,8 @@ func attack_target_unit(target: Unit) -> void:
 	attack_target = target
 	_unit_state = UnitState.CHASING if garrisoned_building == null else UnitState.IDLE
 	_is_attack_animating = false
+	_combat_range_latched = false
+	_invalidate_attack_slot()
 	_reset_navigation_recovery()
 
 
@@ -801,6 +848,8 @@ func attack_target_building_node(target: Building) -> void:
 	_set_attack_target_building(target)
 	_unit_state = UnitState.CHASING if garrisoned_building == null else UnitState.IDLE
 	_is_attack_animating = false
+	_combat_range_latched = false
+	_invalidate_attack_slot()
 	_reset_navigation_recovery()
 
 
@@ -1431,10 +1480,79 @@ func _is_stuck_moving(delta: float, target: Vector2) -> bool:
 		return false
 
 	_stuck_timer += delta
-	return _stuck_timer >= STUCK_TIME_SECONDS
+	var stuck_limit := GROUP_STUCK_TIME_SECONDS if _group_move_active else STUCK_TIME_SECONDS
+	return _stuck_timer >= stuck_limit
 
 
-func _sync_navigation_target(target: Vector2) -> void:
+func _break_group_move_navigation() -> void:
+	_group_move_active = false
+	_group_nav_origin = Vector2.INF
+	_group_nav_destination = Vector2.INF
+	_group_formation_offset = Vector2.ZERO
+	_group_lane_failures = 0
+	_navigation_path.clear()
+	_navigation_path_index = 0
+	_navigation_path_target = Vector2.INF
+	_navigation_map_version = -1
+
+
+func _queue_individual_navigation_path(target: Vector2) -> void:
+	var navigation_manager := _get_navigation_manager()
+	if navigation_manager == null:
+		return
+	if navigation_manager.has_method("queue_navigation_paths"):
+		navigation_manager.call(
+			"queue_navigation_paths",
+			[{"from": global_position, "to": target}],
+			true
+		)
+	elif navigation_manager.has_method("queue_navigation_path"):
+		navigation_manager.call("queue_navigation_path", global_position, target)
+
+
+func _resolve_group_or_individual_path(
+	shared_path: PackedVector2Array,
+	target: Vector2
+) -> PackedVector2Array:
+	if not _group_move_active:
+		return shared_path
+
+	if not shared_path.is_empty():
+		var adapted := _adapt_shared_path_for_unit(shared_path, target)
+		if not adapted.is_empty():
+			return adapted
+
+	_break_group_move_navigation()
+	_queue_individual_navigation_path(target)
+	var navigation_manager := _get_navigation_manager()
+	if navigation_manager == null or not navigation_manager.has_method("try_get_navigation_path"):
+		return PackedVector2Array()
+
+	var individual_lookup: Dictionary = navigation_manager.call(
+		"try_get_navigation_path",
+		global_position,
+		target
+	)
+	if individual_lookup.get("ready", false):
+		return individual_lookup.get("path", PackedVector2Array())
+	return PackedVector2Array()
+
+
+func _maybe_abandon_blocked_group_lane(target: Vector2) -> bool:
+	if not _group_move_active:
+		return false
+	_group_lane_failures += 1
+	if _group_lane_failures < GROUP_LANE_FAIL_LIMIT:
+		return false
+
+	_break_group_move_navigation()
+	if is_overlapping_world_solid():
+		eject_from_world_solids(target)
+	_force_navigation_repath(target)
+	return true
+
+
+func _sync_navigation_target(target: Vector2, force_sync: bool = false) -> void:
 	if navigation_agent.target_position.distance_squared_to(target) > 4.0:
 		navigation_agent.target_position = target
 
@@ -1443,9 +1561,12 @@ func _sync_navigation_target(target: Vector2) -> void:
 		return
 
 	var current_version: int = navigation_manager.call("get_navigation_version")
+	var refresh_distance := PATH_TARGET_REFRESH_DISTANCE
+	if attack_target != null or attack_target_building != null:
+		refresh_distance = COMBAT_PATH_TARGET_REFRESH_DISTANCE
 	var target_changed := (
 		_navigation_path_target == Vector2.INF
-		or _navigation_path_target.distance_to(target) >= PATH_TARGET_REFRESH_DISTANCE
+		or _navigation_path_target.distance_to(target) >= refresh_distance
 	)
 	if (
 		not target_changed
@@ -1454,29 +1575,166 @@ func _sync_navigation_target(target: Vector2) -> void:
 	):
 		return
 
-	# Compute synchronously so movers never charge in a straight line while the
-	# async queue is still warming — that was the main cause of units spinning on
-	# buildings after tighter placement allowed clusters with narrow gaps.
-	var metrics: Dictionary = navigation_manager.call(
-		"query_path_metrics",
-		global_position,
-		target
-	)
-	_navigation_path = metrics.get("path", PackedVector2Array())
-	if _navigation_path.is_empty():
-		_resolved_navigation_target = navigation_manager.call(
-			"get_closest_walkable_point",
-			global_position
+	if (
+		not force_sync
+		and _navigation_path.is_empty()
+		and (Engine.get_physics_frames() + get_instance_id()) & 1 != 0
+	):
+		return
+
+	var lookup_from := global_position
+	var lookup_to := target
+	if _group_move_active:
+		lookup_from = _group_nav_origin
+		lookup_to = _group_nav_destination
+
+	if force_sync and navigation_manager.has_method("query_path_metrics"):
+		var metrics: Dictionary = navigation_manager.call(
+			"query_path_metrics",
+			lookup_from,
+			lookup_to
 		)
+		var path: PackedVector2Array = metrics.get("path", PackedVector2Array())
+		path = _resolve_group_or_individual_path(path, target)
+		_apply_navigation_lookup(target, current_version, path)
+		return
+
+	if not navigation_manager.has_method("try_get_navigation_path"):
+		return
+
+	var lookup: Dictionary = navigation_manager.call(
+		"try_get_navigation_path",
+		lookup_from,
+		lookup_to
+	)
+	if not lookup.get("ready", false):
+		return
+
+	var path: PackedVector2Array = lookup.get("path", PackedVector2Array())
+	path = _resolve_group_or_individual_path(path, target)
+	if path.is_empty() and not _group_move_active:
+		return
+	if path.is_empty():
+		return
+	_apply_navigation_lookup(target, current_version, path)
+
+
+func _adapt_shared_path_for_unit(
+	shared_path: PackedVector2Array,
+	slot_target: Vector2
+) -> PackedVector2Array:
+	if shared_path.is_empty():
+		return shared_path
+
+	var formation_offset := _group_formation_offset
+	if formation_offset.length_squared() < 0.01:
+		formation_offset = slot_target - _group_nav_destination
+
+	for scale in [1.0, 0.6, 0.3]:
+		var candidate := _build_lane_path(shared_path, slot_target, formation_offset * scale)
+		if _is_navigation_path_walkable(candidate):
+			return candidate
+
+	return PackedVector2Array()
+
+
+func _build_lane_path(
+	shared_path: PackedVector2Array,
+	slot_target: Vector2,
+	lane_offset: Vector2
+) -> PackedVector2Array:
+	var adapted := PackedVector2Array()
+	var start_index := 0
+	for i in shared_path.size():
+		var lane_point := shared_path[i] + lane_offset
+		if not _is_waypoint_behind(lane_point, slot_target):
+			start_index = i
+			break
+		start_index = i + 1
+
+	if start_index >= shared_path.size():
+		adapted.append(slot_target)
+		return adapted
+
+	for i in range(start_index, shared_path.size()):
+		var lane_point := shared_path[i] + lane_offset
+		if adapted.is_empty() or adapted[-1].distance_squared_to(lane_point) > 4.0:
+			adapted.append(lane_point)
+
+	if adapted[-1].distance_squared_to(slot_target) > FORMATION_SLOT_SPACING * FORMATION_SLOT_SPACING * 0.25:
+		adapted.append(slot_target)
+	return adapted
+
+
+func _is_waypoint_behind(waypoint: Vector2, goal: Vector2) -> bool:
+	var to_goal := goal - global_position
+	var to_waypoint := waypoint - global_position
+	if to_goal.length_squared() < 1.0:
+		return false
+	if to_waypoint.length_squared() <= PATH_WAYPOINT_REACHED * PATH_WAYPOINT_REACHED:
+		return false
+	return to_goal.normalized().dot(to_waypoint.normalized()) < -0.05
+
+
+func _prune_path_to_forward(path: PackedVector2Array, goal: Vector2) -> PackedVector2Array:
+	if path.size() <= 1:
+		return path
+
+	var start_index := 0
+	for i in path.size():
+		var point := path[i]
+		if global_position.distance_squared_to(point) <= PATH_WAYPOINT_REACHED * PATH_WAYPOINT_REACHED:
+			start_index = i + 1
+			continue
+		if not _is_waypoint_behind(point, goal):
+			start_index = i
+			break
+		start_index = i + 1
+
+	if start_index >= path.size():
+		return PackedVector2Array([path[path.size() - 1]])
+
+	var pruned := PackedVector2Array()
+	for i in range(start_index, path.size()):
+		if pruned.is_empty() or pruned[-1].distance_squared_to(path[i]) > 4.0:
+			pruned.append(path[i])
+	return pruned
+
+
+func _is_navigation_path_walkable(path: PackedVector2Array) -> bool:
+	if path.is_empty():
+		return false
+	var navigation_manager := _get_navigation_manager()
+	if navigation_manager == null or not navigation_manager.has_method("is_path_walkable"):
+		return true
+	return bool(navigation_manager.call("is_path_walkable", path))
+
+
+func _apply_navigation_lookup(
+	target: Vector2,
+	map_version: int,
+	path: PackedVector2Array
+) -> void:
+	var navigation_manager := _get_navigation_manager()
+	_navigation_path = path
+	if _navigation_path.is_empty():
+		if navigation_manager != null and navigation_manager.has_method("get_closest_walkable_point"):
+			_resolved_navigation_target = navigation_manager.call(
+				"get_closest_walkable_point",
+				global_position
+			)
+		else:
+			_resolved_navigation_target = global_position
 		_navigation_path_target = target
-		_navigation_map_version = current_version
+		_navigation_map_version = map_version
 		return
 
 	_apply_navigation_path(target)
-	_navigation_map_version = current_version
+	_navigation_map_version = map_version
 
 
 func _apply_navigation_path(target: Vector2) -> void:
+	_navigation_path = _prune_path_to_forward(_navigation_path, target)
 	_navigation_path_index = 0
 	_navigation_path_target = target
 	_resolved_navigation_target = target
@@ -1488,9 +1746,15 @@ func _apply_navigation_path(target: Vector2) -> void:
 			<= PATH_WAYPOINT_REACHED
 		):
 			_navigation_path_index += 1
+		while (
+			_navigation_path_index < _navigation_path.size()
+			and _is_waypoint_behind(_navigation_path[_navigation_path_index], target)
+		):
+			_navigation_path_index += 1
 
 
 func _force_navigation_repath(target: Vector2) -> void:
+	_break_group_move_navigation()
 	_nav_repath_attempts += 1
 	_reset_stuck_tracking(target)
 	_navigation_path.clear()
@@ -1500,7 +1764,7 @@ func _force_navigation_repath(target: Vector2) -> void:
 		eject_from_world_solids()
 	elif _nav_repath_attempts <= STUCK_REPATH_MAX:
 		_try_stuck_lateral_nudge(target)
-	_sync_navigation_target(target)
+	_sync_navigation_target(target, true)
 
 
 ## Small sidestep away from a blocking face before recomputing A*.
@@ -1535,11 +1799,15 @@ func _move_along_path(preferred_direction: Vector2, target: Vector2, delta: floa
 	# Face actual displacement when we moved; otherwise keep the last axis so
 	# wall-slides beside buildings do not flip the walk strip every frame.
 	if step.length_squared() > STUCK_MOVE_EPSILON_SQ:
-		_play_walk_animation(step)
+		if step.dot(preferred_direction) >= 0.0:
+			_play_walk_animation(step)
+		else:
+			_play_walk_animation(preferred_direction)
 	elif preferred_direction.length_squared() > 0.0001:
 		_play_walk_animation(_last_facing_direction)
 
 	if _did_move_well(moved, progress, speed, delta):
+		_group_lane_failures = 0
 		_reset_stuck_tracking(target)
 		return true
 
@@ -1562,8 +1830,11 @@ func _follow_navigation_toward(target: Vector2, desired_distance: float, delta: 
 	_sync_navigation_target(target)
 
 	if _navigation_path.is_empty():
-		# No route yet or destination fully walled off — hold position instead of
-		# bee-lining through building collision toward the far-side walkable cell.
+		var to_target := target - global_position
+		if to_target.length_squared() > desired_distance * desired_distance:
+			var dir := to_target.normalized()
+			if _move_along_path(dir, target, delta):
+				return false
 		velocity = Vector2.ZERO
 		if _is_stuck_moving(delta, target) and _nav_repath_attempts < STUCK_REPATH_MAX:
 			return _handle_navigation_stuck(target, target, delta)
@@ -1572,10 +1843,17 @@ func _follow_navigation_toward(target: Vector2, desired_distance: float, delta: 
 
 	var direction := _get_navigation_direction(target)
 	if direction == Vector2.ZERO:
-		return _handle_navigation_stuck(target, target, delta)
+		var fallback := target - global_position
+		if fallback.length_squared() > desired_distance * desired_distance:
+			direction = fallback.normalized()
+		else:
+			return _handle_navigation_stuck(target, target, delta)
 
 	var movement_goal := _get_current_navigation_goal(target)
 	if _move_along_path(direction, movement_goal, delta):
+		return false
+
+	if _maybe_abandon_blocked_group_lane(target):
 		return false
 
 	return _handle_navigation_stuck(movement_goal, target, delta)
@@ -1755,12 +2033,15 @@ func _is_in_build_range(building: Building) -> bool:
 func _get_navigation_direction(target: Vector2) -> Vector2:
 	var navigation_manager := _get_navigation_manager()
 	if navigation_manager != null:
-		while (
-			_navigation_path_index < _navigation_path.size()
-			and global_position.distance_to(_navigation_path[_navigation_path_index])
-			<= PATH_WAYPOINT_REACHED
-		):
-			_navigation_path_index += 1
+		while _navigation_path_index < _navigation_path.size():
+			var waypoint := _navigation_path[_navigation_path_index]
+			if global_position.distance_to(waypoint) <= PATH_WAYPOINT_REACHED:
+				_navigation_path_index += 1
+				continue
+			if _is_waypoint_behind(waypoint, target):
+				_navigation_path_index += 1
+				continue
+			break
 
 		if _navigation_path_index < _navigation_path.size():
 			return global_position.direction_to(_navigation_path[_navigation_path_index])
@@ -1818,20 +2099,15 @@ func _process_combat(_delta: float) -> void:
 		_update_terrain_feedback(_delta)
 		return
 
-	# Same early-stop idea as group move orders: do not squeeze into a peer's
-	# personal space when already close to our assigned attack slot.
+	# Hold once we've reached our assigned attack slot.
 	var combat_slot := _get_combat_slot_destination()
-	if (
-		combat_slot != Vector2.INF
-		and global_position.distance_to(combat_slot) <= PERSONAL_SPACE_RADIUS * 2.25
-		and _is_adjacent_to_same_team_unit()
-	):
+	if combat_slot != Vector2.INF and global_position.distance_to(combat_slot) <= 2.0:
 		velocity = Vector2.ZERO
 		_play_idle_facing_target()
 		_update_terrain_feedback(_delta)
 		return
 
-	# Melee vs unit/building: reuse the slot already computed above.
+	# Melee: always steer straight toward the slot — no path waypoints in crowds.
 	if combat_style == CombatStyle.MELEE and combat_slot != Vector2.INF:
 		if (
 			(attack_target != null and is_instance_valid(attack_target))
@@ -1848,7 +2124,17 @@ func _process_combat(_delta: float) -> void:
 
 
 func _chase_melee_direct_toward(target_point: Vector2, delta: float) -> void:
-	_follow_navigation_toward(target_point, 2.0, delta)
+	if global_position.distance_to(target_point) <= 2.0:
+		velocity = Vector2.ZERO
+		_play_idle_facing_target()
+		return
+
+	var direction := global_position.direction_to(target_point)
+	if direction == Vector2.ZERO:
+		velocity = Vector2.ZERO
+		_play_idle_facing_target()
+		return
+	_move_along_path(direction, target_point, delta)
 
 
 func _get_chase_navigation_target() -> Vector2:
@@ -1863,25 +2149,37 @@ func _get_chase_navigation_target() -> Vector2:
 	return global_position
 
 
-## Spread chase destinations like group-move formation slots so same-team units
-## do not all navigate to one shared pixel (allies and enemies alike).
+## Spread chase destinations along our approach side so units do not path around
+## the target through the whole ring (which caused back-and-forth in crowds).
 func _get_attack_slot_point(base_point: Vector2) -> Vector2:
+	if _attack_slot_offset == Vector2.INF:
+		_attack_slot_offset = _compute_attack_slot_offset(base_point)
+	return base_point + _attack_slot_offset
+
+
+func _compute_attack_slot_offset(base_point: Vector2) -> Vector2:
 	var group_key := _get_attack_slot_group_key()
 	if group_key == 0:
-		return base_point
+		return Vector2.ZERO
 	_rebuild_attack_slot_peers(get_tree())
 	var my_id := get_instance_id()
 	var slot_index: int = int(_attack_slot_index_by_unit.get(my_id, -1))
-	var peers: Array = _attack_slot_peers.get(group_key, [])
-	if slot_index < 0:
-		slot_index = peers.size()
 	if slot_index <= 0:
-		return base_point
+		return Vector2.ZERO
+
+	var approach := global_position.direction_to(base_point)
+	if approach.length_squared() < 0.0001:
+		approach = Vector2.DOWN
+	else:
+		approach = approach.normalized()
+	var lateral := Vector2(-approach.y, approach.x)
+
+	var peers: Array = _attack_slot_peers.get(group_key, [])
 	var peer_count := maxi(slot_index + 1, peers.size())
-	var offsets := _cached_formation_offsets(peer_count, FORMATION_SLOT_SPACING)
-	if slot_index >= offsets.size():
-		offsets = _cached_formation_offsets(slot_index + 1, FORMATION_SLOT_SPACING)
-	return base_point + offsets[slot_index]
+	var flanking_count := maxi(1, peer_count - 1)
+	var lateral_offset := (float(slot_index) - float(flanking_count) * 0.5) * FORMATION_SLOT_SPACING
+	var standoff := minf(melee_range * 0.72, 38.0)
+	return -approach * standoff + lateral * lateral_offset
 
 
 func _get_attack_slot_group_key() -> int:
@@ -2408,8 +2706,18 @@ func _is_in_attack_range() -> bool:
 			return dist <= range_max
 		match combat_style:
 			CombatStyle.MELEE:
-				if _get_melee_combat_distance() > melee_range * 1.15:
+				var melee_dist := _get_melee_combat_distance()
+				if _combat_range_latched:
+					if melee_dist > melee_range * 1.3:
+						_combat_range_latched = false
+						return false
+				elif melee_dist > melee_range * 1.15:
 					return false
+				_combat_range_latched = not _is_attack_blocked_by_wall(
+					global_position,
+					attack_target.global_position
+				)
+				return _combat_range_latched
 			CombatStyle.RANGED:
 				if dist < attack_range_min or dist > attack_range_max:
 					return false
@@ -2872,6 +3180,8 @@ func _on_animation_finished() -> void:
 	else:
 		attack_target = null
 		_set_attack_target_building(null)
+		_combat_range_latched = false
+		_invalidate_attack_slot()
 		_unit_state = UnitState.IDLE
 
 
@@ -2947,6 +3257,15 @@ func _update_visual_separation(delta: float) -> void:
 
 func _apply_cached_stack_push(delta: float) -> void:
 	if _last_stack_push == Vector2.ZERO:
+		return
+	# Never shove units that are following a player order — it fights pathing.
+	if (
+		_unit_state == UnitState.MOVING
+		or _unit_state == UnitState.CHASING
+		or _unit_state == UnitState.ATTACKING
+		or attack_target != null
+		or attack_target_building != null
+	):
 		return
 	# Only unstick settled piles. Pushing while pathing fights move_and_slide
 	# and keeps crowds thrashing when many units share a choke point.

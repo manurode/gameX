@@ -7,7 +7,8 @@ const AGENT_CLEARANCE := 16.0
 const SEGMENT_SAMPLE_STEP := 8.0
 const CLOSEST_POINT_SEARCH_LIMIT := 48
 const DYNAMIC_REBUILD_RADIUS := 128.0
-const PATHS_PER_FRAME := 12
+const PATHS_PER_FRAME := 3
+const PATH_FRAME_BUDGET_MS := 1.5
 const PATH_CACHE_LIMIT := 512
 
 var _ground_layer: TinyTilesMap
@@ -262,12 +263,22 @@ func _rebuild_dirty_path_grid() -> void:
 
 
 func get_navigation_path(from_position: Vector2, target_position: Vector2) -> PackedVector2Array:
+	var result := try_get_navigation_path(from_position, target_position)
+	if result.get("ready", false):
+		return result.get("path", PackedVector2Array())
+	return PackedVector2Array()
+
+
+## Returns a cached path when ready; otherwise enqueues and reports pending.
+func try_get_navigation_path(from_position: Vector2, target_position: Vector2) -> Dictionary:
 	var cache_key := _make_path_cache_key(from_position, target_position)
 	if _path_cache.has(cache_key):
-		return _path_cache[cache_key]
+		return {"ready": true, "path": _path_cache[cache_key]}
+	if _path_queue_keys.has(cache_key):
+		return {"ready": false, "path": PackedVector2Array()}
 
 	queue_navigation_path(from_position, target_position)
-	return PackedVector2Array()
+	return {"ready": false, "path": PackedVector2Array()}
 
 
 ## Sync path metrics for AI decisions. Uses the path cache when warm; otherwise
@@ -325,15 +336,47 @@ func queue_navigation_path(from_position: Vector2, target_position: Vector2) -> 
 	})
 
 
-func queue_navigation_paths(requests: Array) -> void:
+func queue_navigation_paths(requests: Array, front: bool = false) -> void:
+	var pending: Array[Dictionary] = []
 	for request in requests:
 		if request is Dictionary:
-			queue_navigation_path(request.get("from", Vector2.ZERO), request.get("to", Vector2.ZERO))
+			var from_position: Vector2 = request.get("from", Vector2.ZERO)
+			var target_position: Vector2 = request.get("to", Vector2.ZERO)
+			var cache_key := _make_path_cache_key(from_position, target_position)
+			if _path_cache.has(cache_key) or _path_queue_keys.has(cache_key):
+				continue
+			_path_queue_keys[cache_key] = true
+			pending.append({
+				"from": from_position,
+				"to": target_position,
+				"key": cache_key,
+			})
+
+	if pending.is_empty():
+		return
+
+	if front:
+		_compact_path_queue()
+		_path_queue = pending + _path_queue
+	else:
+		for request in pending:
+			_path_queue.append(request)
+
+
+func _compact_path_queue() -> void:
+	if _path_queue_head > 0:
+		_path_queue = _path_queue.slice(_path_queue_head)
+		_path_queue_head = 0
 
 
 func _process_path_queue() -> void:
+	var budget_start_us := Time.get_ticks_usec()
+	var budget_us := int(PATH_FRAME_BUDGET_MS * 1000.0)
 	var processed := 0
 	while _path_queue_head < _path_queue.size() and processed < PATHS_PER_FRAME:
+		if processed > 0 and Time.get_ticks_usec() - budget_start_us >= budget_us:
+			break
+
 		var request: Dictionary = _path_queue[_path_queue_head]
 		_path_queue_head += 1
 		var cache_key: String = request.get("key", "")
@@ -344,14 +387,13 @@ func _process_path_queue() -> void:
 
 		var from_position: Vector2 = request.get("from", Vector2.ZERO)
 		var target_position: Vector2 = request.get("to", Vector2.ZERO)
-		_path_cache[cache_key] = _compute_navigation_path(from_position, target_position)
+		_path_cache[cache_key] = _compute_navigation_path(from_position, target_position, false)
 		if _path_cache.size() > PATH_CACHE_LIMIT:
 			_evict_path_cache()
 		processed += 1
 
 	if _path_queue_head > 64 and _path_queue_head * 2 > _path_queue.size():
-		_path_queue = _path_queue.slice(_path_queue_head)
-		_path_queue_head = 0
+		_compact_path_queue()
 
 
 func _evict_path_cache() -> void:
@@ -362,7 +404,11 @@ func _evict_path_cache() -> void:
 		_path_cache.erase(keys[i])
 
 
-func _compute_navigation_path(from_position: Vector2, target_position: Vector2) -> PackedVector2Array:
+func _compute_navigation_path(
+	from_position: Vector2,
+	target_position: Vector2,
+	smooth: bool = true
+) -> PackedVector2Array:
 	if _path_grid_size == Vector2i.ZERO:
 		return PackedVector2Array()
 
@@ -395,7 +441,9 @@ func _compute_navigation_path(from_position: Vector2, target_position: Vector2) 
 	if raw_path[-1].distance_squared_to(reachable_target) > 1.0:
 		raw_path.append(reachable_target)
 
-	return _smooth_path(raw_path)
+	if smooth:
+		return _smooth_path(raw_path)
+	return raw_path
 
 
 func _make_path_cache_key(from_position: Vector2, target_position: Vector2) -> String:
@@ -710,6 +758,21 @@ func _outline_bounds(outline: PackedVector2Array) -> Rect2:
 		min_v = min_v.min(outline[i])
 		max_v = max_v.max(outline[i])
 	return Rect2(min_v, max_v - min_v)
+
+
+func is_world_point_walkable(world_position: Vector2) -> bool:
+	return _is_world_point_walkable(world_position)
+
+
+func is_path_walkable(path: PackedVector2Array) -> bool:
+	if path.is_empty():
+		return false
+	if not _is_world_point_walkable(path[0]):
+		return false
+	for i in range(1, path.size()):
+		if not _has_clear_segment(path[i - 1], path[i]):
+			return false
+	return true
 
 
 func _is_world_point_walkable(world_position: Vector2) -> bool:
