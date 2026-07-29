@@ -840,7 +840,7 @@ func _process_automatic_defense(delta: float) -> void:
 	var attack_range_sq := attack_range * attack_range
 	var origin := get_attack_point()
 	for item in UnitSpatialIndex.query_nearby(get_tree(), origin, attack_range):
-		if not item is Unit:
+		if not is_instance_valid(item) or not (item is Unit):
 			continue
 		var enemy := item as Unit
 		if enemy._is_dying or enemy.hp <= 0:
@@ -1565,7 +1565,7 @@ func _get_nearby_unit_positions(center: Vector2, radius: float) -> Array[Vector2
 		return result
 	var radius_sq := radius * radius
 	for item in UnitSpatialIndex.query_nearby(get_tree(), center, radius):
-		if not item is Unit:
+		if not is_instance_valid(item) or not (item is Unit):
 			continue
 		var unit := item as Unit
 		if not is_instance_valid(unit) or unit._is_dying or unit.hp <= 0:
@@ -1668,7 +1668,7 @@ func _eject_overlapping_units() -> void:
 	var half := get_collision_half_size()
 	var radius := maxf(half.x, half.y) + Unit.NAV_AGENT_RADIUS + 16.0
 	for item in UnitSpatialIndex.query_nearby(get_tree(), center, radius):
-		if not item is Unit:
+		if not is_instance_valid(item) or not (item is Unit):
 			continue
 		var unit := item as Unit
 		if not is_instance_valid(unit) or unit._is_dying or unit.hp <= 0:

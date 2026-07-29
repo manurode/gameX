@@ -18,6 +18,7 @@ func _ready() -> void:
 	body_entered.connect(_on_body_entered)
 	rotation = direction.angle()
 	queue_redraw()
+	call_deferred("reset_physics_interpolation")
 
 
 func _physics_process(delta: float) -> void:

@@ -124,7 +124,7 @@ func can_assign_villagers_to_resource(villagers: Array, resource_node: ResourceN
 	if resource_node == null or not resource_node.has_resources():
 		return false
 	for item in villagers:
-		if not item is Unit:
+		if not is_instance_valid(item) or not (item is Unit):
 			continue
 		var villager := item as Unit
 		if (

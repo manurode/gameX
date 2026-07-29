@@ -22,7 +22,8 @@ static func _ensure_built(tree: SceneTree) -> void:
 	if tree == null:
 		return
 	for node in tree.get_nodes_in_group("units"):
-		if not node is Unit:
+		# Freed refs must be checked before `is` (Godot errors otherwise).
+		if not is_instance_valid(node) or not (node is Unit):
 			continue
 		var unit := node as Unit
 		if unit._is_dying or unit.hp <= 0 or unit.garrisoned_building != null:
@@ -33,6 +34,7 @@ static func _ensure_built(tree: SceneTree) -> void:
 static func query_nearby(tree: SceneTree, world_position: Vector2, radius: float) -> Array:
 	_ensure_built(tree)
 	_hash.query_radius_into(world_position, radius, _query_scratch)
+	_compact_valid_units(_query_scratch)
 	# Copy so nested queries (e.g. damage -> ally alert) cannot invalidate iteration.
 	if _query_scratch.is_empty():
 		return []
@@ -54,6 +56,16 @@ static func for_each_nearby(
 	var scratch: Array = _foreach_pool[_foreach_depth]
 	_foreach_depth += 1
 	_hash.query_radius_into(world_position, radius, scratch)
+	_compact_valid_units(scratch)
 	for item in scratch:
 		callback.call(item)
 	_foreach_depth -= 1
+
+
+static func _compact_valid_units(items: Array) -> void:
+	var write := 0
+	for item in items:
+		if is_instance_valid(item) and item is Unit:
+			items[write] = item
+			write += 1
+	items.resize(write)

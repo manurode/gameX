@@ -41,6 +41,11 @@ var _last_flip_h := false
 var _last_flip_v := false
 var _last_check_pos := Vector2.INF
 var _sample_budget_timer := 0.0
+## Manual pose lerp so the overlay matches the unit at low physics TPS.
+var _pose_from := Vector2.ZERO
+var _pose_to := Vector2.ZERO
+var _pose_ready := false
+const TELEPORT_SNAP_DISTANCE_SQ := 4096.0
 
 
 func setup(unit: Unit, silhouette_layer: Node2D) -> void:
@@ -67,9 +72,13 @@ func setup(unit: Unit, silhouette_layer: Node2D) -> void:
 	_silhouette.visible = false
 	_silhouette.y_sort_enabled = false
 	_silhouette.material = _material
+	# Overlay tracks the unit each render frame; do not physics-interpolate
+	# (spawn at 0,0 → unit pos smears a silhouette across the map).
+	_silhouette.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	# Frame is mirrored from the unit; do not advance independently.
 	_silhouette.speed_scale = 0.0
 	_layer.add_child(_silhouette)
+	set_physics_process(true)
 
 	if _unit.animated_sprite != null and not _frame_connected:
 		_unit.animated_sprite.frame_changed.connect(_on_unit_frame_changed)
@@ -78,9 +87,11 @@ func setup(unit: Unit, silhouette_layer: Node2D) -> void:
 
 func set_active(active: bool) -> void:
 	set_process(active)
+	set_physics_process(active)
 	if not active:
 		_cached_occluders.clear()
 		_cached_sparse_cover = false
+		_pose_ready = false
 		_set_occluded(false)
 
 
@@ -100,6 +111,20 @@ func _on_unit_frame_changed() -> void:
 	_occlusion_dirty = true
 	if _occluded:
 		_sync_sprite_from_unit()
+
+
+func _physics_process(_delta: float) -> void:
+	if _unit == null or not is_instance_valid(_unit) or _unit.animated_sprite == null:
+		_pose_ready = false
+		return
+	var pos := _unit.animated_sprite.global_position
+	if not _pose_ready or pos.distance_squared_to(_pose_to) > TELEPORT_SNAP_DISTANCE_SQ:
+		_pose_from = pos
+		_pose_to = pos
+		_pose_ready = true
+		return
+	_pose_from = _pose_to
+	_pose_to = pos
 
 
 func _process(delta: float) -> void:
@@ -159,9 +184,16 @@ func _is_unit_roughly_on_screen() -> bool:
 
 
 func _set_occluded(value: bool) -> void:
+	if _occluded == value:
+		return
 	_occluded = value
 	if _silhouette != null:
-		_silhouette.visible = value
+		if value:
+			# Place before showing so the first visible frame is not at (0,0).
+			_sync_sprite_from_unit()
+			_silhouette.visible = true
+		else:
+			_silhouette.visible = false
 	if value:
 		_hide_unit_sprite()
 	else:
@@ -234,11 +266,18 @@ func _sync_sprite_from_unit() -> void:
 
 	_silhouette.flip_h = src.flip_h
 	_silhouette.flip_v = src.flip_v
-	_silhouette.global_position = src.global_position
+	_silhouette.global_position = _visual_sprite_position(src)
 	_silhouette.offset = src.offset
 	_silhouette.scale = src.scale
 	_silhouette.rotation = src.rotation
 	_silhouette.centered = src.centered
+
+
+func _visual_sprite_position(src: AnimatedSprite2D) -> Vector2:
+	if not _pose_ready:
+		return src.global_position
+	var frac := Engine.get_physics_interpolation_fraction()
+	return _pose_from.lerp(_pose_to, frac)
 
 
 func _update_occlusion_if_needed() -> void:

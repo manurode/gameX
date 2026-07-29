@@ -26,7 +26,9 @@ func play_from_building(building: Building) -> void:
 	var src: Sprite2D = building.sprite
 	z_index = maxi(src.z_index + 8, 28)
 	y_sort_enabled = false
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	global_position = building.global_position
+	reset_physics_interpolation()
 
 	var tex: Texture2D = src.texture
 	var building_scale: Vector2 = src.scale

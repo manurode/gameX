@@ -654,7 +654,7 @@ static func _rebuild_attack_slot_peers(tree: SceneTree) -> void:
 	if tree == null:
 		return
 	for node in tree.get_nodes_in_group("units"):
-		if not node is Unit:
+		if not is_instance_valid(node) or not (node is Unit):
 			continue
 		var unit := node as Unit
 		if unit._is_dying or unit.hp <= 0 or unit.garrisoned_building != null:
@@ -1085,7 +1085,7 @@ func _find_nearest_hostile_unit(max_range: float) -> Unit:
 	var origin := global_position
 
 	for item in UnitSpatialIndex.query_nearby(get_tree(), origin, max_range):
-		if not item is Unit:
+		if not is_instance_valid(item) or not (item is Unit):
 			continue
 		var enemy := item as Unit
 		if enemy == self or enemy._is_dying or enemy.hp <= 0:
@@ -1115,7 +1115,7 @@ func _can_help_defend_ally() -> bool:
 func _alert_nearby_allies(attacker: Unit) -> void:
 	var victim_pos := global_position
 	for item in UnitSpatialIndex.query_nearby(get_tree(), victim_pos, ALLY_DEFEND_RADIUS):
-		if not item is Unit:
+		if not is_instance_valid(item) or not (item is Unit):
 			continue
 		var ally := item as Unit
 		if ally == self or ally.team_id != team_id:
@@ -2288,7 +2288,7 @@ func _is_adjacent_to_unit_matching(same_team_only: bool) -> bool:
 	var touch_distance_sq := touch_radius * touch_radius
 	var origin := global_position
 	for item in UnitSpatialIndex.query_nearby(get_tree(), origin, touch_radius):
-		if not item is Unit:
+		if not is_instance_valid(item) or not (item is Unit):
 			continue
 		var other := item as Unit
 		if other == self or other._is_dying or other.garrisoned_building != null:
@@ -2835,7 +2835,7 @@ func _update_visual_separation(delta: float) -> void:
 	var clear_radius_sq := STACK_CLEAR_RADIUS * STACK_CLEAR_RADIUS
 	var origin := global_position
 	for item in UnitSpatialIndex.query_nearby(get_tree(), origin, separation_radius):
-		if not item is Unit:
+		if not is_instance_valid(item) or not (item is Unit):
 			continue
 		var other := item as Unit
 		if other == self or other._is_dying or other.garrisoned_building != null:

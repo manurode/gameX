@@ -29,6 +29,7 @@ static func spawn_building_destruction(parent: Node, building: Building) -> void
 	if parent == null or building == null:
 		return
 	var vfx: BuildingDestructionVfx = BUILDING_DESTRUCTION_SCENE.instantiate()
+	vfx.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	parent.add_child(vfx)
 	vfx.play_from_building(building)
 
@@ -67,6 +68,10 @@ static func _spawn_vfx(
 	var vfx: AnimatedVfx = VFX_SCENE.instantiate()
 	vfx.z_index = z_index_value
 	vfx.y_sort_enabled = false
+	# One-shot overlays: interpolation from spawn origin draws a ghost streak
+	# across the map for a frame on high-refresh / low physics-tick setups.
+	vfx.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	parent.add_child(vfx)
 	vfx.global_position = world_position
+	vfx.reset_physics_interpolation()
 	vfx.play_sequence(from_frame, to_frame, fps)

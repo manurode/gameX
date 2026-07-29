@@ -614,7 +614,7 @@ func _find_nearest_player_unit(max_range: float, military_only: bool = false) ->
 	var origin := global_position
 
 	for item in UnitSpatialIndex.query_nearby(get_tree(), origin, max_range):
-		if not item is Unit:
+		if not is_instance_valid(item) or not (item is Unit):
 			continue
 		var player_unit := item as Unit
 		if player_unit.team_id != Team.PLAYER:

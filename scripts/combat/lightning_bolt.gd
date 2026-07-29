@@ -27,6 +27,7 @@ var _flicker_token: int = 0
 
 func _ready() -> void:
 	z_index = 40
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	_rng.seed = Time.get_ticks_usec()
 	# Defer so emit_origin / targets set by the shooter are available.
 	call_deferred("_fire")
@@ -52,6 +53,7 @@ func _fire() -> void:
 		origin = shooter.get_staff_emit_point()
 	emit_origin = origin
 	global_position = origin
+	reset_physics_interpolation()
 
 	var valid_shooter: Unit = shooter if is_instance_valid(shooter) else null
 	var primary_point := origin + Vector2(40.0, 0.0)
@@ -104,7 +106,7 @@ func _apply_chain_branches(primary: Unit, primary_point: Vector2) -> void:
 
 	var candidates: Array[Dictionary] = []
 	for item in UnitSpatialIndex.query_nearby(tree, primary.global_position, chain_radius):
-		if not item is Unit:
+		if not is_instance_valid(item) or not (item is Unit):
 			continue
 		var enemy := item as Unit
 		if enemy == primary or not _can_hit_unit(enemy):
