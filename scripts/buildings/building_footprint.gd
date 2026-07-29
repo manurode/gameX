@@ -9,6 +9,10 @@ const POLYGON_EPSILON := 2.5
 ## Slightly inset so unit circles can graze the stone edge without snagging.
 const HULL_INSET := 0.94
 const BOTTOM_BAND := 0.42
+## Keep in sync with navigation_setup.AGENT_CLEARANCE.
+const NAV_CLEARANCE := 16.0
+## Min gap between walk-block edges: unit diameter + nav clearance on both sides.
+const UNIT_PASSAGE_WIDTH := Unit.NAV_AGENT_RADIUS * 2.0 + NAV_CLEARANCE * 2.0
 
 static var _tex_poly_cache: Dictionary = {}
 
@@ -27,12 +31,17 @@ static func load_plot_texture(building_texture_path: String) -> Texture2D:
 
 
 ## Texture-centered outline (pre-scale / pre-plant). Cached by path + mode.
-static func get_tex_local_outline(texture: Texture2D, mode: String = "opaque") -> PackedVector2Array:
+## for_placement: full painted planta (no nav inset) — used for build overlap checks.
+static func get_tex_local_outline(
+	texture: Texture2D,
+	mode: String = "opaque",
+	for_placement: bool = false
+) -> PackedVector2Array:
 	if texture == null:
 		return PackedVector2Array()
-	var cache_key := "%s::%s" % [texture.resource_path, mode]
+	var cache_key := "%s::%s::%s" % [texture.resource_path, mode, for_placement]
 	if cache_key.is_empty() or cache_key.begins_with("::"):
-		cache_key = "%s::%s" % [str(texture.get_rid().get_id()), mode]
+		cache_key = "%s::%s::%s" % [str(texture.get_rid().get_id()), mode, for_placement]
 	if _tex_poly_cache.has(cache_key):
 		return _tex_poly_cache[cache_key]
 
@@ -50,9 +59,89 @@ static func get_tex_local_outline(texture: Texture2D, mode: String = "opaque") -
 			outline = _outline_from_alpha(image)
 
 	if outline.size() >= 3:
-		outline = _inset_polygon(Geometry2D.convex_hull(outline), HULL_INSET)
+		outline = Geometry2D.convex_hull(outline)
+		if not for_placement:
+			outline = _inset_polygon(outline, HULL_INSET)
 	_tex_poly_cache[cache_key] = outline
 	return outline
+
+
+## True when the gap between two walk-block outlines is too narrow for a unit.
+static func polygons_block_unit_passage(
+	a: PackedVector2Array,
+	b: PackedVector2Array,
+	min_passage: float = UNIT_PASSAGE_WIDTH
+) -> bool:
+	if a.size() < 3 or b.size() < 3:
+		return false
+	if polygons_overlap(a, b):
+		return true
+	return polygon_min_separation(a, b) < min_passage
+
+
+## Shortest distance between two polygon boundaries (corner-safe).
+static func polygon_min_separation(a: PackedVector2Array, b: PackedVector2Array) -> float:
+	var min_dist := INF
+	for point in a:
+		min_dist = minf(min_dist, _point_to_polygon_boundary_distance(point, b))
+	for point in b:
+		min_dist = minf(min_dist, _point_to_polygon_boundary_distance(point, a))
+	for i in a.size():
+		var a0 := a[i]
+		var a1 := a[(i + 1) % a.size()]
+		for j in b.size():
+			var b0 := b[j]
+			var b1 := b[(j + 1) % b.size()]
+			min_dist = minf(min_dist, _segment_segment_distance(a0, a1, b0, b1))
+	return min_dist
+
+
+static func _point_to_polygon_boundary_distance(
+	point: Vector2,
+	poly: PackedVector2Array
+) -> float:
+	if Geometry2D.is_point_in_polygon(point, poly):
+		return 0.0
+	var min_dist := INF
+	for i in poly.size():
+		var closest := Geometry2D.get_closest_point_to_segment(
+			point, poly[i], poly[(i + 1) % poly.size()]
+		)
+		min_dist = minf(min_dist, point.distance_to(closest))
+	return min_dist
+
+
+static func _segment_segment_distance(
+	a0: Vector2,
+	a1: Vector2,
+	b0: Vector2,
+	b1: Vector2
+) -> float:
+	return minf(
+		minf(
+			a0.distance_to(Geometry2D.get_closest_point_to_segment(a0, b0, b1)),
+			a1.distance_to(Geometry2D.get_closest_point_to_segment(a1, b0, b1))
+		),
+		minf(
+			b0.distance_to(Geometry2D.get_closest_point_to_segment(b0, a0, a1)),
+			b1.distance_to(Geometry2D.get_closest_point_to_segment(b1, a0, a1))
+		)
+	)
+
+
+## True when two ground footprints share interior area (touching edges is OK).
+static func polygons_overlap(a: PackedVector2Array, b: PackedVector2Array) -> bool:
+	if a.size() < 3 or b.size() < 3:
+		return false
+	if not Geometry2D.intersect_polygons(a, b).is_empty():
+		return true
+	var center_a := polygon_center(a)
+	var center_b := polygon_center(b)
+	if Geometry2D.is_point_in_polygon(center_a, b):
+		return true
+	if Geometry2D.is_point_in_polygon(center_b, a):
+		return true
+	return false
 
 
 ## Converts texture-centered points into Building-local space (matches sprite plant).

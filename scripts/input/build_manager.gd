@@ -168,12 +168,8 @@ func _process(_delta: float) -> void:
 		return
 
 	var world_pos := _screen_to_world(get_viewport().get_mouse_position())
-	var place_cell := _ground_layer.get_cell_at_world(world_pos) if _ground_layer != null else Vector2i.ZERO
 	_ghost_sprite.global_position = world_pos
-	if place_cell != _last_ghost_cell or _last_ghost_type != selected_building_type:
-		_last_ghost_cell = place_cell
-		_last_ghost_type = selected_building_type
-		ghost_valid = _is_valid_placement(world_pos)
+	ghost_valid = _is_valid_placement(world_pos)
 	_ghost_sprite.modulate = Color(0.4, 0.95, 0.55, 0.65) if ghost_valid else Color(0.95, 0.35, 0.35, 0.55)
 	_ghost_sprite.visible = true
 
@@ -252,7 +248,7 @@ func _update_ghost_texture() -> void:
 
 
 func _try_place_building(world_pos: Vector2) -> void:
-	if not ghost_valid or not _is_construction_allowed():
+	if not _is_construction_allowed() or not _is_valid_placement(world_pos):
 		return
 	_place_single_building(world_pos, false)
 
@@ -582,6 +578,9 @@ func _is_valid_wall_segment(
 		if node is TerrainObstacle and _polygon_overlaps_obstacle(outline, node as TerrainObstacle):
 			return false
 
+	if _wall_would_trap_units(center, vertical):
+		return false
+
 	if get_free_placements("wall") <= 0:
 		if _free_only_build:
 			return false
@@ -601,10 +600,46 @@ func _rect_polygon(rect: Rect2) -> PackedVector2Array:
 	])
 
 
+func _polygon_bounds_rect(poly: PackedVector2Array) -> Rect2:
+	if poly.is_empty():
+		return Rect2()
+	var min_p := poly[0]
+	var max_p := poly[0]
+	for point in poly:
+		min_p = min_p.min(point)
+		max_p = max_p.max(point)
+	return Rect2(min_p, max_p - min_p)
+
+
 func _polygons_overlap(a: PackedVector2Array, b: PackedVector2Array) -> bool:
-	if a.size() < 3 or b.size() < 3:
+	return BuildingFootprint.polygons_overlap(a, b)
+
+
+## Reject wall segments that would seal player units inside a nav pocket.
+func _wall_would_trap_units(center: Vector2, vertical: bool) -> bool:
+	var nav := get_tree().get_first_node_in_group("navigation_manager")
+	if nav == null or not nav.has_method("is_position_trapped_with_blocker"):
 		return false
-	return not Geometry2D.intersect_polygons(a, b).is_empty()
+
+	var block_outline := WallTexture.get_block_outline(center, vertical)
+	if block_outline.size() < 3:
+		return false
+
+	var radius := WallTexture.get_segment_length() + 120.0
+	var radius_sq := radius * radius
+	for node in get_tree().get_nodes_in_group("units"):
+		if not is_instance_valid(node) or not (node is Unit):
+			continue
+		var unit := node as Unit
+		if unit._is_dying or unit.hp <= 0 or unit.garrisoned_building != null:
+			continue
+		if unit.team_id != Team.PLAYER:
+			continue
+		if center.distance_squared_to(unit.global_position) > radius_sq:
+			continue
+		if bool(nav.call("is_position_trapped_with_blocker", unit.global_position, block_outline)):
+			return true
+	return false
 
 
 func _polygon_overlaps_obstacle(outline: PackedVector2Array, obstacle: TerrainObstacle) -> bool:
@@ -661,20 +696,35 @@ func _is_valid_placement_at(world_pos: Vector2, type_id: String, _vertical: bool
 	if _ground_layer.is_water_at(world_pos):
 		return false
 
-	var def := BuildingDatabase.get_definition(type_id)
-	var footprint: Vector2 = def.get("footprint", Vector2(70.0, 45.0))
-	var overlap_scale := 0.55
-	var half: Vector2 = footprint * overlap_scale
-	var test_rect := Rect2(world_pos - half, half * 2.0)
+	var placement_poly := Building.preview_ground_footprint_polygon(type_id, world_pos)
+	var test_rect: Rect2
+	if placement_poly.size() >= 3:
+		test_rect = _polygon_bounds_rect(placement_poly)
+	else:
+		var def := BuildingDatabase.get_definition(type_id)
+		var footprint: Vector2 = def.get("footprint", Vector2(70.0, 45.0))
+		var half: Vector2 = footprint * 0.55
+		test_rect = Rect2(world_pos - half, half * 2.0)
+		placement_poly = _rect_polygon(test_rect)
 
 	for node in get_tree().get_nodes_in_group("buildings"):
 		if node is Building and (node as Building).building_state != Building.BuildingState.DESTROYED:
 			var other := node as Building
-			if other.is_wall_segment():
-				# A wall only reserves its painted base, so buildings may sit against it.
-				if _polygons_overlap(_rect_polygon(test_rect), other.get_ground_footprint_polygon()):
-					return false
-			elif test_rect.intersects(other.get_selection_rect(), true):
+			# Compare painted ground plans only — sprite AABBs include roofs/towers.
+			if _polygons_overlap(placement_poly, other.get_ground_footprint_polygon()):
+				return false
+
+	# Walk-block outlines must leave a unit-wide corridor (murallas excluded).
+	var nav_block_poly := Building.preview_nav_block_polygon(type_id, world_pos)
+	if nav_block_poly.size() >= 3:
+		for node in get_tree().get_nodes_in_group("buildings"):
+			if not (node is Building):
+				continue
+			var other := node as Building
+			if other.building_state == Building.BuildingState.DESTROYED or other.is_wall_segment():
+				continue
+			var other_nav := other.get_planned_nav_block_polygon()
+			if BuildingFootprint.polygons_block_unit_passage(nav_block_poly, other_nav):
 				return false
 
 	for node in get_tree().get_nodes_in_group("terrain_obstacles"):

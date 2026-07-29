@@ -1454,16 +1454,19 @@ func _sync_navigation_target(target: Vector2) -> void:
 	):
 		return
 
-	_navigation_path = navigation_manager.call(
-		"get_navigation_path",
+	# Compute synchronously so movers never charge in a straight line while the
+	# async queue is still warming — that was the main cause of units spinning on
+	# buildings after tighter placement allowed clusters with narrow gaps.
+	var metrics: Dictionary = navigation_manager.call(
+		"query_path_metrics",
 		global_position,
 		target
 	)
+	_navigation_path = metrics.get("path", PackedVector2Array())
 	if _navigation_path.is_empty():
-		navigation_manager.call("queue_navigation_path", global_position, target)
 		_resolved_navigation_target = navigation_manager.call(
 			"get_closest_walkable_point",
-			target
+			global_position
 		)
 		_navigation_path_target = target
 		_navigation_map_version = current_version
@@ -1493,7 +1496,25 @@ func _force_navigation_repath(target: Vector2) -> void:
 	_navigation_path.clear()
 	_navigation_path_index = 0
 	_navigation_path_target = Vector2.INF
+	if is_overlapping_world_solid():
+		eject_from_world_solids()
+	elif _nav_repath_attempts <= STUCK_REPATH_MAX:
+		_try_stuck_lateral_nudge(target)
 	_sync_navigation_target(target)
+
+
+## Small sidestep away from a blocking face before recomputing A*.
+func _try_stuck_lateral_nudge(target: Vector2) -> void:
+	var toward := target - global_position
+	if toward.length_squared() < 1.0:
+		return
+	var lateral := Vector2(-toward.y, toward.x).normalized()
+	if _nav_repath_attempts % 2 == 0:
+		lateral = -lateral
+	var step := lateral * (NAV_AGENT_RADIUS * 0.75)
+	if test_move(global_transform, step):
+		global_position += step
+		reset_physics_interpolation()
 
 
 func _move_along_path(preferred_direction: Vector2, target: Vector2, delta: float) -> bool:
@@ -1510,11 +1531,13 @@ func _move_along_path(preferred_direction: Vector2, target: Vector2, delta: floa
 
 	var moved := global_position.distance_to(before)
 	var progress := dist_before - global_position.distance_to(target)
-	# Keep the walk strip playing whenever we intended to move. Gating walk on
-	# "_did_move_well" restarted the strip from idle on brief blocks / side-steps,
-	# which reads as trompicones especially on high-FPS displays.
 	var step := global_position - before
-	_play_walk_animation(step if step.length_squared() > 0.0001 else preferred_direction)
+	# Face actual displacement when we moved; otherwise keep the last axis so
+	# wall-slides beside buildings do not flip the walk strip every frame.
+	if step.length_squared() > STUCK_MOVE_EPSILON_SQ:
+		_play_walk_animation(step)
+	elif preferred_direction.length_squared() > 0.0001:
+		_play_walk_animation(_last_facing_direction)
 
 	if _did_move_well(moved, progress, speed, delta):
 		_reset_stuck_tracking(target)
@@ -1539,13 +1562,13 @@ func _follow_navigation_toward(target: Vector2, desired_distance: float, delta: 
 	_sync_navigation_target(target)
 
 	if _navigation_path.is_empty():
-		if _resolved_navigation_target != Vector2.INF:
-			var fallback_direction := global_position.direction_to(_resolved_navigation_target)
-			if fallback_direction != Vector2.ZERO:
-				if _move_along_path(fallback_direction, _resolved_navigation_target, delta):
-					return false
-				return _handle_navigation_stuck(_resolved_navigation_target, target, delta)
-		return _handle_navigation_stuck(target, target, delta)
+		# No route yet or destination fully walled off — hold position instead of
+		# bee-lining through building collision toward the far-side walkable cell.
+		velocity = Vector2.ZERO
+		if _is_stuck_moving(delta, target) and _nav_repath_attempts < STUCK_REPATH_MAX:
+			return _handle_navigation_stuck(target, target, delta)
+		_play_idle()
+		return false
 
 	var direction := _get_navigation_direction(target)
 	if direction == Vector2.ZERO:
@@ -1600,6 +1623,31 @@ func is_overlapping_world_solid() -> bool:
 	return not _is_world_point_clear(global_position + COLLISION_SHAPE_OFFSET)
 
 
+## True when walkable ground exists but every exit route is blocked (pocket).
+func is_nav_trapped() -> bool:
+	if not is_inside_tree() or garrisoned_building != null or _is_dying:
+		return false
+	var navigation_manager := _get_navigation_manager()
+	if navigation_manager == null or not navigation_manager.has_method("is_position_trapped"):
+		return false
+	return bool(navigation_manager.call("is_position_trapped", global_position))
+
+
+## Teleport out of a nav pocket (units need not overlap collision geometry).
+func eject_if_nav_trapped(hint_away_from: Vector2 = Vector2.INF) -> bool:
+	if not is_inside_tree() or garrisoned_building != null or _is_dying:
+		return false
+	if not is_nav_trapped():
+		return false
+	var safe := _find_nav_escape_position(hint_away_from)
+	if safe == Vector2.INF:
+		return false
+	_teleport_to(safe)
+	velocity = Vector2.ZERO
+	_reset_navigation_recovery()
+	return true
+
+
 ## Teleport to the nearest clear ground. hint_away_from biases the search outward
 ## (e.g. building collision center when construction just finished).
 func eject_from_world_solids(hint_away_from: Vector2 = Vector2.INF) -> bool:
@@ -1629,13 +1677,7 @@ func _is_world_point_clear(world_pos: Vector2) -> bool:
 
 
 func _find_clear_position_near(origin: Vector2, hint_away_from: Vector2) -> Vector2:
-	var prefer_dir := Vector2.DOWN
-	if hint_away_from != Vector2.INF:
-		prefer_dir = origin - hint_away_from
-	if prefer_dir.length_squared() < 0.01:
-		prefer_dir = _own_stack_break_direction()
-	else:
-		prefer_dir = prefer_dir.normalized()
+	var prefer_dir := _eject_prefer_direction(origin, hint_away_from)
 
 	# Nav hint first (may still be stale right after a building activates).
 	var navigation_manager := _get_navigation_manager()
@@ -1656,6 +1698,44 @@ func _find_clear_position_near(origin: Vector2, hint_away_from: Vector2) -> Vect
 			if _is_world_point_clear(candidate):
 				return candidate
 	return Vector2.INF
+
+
+func _find_nav_escape_position(hint_away_from: Vector2) -> Vector2:
+	var navigation_manager := _get_navigation_manager()
+	if navigation_manager != null and navigation_manager.has_method("find_escape_position"):
+		var nav_escape: Vector2 = navigation_manager.call("find_escape_position", global_position)
+		if nav_escape != Vector2.INF and _is_world_point_clear(nav_escape):
+			return nav_escape
+
+	var origin := global_position
+	var prefer_dir := _eject_prefer_direction(origin, hint_away_from)
+	var base_angle := prefer_dir.angle()
+	for ring in range(1, EMBED_EJECT_RING_COUNT + 1):
+		var radius := float(ring) * EMBED_EJECT_RING_STEP
+		for i in EMBED_EJECT_ANGLES:
+			var signed_i := 0
+			if i > 0:
+				signed_i = (i + 1) / 2 if (i % 2) == 1 else -i / 2
+			var angle := base_angle + float(signed_i) * (TAU / float(EMBED_EJECT_ANGLES))
+			var candidate := origin + Vector2(cos(angle), sin(angle)) * radius
+			if not _is_world_point_clear(candidate):
+				continue
+			if navigation_manager != null and navigation_manager.has_method("is_position_trapped"):
+				if bool(navigation_manager.call("is_position_trapped", candidate)):
+					continue
+			return candidate
+	return Vector2.INF
+
+
+func _eject_prefer_direction(origin: Vector2, hint_away_from: Vector2) -> Vector2:
+	var prefer_dir := Vector2.DOWN
+	if hint_away_from != Vector2.INF:
+		prefer_dir = origin - hint_away_from
+	if prefer_dir.length_squared() < 0.01:
+		prefer_dir = _own_stack_break_direction()
+	else:
+		prefer_dir = prefer_dir.normalized()
+	return prefer_dir
 
 
 func _is_in_build_range(building: Building) -> bool:
@@ -2905,6 +2985,8 @@ func _maybe_recover_from_embed(delta: float) -> void:
 	_embed_check_timer = EMBED_CHECK_INTERVAL
 	if is_overlapping_world_solid():
 		eject_from_world_solids()
+	elif is_nav_trapped():
+		eject_if_nav_trapped()
 
 
 func _spawn_splash() -> void:

@@ -238,7 +238,7 @@ func _apply_gate_passability() -> void:
 	_request_nav_rebuild()
 	# Closing a gate (or finishing construction) can solidify under units in the doorway.
 	if building_state == BuildingState.ACTIVE and not _gate_open:
-		call_deferred("_eject_overlapping_units")
+		_schedule_eject_affected_units()
 
 
 func blocks_melee_los() -> bool:
@@ -648,7 +648,7 @@ func _rebuild_ground_outlines() -> void:
 		_outline_cache_key = ""
 		return
 
-	var cache_key := "%s|%.4f|%.3f" % [building_type_id, _visual_scale, _sort_dy]
+	var cache_key := "%s|%.4f|%.3f|pl2" % [building_type_id, _visual_scale, _sort_dy]
 	if cache_key == _outline_cache_key and _block_outline_local.size() >= 3:
 		return
 
@@ -665,7 +665,7 @@ func _rebuild_ground_outlines() -> void:
 
 	# Placement always prefers the full painted plot (reserves the whole planta).
 	if plot_tex != null:
-		var place_tex := BuildingFootprint.get_tex_local_outline(plot_tex, "opaque")
+		var place_tex := BuildingFootprint.get_tex_local_outline(plot_tex, "opaque", true)
 		_placement_outline_local = BuildingFootprint.to_building_local(
 			place_tex, plot_tex, _visual_scale, _plant_unscaled(), _sort_dy
 		)
@@ -1664,7 +1664,7 @@ func _complete_construction() -> void:
 	else:
 		_setup_collision()
 		# Builders / passers-by often stand on the site while it was walkable.
-		call_deferred("_eject_overlapping_units")
+		_schedule_eject_affected_units()
 	_update_construction_visual()
 	_update_visual_damage()
 	health_changed.emit(hp, max_hp)
@@ -1676,8 +1676,18 @@ func _complete_construction() -> void:
 		apply_cycle_visuals(day_night.get_night_light_factor(), true)
 
 
-## Push any unit whose body now overlaps this solid building out to clear ground.
-func _eject_overlapping_units() -> void:
+## After nav finishes updating (debounced sector rebuild), push out overlapping
+## or pocket-trapped units — walls often seal gaps without physical overlap.
+func _schedule_eject_affected_units() -> void:
+	if not is_inside_tree():
+		return
+	# Navigation rebuild is debounced (~0.12s); wait so trap detection sees new solids.
+	var timer := get_tree().create_timer(0.18)
+	timer.timeout.connect(_eject_affected_units, CONNECT_ONE_SHOT)
+
+
+## Push units overlapping this solid or caught in a nav pocket it helped seal.
+func _eject_affected_units() -> void:
 	if not is_inside_tree():
 		return
 	if building_state != BuildingState.ACTIVE or _gate_open:
@@ -1686,7 +1696,7 @@ func _eject_overlapping_units() -> void:
 		return
 	var center := get_collision_center()
 	var half := get_collision_half_size()
-	var radius := maxf(half.x, half.y) + Unit.NAV_AGENT_RADIUS + 16.0
+	var radius := maxf(half.x, half.y) + Unit.NAV_AGENT_RADIUS + 96.0
 	for item in UnitSpatialIndex.query_nearby(get_tree(), center, radius):
 		if not is_instance_valid(item) or not (item is Unit):
 			continue
@@ -1697,6 +1707,13 @@ func _eject_overlapping_units() -> void:
 			continue
 		if unit.is_overlapping_world_solid():
 			unit.eject_from_world_solids(center)
+		elif unit.is_nav_trapped():
+			unit.eject_if_nav_trapped(center)
+
+
+## Push any unit whose body now overlaps this solid building out to clear ground.
+func _eject_overlapping_units() -> void:
+	_eject_affected_units()
 
 
 func _notify_building_ready() -> void:
@@ -1772,6 +1789,108 @@ func _update_construction_visual() -> void:
 		progress_bar.visible = building_state == BuildingState.CONSTRUCTING
 		progress_bar.queue_redraw()
 	_apply_phase_texture()
+
+
+## Ground footprint for a not-yet-placed building (build ghost / validation).
+static func preview_ground_footprint_polygon(type_id: String, anchor_world: Vector2) -> PackedVector2Array:
+	if type_id == "wall" or type_id == "gate":
+		return PackedVector2Array()
+	var def := BuildingDatabase.get_definition(type_id)
+	if def.is_empty():
+		return PackedVector2Array()
+
+	var visual_scale := float(def.get("visual_scale", 1.0))
+	var plant_unscaled := DepthSort.ISO_HALF_TILE
+	var sort_dy := DepthSort.plant_sort_dy(plant_unscaled, visual_scale)
+	var global_pos := anchor_world + Vector2(0.0, sort_dy)
+
+	var texture_path: String = def.get("texture", "")
+	var plot_tex := BuildingFootprint.load_plot_texture(texture_path)
+	var placement_local := PackedVector2Array()
+	if plot_tex != null:
+		var place_tex := BuildingFootprint.get_tex_local_outline(plot_tex, "opaque", true)
+		placement_local = BuildingFootprint.to_building_local(
+			place_tex, plot_tex, visual_scale, plant_unscaled, sort_dy
+		)
+
+	if placement_local.size() < 3:
+		var footprint: Vector2 = def.get("footprint", Vector2(70.0, 45.0))
+		var half := footprint * 0.42
+		var center := anchor_world + Vector2(0.0, -footprint.y * 0.2)
+		return PackedVector2Array([
+			center + Vector2(0.0, -half.y),
+			center + Vector2(half.x, 0.0),
+			center + Vector2(0.0, half.y),
+			center + Vector2(-half.x, 0.0),
+		])
+
+	var world := PackedVector2Array()
+	world.resize(placement_local.size())
+	for i in placement_local.size():
+		world[i] = global_pos + placement_local[i]
+	return world
+
+
+## Walk-block outline for a not-yet-placed building (nav / corridor validation).
+static func preview_nav_block_polygon(type_id: String, anchor_world: Vector2) -> PackedVector2Array:
+	if type_id == "wall" or type_id == "gate":
+		return PackedVector2Array()
+	var def := BuildingDatabase.get_definition(type_id)
+	if def.is_empty():
+		return PackedVector2Array()
+
+	var visual_scale := float(def.get("visual_scale", 1.0))
+	var plant_unscaled := DepthSort.ISO_HALF_TILE
+	var sort_dy := DepthSort.plant_sort_dy(plant_unscaled, visual_scale)
+	var global_pos := anchor_world + Vector2(0.0, sort_dy)
+
+	var texture_path: String = def.get("texture", "")
+	var plot_tex := BuildingFootprint.load_plot_texture(texture_path)
+	var complete_tex: Texture2D = null
+	if not texture_path.is_empty() and ResourceLoader.exists(texture_path):
+		complete_tex = load(texture_path) as Texture2D
+
+	var block_local := PackedVector2Array()
+	var block_tex: Texture2D = plot_tex
+	var block_mode := "opaque"
+	if type_id == "mill":
+		block_tex = complete_tex if complete_tex != null else plot_tex
+		block_mode = "mill_tower"
+	elif plot_tex == null:
+		block_tex = complete_tex
+		block_mode = "bottom_band"
+
+	if block_tex != null:
+		var block_tex_local := BuildingFootprint.get_tex_local_outline(block_tex, block_mode)
+		block_local = BuildingFootprint.to_building_local(
+			block_tex_local, block_tex, visual_scale, plant_unscaled, sort_dy
+		)
+
+	if block_local.size() < 3:
+		var footprint: Vector2 = def.get("footprint", Vector2(70.0, 45.0))
+		var half := footprint * 0.42
+		var center := anchor_world + Vector2(0.0, -footprint.y * 0.2)
+		return PackedVector2Array([
+			center + Vector2(0.0, -half.y),
+			center + Vector2(half.x, 0.0),
+			center + Vector2(0.0, half.y),
+			center + Vector2(-half.x, 0.0),
+		])
+
+	var world := PackedVector2Array()
+	world.resize(block_local.size())
+	for i in block_local.size():
+		world[i] = global_pos + block_local[i]
+	return world
+
+
+## Nav walk-block for placement checks (live outline when the building is active).
+func get_planned_nav_block_polygon() -> PackedVector2Array:
+	if building_state == BuildingState.ACTIVE:
+		var live := get_nav_block_outline()
+		if live.size() >= 3:
+			return live
+	return Building.preview_nav_block_polygon(building_type_id, get_anchor_position())
 
 
 ## Ground area the art actually covers, independent of build state. Placement

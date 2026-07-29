@@ -243,15 +243,26 @@ func _can_spawn_building_at(cell: Vector2i, type_id: String) -> bool:
 	if ground_layer.is_water_at(world_pos):
 		return false
 
-	var def := BuildingDatabase.get_definition(type_id)
-	var footprint: Vector2 = def.get("footprint", Vector2(70.0, 45.0))
-	var pick: Vector2 = def.get("pick_half_size", Vector2(55.0, 50.0))
-	# Approximate the future selection rect so sprites do not stack visually.
-	var sprite_center := world_pos + Vector2(0.0, -pick.y * 0.45)
-	var visual_half := pick + Vector2(10.0, 10.0)
-	var visual_rect := Rect2(sprite_center - visual_half, visual_half * 2.0)
-	var footprint_half := footprint * 0.55
-	var footprint_rect := Rect2(world_pos - footprint_half, footprint_half * 2.0)
+	var placement_poly := Building.preview_ground_footprint_polygon(type_id, world_pos)
+	var footprint_rect: Rect2
+	if placement_poly.size() >= 3:
+		var min_p := placement_poly[0]
+		var max_p := placement_poly[0]
+		for point in placement_poly:
+			min_p = min_p.min(point)
+			max_p = max_p.max(point)
+		footprint_rect = Rect2(min_p, max_p - min_p)
+	else:
+		var def := BuildingDatabase.get_definition(type_id)
+		var footprint: Vector2 = def.get("footprint", Vector2(70.0, 45.0))
+		var footprint_half := footprint * 0.55
+		footprint_rect = Rect2(world_pos - footprint_half, footprint_half * 2.0)
+		placement_poly = PackedVector2Array([
+			footprint_rect.position,
+			footprint_rect.position + Vector2(footprint_rect.size.x, 0.0),
+			footprint_rect.end,
+			footprint_rect.position + Vector2(0.0, footprint_rect.size.y),
+		])
 
 	for node in get_tree().get_nodes_in_group("buildings"):
 		if not (node is Building):
@@ -259,8 +270,20 @@ func _can_spawn_building_at(cell: Vector2i, type_id: String) -> bool:
 		var other := node as Building
 		if other.building_state == Building.BuildingState.DESTROYED:
 			continue
-		if visual_rect.intersects(other.get_selection_rect(), true):
+		if BuildingFootprint.polygons_overlap(placement_poly, other.get_ground_footprint_polygon()):
 			return false
+
+	var nav_block_poly := Building.preview_nav_block_polygon(type_id, world_pos)
+	if nav_block_poly.size() >= 3:
+		for node in get_tree().get_nodes_in_group("buildings"):
+			if not (node is Building):
+				continue
+			var other := node as Building
+			if other.building_state == Building.BuildingState.DESTROYED or other.is_wall_segment():
+				continue
+			var other_nav := other.get_planned_nav_block_polygon()
+			if BuildingFootprint.polygons_block_unit_passage(nav_block_poly, other_nav):
+				return false
 
 	for node in get_tree().get_nodes_in_group("terrain_obstacles"):
 		if node is TerrainObstacle and _spawn_overlaps_obstacle(world_pos, footprint_rect, node as TerrainObstacle):

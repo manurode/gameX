@@ -366,8 +366,14 @@ func _compute_navigation_path(from_position: Vector2, target_position: Vector2) 
 	if _path_grid_size == Vector2i.ZERO:
 		return PackedVector2Array()
 
-	var start_id := _find_closest_walkable_id(_world_to_grid(from_position))
-	var target_id := _find_closest_walkable_id(_world_to_grid(target_position))
+	var start_id := _find_closest_walkable_id_toward(
+		_world_to_grid(from_position),
+		target_position
+	)
+	var target_id := _find_closest_walkable_id_toward(
+		_world_to_grid(target_position),
+		from_position
+	)
 	if start_id == Vector2i(-1, -1) or target_id == Vector2i(-1, -1):
 		return PackedVector2Array()
 
@@ -376,7 +382,10 @@ func _compute_navigation_path(from_position: Vector2, target_position: Vector2) 
 		return PackedVector2Array()
 
 	var raw_path := PackedVector2Array()
-	raw_path.append(from_position)
+	var path_start := from_position
+	if not _is_world_point_walkable(from_position):
+		path_start = _grid_to_world(start_id)
+	raw_path.append(path_start)
 	for point_id in id_path:
 		raw_path.append(_grid_to_world(point_id))
 
@@ -422,6 +431,120 @@ func get_closest_walkable_point(world_position: Vector2) -> Vector2:
 
 func get_navigation_version() -> int:
 	return _navigation_version
+
+
+## True when a unit standing here cannot path out (enclosed pocket, not overlap).
+func is_position_trapped(world_position: Vector2) -> bool:
+	if not _is_world_point_walkable(world_position):
+		return false
+	return not _has_escape_route(world_position)
+
+
+## Predict trap if an extra nav outline (e.g. a wall about to be built) were active.
+func is_position_trapped_with_blocker(
+	world_position: Vector2,
+	extra_outline: PackedVector2Array
+) -> bool:
+	if not _is_world_point_walkable(world_position):
+		return false
+	if extra_outline.size() >= 3:
+		if _is_point_blocked_by_outline(world_position, extra_outline):
+			return true
+		return not _has_escape_route_with_blocker(world_position, extra_outline)
+	return not _has_escape_route(world_position)
+
+
+## Nearest walkable point that still has an escape route; Vector2.INF if none.
+func find_escape_position(origin: Vector2, search_radius: float = 320.0) -> Vector2:
+	if _is_world_point_walkable(origin) and _has_escape_route(origin):
+		return origin
+
+	var step := maxf(PATH_CELL_SIZE.x, 16.0)
+	var rings := maxi(1, int(ceilf(search_radius / step)))
+	for ring in range(1, rings + 1):
+		var radius := float(ring) * step
+		var samples := maxi(8, int(TAU * radius / step))
+		for i in samples:
+			var angle := TAU * float(i) / float(samples)
+			var candidate: Vector2 = origin + Vector2(cos(angle), sin(angle)) * radius
+			if not _is_world_point_walkable(candidate):
+				continue
+			if _has_escape_route(candidate):
+				return candidate
+	return Vector2.INF
+
+
+func _has_escape_route(from_position: Vector2) -> bool:
+	if _path_grid_size == Vector2i.ZERO:
+		return true
+	const PROBE_DISTANCES := [200.0, 350.0, 500.0]
+	for dist in PROBE_DISTANCES:
+		for i in 8:
+			var angle := TAU * float(i) / 8.0
+			var target: Vector2 = from_position + Vector2(cos(angle), sin(angle)) * dist
+			var metrics := query_path_metrics(from_position, target)
+			if metrics.get("reachable", false):
+				return true
+	return false
+
+
+func _has_escape_route_with_blocker(
+	from_position: Vector2,
+	extra_outline: PackedVector2Array
+) -> bool:
+	if _path_grid_size == Vector2i.ZERO:
+		return true
+	const PROBE_DISTANCES := [200.0, 350.0, 500.0]
+	for dist in PROBE_DISTANCES:
+		for i in 8:
+			var angle := TAU * float(i) / 8.0
+			var target: Vector2 = from_position + Vector2(cos(angle), sin(angle)) * dist
+			var metrics := query_path_metrics(from_position, target)
+			if not metrics.get("reachable", false):
+				continue
+			var path: PackedVector2Array = metrics.get("path", PackedVector2Array())
+			if not _path_crosses_outline(path, extra_outline):
+				return true
+	return false
+
+
+func _path_crosses_outline(path: PackedVector2Array, outline: PackedVector2Array) -> bool:
+	if path.size() < 2 or outline.size() < 3:
+		return false
+	for i in range(1, path.size()):
+		if _segment_crosses_outline(path[i - 1], path[i], outline):
+			return true
+	return false
+
+
+func _segment_crosses_outline(
+	from_position: Vector2,
+	to_position: Vector2,
+	outline: PackedVector2Array
+) -> bool:
+	var distance := from_position.distance_to(to_position)
+	var sample_count := maxi(1, ceili(distance / SEGMENT_SAMPLE_STEP))
+	for i in range(sample_count + 1):
+		var point := from_position.lerp(to_position, float(i) / float(sample_count))
+		if _is_point_blocked_by_outline(point, outline):
+			return true
+	return false
+
+
+func _has_clear_segment_with_blocker(
+	from_position: Vector2,
+	to_position: Vector2,
+	extra_outline: PackedVector2Array
+) -> bool:
+	var distance := from_position.distance_to(to_position)
+	var sample_count := maxi(1, ceili(distance / SEGMENT_SAMPLE_STEP))
+	for i in range(1, sample_count + 1):
+		var point := from_position.lerp(to_position, float(i) / float(sample_count))
+		if not _is_world_point_walkable(point):
+			return false
+		if extra_outline.size() >= 3 and _is_point_blocked_by_outline(point, extra_outline):
+			return false
+	return true
 
 
 func _rebuild_path_grid() -> void:
@@ -479,27 +602,66 @@ func _is_grid_id_valid(point_id: Vector2i) -> bool:
 
 
 func _find_closest_walkable_id(center_id: Vector2i) -> Vector2i:
+	return _find_closest_walkable_id_toward(center_id, Vector2.INF)
+
+
+## Picks the nearest walkable cell, breaking ties toward prefer_world when set.
+func _find_closest_walkable_id_toward(center_id: Vector2i, prefer_world: Vector2) -> Vector2i:
 	if _is_grid_id_valid(center_id) and not _path_grid.is_point_solid(center_id):
 		return center_id
+
+	var prefer_dir := Vector2.ZERO
+	var has_preference := prefer_world != Vector2.INF
+	if has_preference:
+		prefer_dir = prefer_world - _grid_to_world(center_id)
+		if prefer_dir.length_squared() > 0.01:
+			prefer_dir = prefer_dir.normalized()
+		else:
+			has_preference = false
 
 	for radius in range(1, CLOSEST_POINT_SEARCH_LIMIT + 1):
 		var best_id := Vector2i(-1, -1)
 		var best_distance_sq := INF
+		var best_alignment := -INF
 		for x in range(center_id.x - radius, center_id.x + radius + 1):
 			for y in [center_id.y - radius, center_id.y + radius]:
 				var candidate := Vector2i(x, y)
 				if _is_grid_id_valid(candidate) and not _path_grid.is_point_solid(candidate):
 					var distance_sq := Vector2(candidate - center_id).length_squared()
-					if distance_sq < best_distance_sq:
+					var alignment := 0.0
+					if has_preference:
+						alignment = prefer_dir.dot(
+							(_grid_to_world(candidate) - _grid_to_world(center_id)).normalized()
+						)
+					if (
+						distance_sq < best_distance_sq - 0.01
+						or (
+							is_equal_approx(distance_sq, best_distance_sq)
+							and alignment > best_alignment
+						)
+					):
 						best_distance_sq = distance_sq
+						best_alignment = alignment
 						best_id = candidate
 		for y in range(center_id.y - radius + 1, center_id.y + radius):
 			for x in [center_id.x - radius, center_id.x + radius]:
 				var candidate := Vector2i(x, y)
 				if _is_grid_id_valid(candidate) and not _path_grid.is_point_solid(candidate):
 					var distance_sq := Vector2(candidate - center_id).length_squared()
-					if distance_sq < best_distance_sq:
+					var alignment := 0.0
+					if has_preference:
+						alignment = prefer_dir.dot(
+							(_grid_to_world(candidate) - _grid_to_world(center_id)).normalized()
+						)
+					if (
+						distance_sq < best_distance_sq - 0.01
+						or (
+							is_equal_approx(distance_sq, best_distance_sq)
+							and alignment > best_alignment
+						)
+					):
 						best_distance_sq = distance_sq
+						best_alignment = alignment
 						best_id = candidate
 		if best_id != Vector2i(-1, -1):
 			return best_id
@@ -604,7 +766,6 @@ func _has_clear_segment(from_position: Vector2, to_position: Vector2) -> bool:
 	var sample_count := maxi(1, ceili(distance / SEGMENT_SAMPLE_STEP))
 	for i in range(1, sample_count + 1):
 		var point := from_position.lerp(to_position, float(i) / float(sample_count))
-		var grid_id := _world_to_grid(point)
-		if not _is_grid_id_valid(grid_id) or _path_grid.is_point_solid(grid_id):
+		if not _is_world_point_walkable(point):
 			return false
 	return true
