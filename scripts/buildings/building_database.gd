@@ -198,8 +198,8 @@ const DEFINITIONS: Dictionary = {
 		"visual_scale": 1.00,
 		"footprint": Vector2(286.0, 167.0),
 		"pick_half_size": Vector2(128.0, 128.0),
-		# Outside the full courtyard planta (plot ~140px tall).
-		"spawn_front_offset": 170.0,
+		# Just past the courtyard edge; walkability skips blocked plot cells.
+		"spawn_front_offset": 95.0,
 		"produces": ["knight_squad"],
 	},
 	"barracks": {
@@ -219,7 +219,7 @@ const DEFINITIONS: Dictionary = {
 		"visual_scale": 1.00,
 		"footprint": Vector2(286.0, 196.0),
 		"pick_half_size": Vector2(128.0, 128.0),
-		"spawn_front_offset": 170.0,
+		"spawn_front_offset": 95.0,
 		"produces": ["archer_squad"],
 	},
 	"arcanum": {
@@ -239,7 +239,7 @@ const DEFINITIONS: Dictionary = {
 		"visual_scale": 1.05,
 		"footprint": Vector2(295.0, 199.0),
 		"pick_half_size": Vector2(134.0, 134.0),
-		"spawn_front_offset": 180.0,
+		"spawn_front_offset": 100.0,
 		"produces": ["mage_squad"],
 	},
 	"tower": {

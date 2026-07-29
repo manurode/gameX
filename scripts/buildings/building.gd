@@ -1485,17 +1485,17 @@ func _find_exit_position(reserved: Array[Vector2] = []) -> Vector2:
 	var search_radius := maxf(_footprint.x, _footprint.y) + spacing * 6.0
 	var nearby := _get_nearby_unit_positions(center, search_radius)
 
-	# Prefer the open plaza in front of the building (+Y = screen bottom) so
-	# tall sprites do not cover freshly spawned / ungarrisoned units.
+	# Prefer flanks + front plaza so units hug the building instead of spawning
+	# far south of the courtyard.
 	var front := _find_front_plaza_exit(reserved, nearby, spacing)
 	if front != Vector2.INF:
 		return front
 
 	# Fallback rings: try the front half (+Y) first, then the back half.
-	var base_radius := maxf(_footprint.x, _footprint.y) * 0.85
+	var base_radius := maxf(_footprint.x, _footprint.y) * 0.55
 	for prefer_front in [true, false]:
 		for ring in 8:
-			var ring_radius := base_radius + float(ring) * spacing * 0.9
+			var ring_radius := base_radius + float(ring) * spacing * 0.85
 			var ring_capacity := maxi(6, int(TAU * ring_radius / spacing))
 			var angle_offset := float(ring) * (PI / float(ring_capacity) * 0.5)
 			for i in ring_capacity:
@@ -1511,11 +1511,13 @@ func _find_exit_position(reserved: Array[Vector2] = []) -> Vector2:
 	var clearance := _get_front_spawn_clearance()
 	var offsets: Array[Vector2] = [
 		Vector2(0.0, clearance),
-		Vector2(_footprint.x * 0.45, clearance * 0.9),
-		Vector2(-_footprint.x * 0.45, clearance * 0.9),
-		Vector2(_footprint.x * 0.8, 0.0),
-		Vector2(-_footprint.x * 0.8, 0.0),
-		Vector2(0.0, -_footprint.y * 0.6),
+		Vector2(_footprint.x * 0.45, clearance * 0.7),
+		Vector2(-_footprint.x * 0.45, clearance * 0.7),
+		Vector2(_footprint.x * 0.55, clearance * 0.35),
+		Vector2(-_footprint.x * 0.55, clearance * 0.35),
+		Vector2(_footprint.x * 0.75, 0.0),
+		Vector2(-_footprint.x * 0.75, 0.0),
+		Vector2(0.0, -_footprint.y * 0.55),
 	]
 	for offset in offsets:
 		var candidate := get_anchor_position() + offset
@@ -1524,33 +1526,51 @@ func _find_exit_position(reserved: Array[Vector2] = []) -> Vector2:
 	return get_anchor_position() + Vector2(0.0, clearance)
 
 
-## Distance south of the plant so spawned units clear courtyard walls / tall sprites.
+## Distance south of the plant; walkability skips cells still inside the plot.
 func _get_front_spawn_clearance() -> float:
 	var custom := float(_definition.get("spawn_front_offset", 0.0))
 	if custom > 0.0:
 		return custom
-	return _footprint.y * 0.95
+	return _footprint.y * 0.55
 
 
-## Grid of free slots in the courtyard / grass strip south of the footprint.
+## Free slots hugging the building: flanks first, then a shallow front plaza.
 func _find_front_plaza_exit(
 	reserved: Array[Vector2],
 	nearby: Array[Vector2],
 	spacing: float
 ) -> Vector2:
-	# Start well below the courtyard wall/stairs so the building sprite never covers units.
-	var origin := get_anchor_position() + Vector2(0.0, _get_front_spawn_clearance())
-	var half_span := _footprint.x * 0.55
-	for row in 8:
-		var y := origin.y + float(row) * spacing * 0.9
-		var cols := maxi(5, int(half_span * 2.0 / spacing) + 1 + row)
+	var anchor := get_anchor_position()
+	var clearance := _get_front_spawn_clearance()
+
+	# Side pockets sit closer to the visual building than the deep south plaza.
+	var flank_x := _footprint.x * 0.48
+	var flank_y_factors: Array[float] = [0.25, 0.45, 0.65, 0.85, 1.05]
+	for factor in flank_y_factors:
+		var y := clearance * factor
+		for sign in [-1.0, 1.0]:
+			var flank := anchor + Vector2(sign * flank_x, y)
+			if _is_spawn_slot_free(flank, nearby, reserved):
+				return flank
+			# Slightly inward / outward if the exact flank cell is blocked.
+			for x_scale in [0.40, 0.56]:
+				var alt := anchor + Vector2(sign * _footprint.x * x_scale, y)
+				if _is_spawn_slot_free(alt, nearby, reserved):
+					return alt
+
+	# Shallow front strip (+Y). Start near the plot edge; expand sideways before
+	# pushing further south so crowded buildings stay compact.
+	var origin := anchor + Vector2(0.0, clearance)
+	var half_span := _footprint.x * 0.62
+	for row in 5:
+		var y := origin.y + float(row) * spacing * 0.75
+		var cols := maxi(5, int(half_span * 2.0 / spacing) + 1 + row * 2)
 		for i in cols:
-			# Center-out left/right so successive spawns fan across the plaza.
 			var signed_col := 0
 			if i > 0:
 				signed_col = (i + 1) / 2 if (i % 2) == 1 else -i / 2
 			var x := origin.x + float(signed_col) * spacing
-			var max_x := half_span + float(row) * spacing * 0.3
+			var max_x := half_span + float(row) * spacing * 0.45
 			if absf(x - origin.x) > max_x:
 				continue
 			var candidate := Vector2(x, y)
