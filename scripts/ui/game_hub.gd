@@ -81,6 +81,8 @@ var _active_build_type: String = ""
 var _selected_building: Building = null
 var _selected_units: Array[Unit] = []
 var _special_actions_box: HBoxContainer
+var _actions_spacer: Control
+var _demolish_action_box: HBoxContainer
 var _special_action_buttons: Dictionary = {}
 
 
@@ -363,6 +365,8 @@ func _ensure_selection_ui() -> void:
 	_market_box.add_theme_constant_override("separation", 4)
 	_selection_actions.add_child(_market_box)
 
+	_ensure_demolish_action_box()
+
 	_market_title = Label.new()
 	_market_title.text = "MERCADO"
 	_market_title.add_theme_font_size_override("font_size", 13)
@@ -465,24 +469,46 @@ func _layout_unit_selection_scroll() -> void:
 
 
 func _ensure_special_actions_box() -> void:
-	if _special_actions_box != null or _selection_actions == null:
-		return
-	_special_actions_box = HBoxContainer.new()
-	_special_actions_box.name = "SpecialActionsBox"
-	_special_actions_box.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	_special_actions_box.add_theme_constant_override("separation", 6)
-	# Keep special actions before the market column when both exist.
-	var market_idx := _market_box.get_index() if _market_box != null else -1
-	_selection_actions.add_child(_special_actions_box)
-	if market_idx >= 0:
-		_selection_actions.move_child(_special_actions_box, market_idx)
+	if _special_actions_box == null and _selection_actions != null:
+		_special_actions_box = HBoxContainer.new()
+		_special_actions_box.name = "SpecialActionsBox"
+		_special_actions_box.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		_special_actions_box.add_theme_constant_override("separation", 6)
+		# Keep special actions before the market column when both exist.
+		var market_idx := _market_box.get_index() if _market_box != null else -1
+		_selection_actions.add_child(_special_actions_box)
+		if market_idx >= 0:
+			_selection_actions.move_child(_special_actions_box, market_idx)
 
-	_production_queue_label = Label.new()
-	_production_queue_label.visible = false
-	_production_progress_label = Label.new()
-	_production_progress_label.visible = false
-	_production_pending_label = Label.new()
-	_production_pending_label.visible = false
+	_ensure_demolish_action_box()
+
+	if _production_queue_label == null:
+		_production_queue_label = Label.new()
+		_production_queue_label.visible = false
+		_production_progress_label = Label.new()
+		_production_progress_label.visible = false
+		_production_pending_label = Label.new()
+		_production_pending_label.visible = false
+
+
+func _ensure_demolish_action_box() -> void:
+	if _selection_actions == null:
+		return
+	if _actions_spacer == null:
+		_actions_spacer = Control.new()
+		_actions_spacer.name = "ActionsSpacer"
+		_actions_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_actions_spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_selection_actions.add_child(_actions_spacer)
+	if _demolish_action_box == null:
+		_demolish_action_box = HBoxContainer.new()
+		_demolish_action_box.name = "DemolishActionBox"
+		_demolish_action_box.size_flags_horizontal = Control.SIZE_SHRINK_END
+		_demolish_action_box.add_theme_constant_override("separation", 6)
+		_selection_actions.add_child(_demolish_action_box)
+	# Always keep spacer + demolish at the far right of the action row.
+	_selection_actions.move_child(_actions_spacer, _selection_actions.get_child_count() - 1)
+	_selection_actions.move_child(_demolish_action_box, _selection_actions.get_child_count() - 1)
 
 
 func _build_command_grid() -> void:
@@ -1148,33 +1174,59 @@ func _get_special_actions_for_building(building: Building) -> Array[String]:
 
 
 func _rebuild_special_action_buttons(actions: Array[String]) -> void:
+	_ensure_demolish_action_box()
 	if _special_actions_box == null:
 		return
+
 	for child in _special_actions_box.get_children():
 		child.queue_free()
+	if _demolish_action_box != null:
+		for child in _demolish_action_box.get_children():
+			child.queue_free()
 	_special_action_buttons.clear()
-	_special_actions_box.visible = not actions.is_empty()
 
+	var left_actions: Array[String] = []
+	var has_demolish := false
 	for action_id in actions:
-		var slot := Control.new()
-		slot.custom_minimum_size = ACTION_SLOT_SIZE
-		slot.mouse_filter = Control.MOUSE_FILTER_STOP
+		if action_id == "demolish":
+			has_demolish = true
+		else:
+			left_actions.append(action_id)
 
-		var button := Button.new()
-		button.set_anchors_preset(Control.PRESET_FULL_RECT)
-		button.focus_mode = Control.FOCUS_NONE
-		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-		button.clip_contents = true
-		button.clip_text = true
-		button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-		_style_dialog_button(button, true)
-		button.add_theme_font_size_override("font_size", 13)
-		button.text = _special_action_label(action_id)
-		button.tooltip_text = _special_action_tooltip(action_id)
-		button.pressed.connect(_on_special_action_pressed.bind(action_id))
-		slot.add_child(button)
-		_special_actions_box.add_child(slot)
-		_special_action_buttons[action_id] = button
+	_special_actions_box.visible = not left_actions.is_empty()
+	if _demolish_action_box != null:
+		_demolish_action_box.visible = has_demolish
+	if _actions_spacer != null:
+		_actions_spacer.visible = has_demolish
+
+	for action_id in left_actions:
+		_add_special_action_button(_special_actions_box, action_id)
+	if has_demolish:
+		_add_special_action_button(_demolish_action_box, "demolish")
+
+
+func _add_special_action_button(parent: HBoxContainer, action_id: String) -> void:
+	if parent == null:
+		return
+	var slot := Control.new()
+	slot.custom_minimum_size = ACTION_SLOT_SIZE
+	slot.mouse_filter = Control.MOUSE_FILTER_STOP
+
+	var button := Button.new()
+	button.set_anchors_preset(Control.PRESET_FULL_RECT)
+	button.focus_mode = Control.FOCUS_NONE
+	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	button.clip_contents = true
+	button.clip_text = true
+	button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_style_dialog_button(button, true)
+	button.add_theme_font_size_override("font_size", 13)
+	button.text = _special_action_label(action_id)
+	button.tooltip_text = _special_action_tooltip(action_id)
+	button.pressed.connect(_on_special_action_pressed.bind(action_id))
+	slot.add_child(button)
+	parent.add_child(slot)
+	_special_action_buttons[action_id] = button
 
 
 func _special_action_label(action_id: String) -> String:
