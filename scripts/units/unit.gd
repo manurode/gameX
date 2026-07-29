@@ -38,6 +38,13 @@ const STACK_CLEAR_RADIUS := 20.0
 const STACK_PUSH_SPEED := 55.0
 ## Skip world push while actively navigating — avoids fighting move_and_slide.
 const STACK_PUSH_MAX_SPEED_SQ := 1600.0
+## Detect units trapped inside mountains / walls / finished buildings.
+const EMBED_CHECK_INTERVAL := 0.45
+const EMBED_EJECT_RING_STEP := 12.0
+const EMBED_EJECT_RING_COUNT := 14
+const EMBED_EJECT_ANGLES := 12
+## Matches CollisionShape2D offset in unit.tscn (circle sits above feet).
+const COLLISION_SHAPE_OFFSET := Vector2(0.0, -8.0)
 const FORMATION_SLOT_SPACING := 22.0
 const NIGHT_LIGHT_COLOR := Color(1.0, 0.78, 0.48)
 const NIGHT_LIGHT_ENERGY := 1.15
@@ -133,6 +140,7 @@ var _resolved_navigation_target := Vector2.INF
 var _navigation_map_version := -1
 var _scan_timer := 0.0
 var _separation_timer := 0.0
+var _embed_check_timer := 0.0
 var _cached_navigation_manager: Node = null
 var _cached_move_speed_mult := 1.0
 var _move_speed_mult_timer := 0.0
@@ -158,6 +166,7 @@ func _ready() -> void:
 	# Stagger AI scans so not every unit evaluates on the same frame.
 	_scan_timer = randf() * TARGET_SCAN_INTERVAL
 	_separation_timer = randf() * SEPARATION_UPDATE_INTERVAL
+	_embed_check_timer = randf() * EMBED_CHECK_INTERVAL
 	_setup_sprite_frames()
 	_setup_shadow()
 	_setup_dust()
@@ -1556,10 +1565,84 @@ func _handle_navigation_stuck(stuck_target: Vector2, repath_target: Vector2, del
 		_play_idle()
 		return false
 
+	# Embedded in a solid (building finished underfoot, mountain edge, etc.).
+	if is_overlapping_world_solid() and eject_from_world_solids():
+		_nav_repath_attempts = 0
+		_force_navigation_repath(repath_target)
+		_play_idle()
+		return false
+
 	_reset_navigation_recovery()
 	velocity = Vector2.ZERO
 	_play_idle()
 	return true
+
+
+## True when the unit body overlaps world solids (layer 1: terrain / buildings / walls).
+func is_overlapping_world_solid() -> bool:
+	if not is_inside_tree() or garrisoned_building != null or _is_dying:
+		return false
+	if not _is_world_point_clear(global_position):
+		return true
+	return not _is_world_point_clear(global_position + COLLISION_SHAPE_OFFSET)
+
+
+## Teleport to the nearest clear ground. hint_away_from biases the search outward
+## (e.g. building collision center when construction just finished).
+func eject_from_world_solids(hint_away_from: Vector2 = Vector2.INF) -> bool:
+	if not is_inside_tree() or garrisoned_building != null or _is_dying:
+		return false
+	if not is_overlapping_world_solid():
+		return false
+	var safe := _find_clear_position_near(global_position, hint_away_from)
+	if safe == Vector2.INF:
+		return false
+	global_position = safe
+	velocity = Vector2.ZERO
+	_reset_navigation_recovery()
+	return true
+
+
+func _is_world_point_clear(world_pos: Vector2) -> bool:
+	var space := get_world_2d().direct_space_state
+	if space == null:
+		return true
+	var params := PhysicsPointQueryParameters2D.new()
+	params.position = world_pos
+	params.collision_mask = 1
+	params.collide_with_bodies = true
+	params.collide_with_areas = false
+	return space.intersect_point(params, 4).is_empty()
+
+
+func _find_clear_position_near(origin: Vector2, hint_away_from: Vector2) -> Vector2:
+	var prefer_dir := Vector2.DOWN
+	if hint_away_from != Vector2.INF:
+		prefer_dir = origin - hint_away_from
+	if prefer_dir.length_squared() < 0.01:
+		prefer_dir = _own_stack_break_direction()
+	else:
+		prefer_dir = prefer_dir.normalized()
+
+	# Nav hint first (may still be stale right after a building activates).
+	var navigation_manager := _get_navigation_manager()
+	if navigation_manager != null:
+		var nav_pt: Vector2 = navigation_manager.call("get_closest_walkable_point", origin)
+		if nav_pt.distance_squared_to(origin) > 1.0 and _is_world_point_clear(nav_pt):
+			return nav_pt
+
+	var base_angle := prefer_dir.angle()
+	for ring in range(1, EMBED_EJECT_RING_COUNT + 1):
+		var radius := float(ring) * EMBED_EJECT_RING_STEP
+		for i in EMBED_EJECT_ANGLES:
+			var signed_i := 0
+			if i > 0:
+				signed_i = (i + 1) / 2 if (i % 2) == 1 else -i / 2
+			var angle := base_angle + float(signed_i) * (TAU / float(EMBED_EJECT_ANGLES))
+			var candidate := origin + Vector2(cos(angle), sin(angle)) * radius
+			if _is_world_point_clear(candidate):
+				return candidate
+	return Vector2.INF
 
 
 func _is_in_build_range(building: Building) -> bool:
@@ -2777,7 +2860,11 @@ func _apply_cached_stack_push(delta: float) -> void:
 	if velocity.length_squared() > STACK_PUSH_MAX_SPEED_SQ:
 		return
 	var step := minf(STACK_PUSH_SPEED * delta, STACK_CLEAR_RADIUS * 0.5)
-	global_position += _last_stack_push * step
+	var motion := _last_stack_push * step
+	# Never shove a settled unit into mountains / walls / buildings.
+	if test_move(global_transform, motion):
+		return
+	global_position += motion
 
 
 func _play_walk_animation(direction: Vector2) -> void:
@@ -2787,6 +2874,7 @@ func _play_walk_animation(direction: Vector2) -> void:
 
 func _update_terrain_feedback(_delta: float) -> void:
 	_update_visual_separation(_delta)
+	_maybe_recover_from_embed(_delta)
 
 	if _ground_layer == null:
 		return
@@ -2795,6 +2883,15 @@ func _update_terrain_feedback(_delta: float) -> void:
 	if on_water and not _was_on_water:
 		_spawn_splash()
 	_was_on_water = on_water
+
+
+func _maybe_recover_from_embed(delta: float) -> void:
+	_embed_check_timer -= delta
+	if _embed_check_timer > 0.0:
+		return
+	_embed_check_timer = EMBED_CHECK_INTERVAL
+	if is_overlapping_world_solid():
+		eject_from_world_solids()
 
 
 func _spawn_splash() -> void:

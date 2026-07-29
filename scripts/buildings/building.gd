@@ -236,6 +236,9 @@ func _apply_gate_passability() -> void:
 	var nav_passable := building_type_id == "gate" and (not gate_locked or _gate_open)
 	blocks_navigation = _definition.get("blocks_nav", true) and not nav_passable
 	_request_nav_rebuild()
+	# Closing a gate (or finishing construction) can solidify under units in the doorway.
+	if building_state == BuildingState.ACTIVE and not _gate_open:
+		call_deferred("_eject_overlapping_units")
 
 
 func blocks_melee_los() -> bool:
@@ -1640,6 +1643,8 @@ func _complete_construction() -> void:
 		_apply_gate_passability()
 	else:
 		_setup_collision()
+		# Builders / passers-by often stand on the site while it was walkable.
+		call_deferred("_eject_overlapping_units")
 	_update_construction_visual()
 	_update_visual_damage()
 	health_changed.emit(hp, max_hp)
@@ -1649,6 +1654,29 @@ func _complete_construction() -> void:
 	var day_night := get_tree().get_first_node_in_group("day_night_manager") as DayNightManager
 	if day_night != null:
 		apply_cycle_visuals(day_night.get_night_light_factor(), true)
+
+
+## Push any unit whose body now overlaps this solid building out to clear ground.
+func _eject_overlapping_units() -> void:
+	if not is_inside_tree():
+		return
+	if building_state != BuildingState.ACTIVE or _gate_open:
+		return
+	if not get_collision_layer_value(1):
+		return
+	var center := get_collision_center()
+	var half := get_collision_half_size()
+	var radius := maxf(half.x, half.y) + Unit.NAV_AGENT_RADIUS + 16.0
+	for item in UnitSpatialIndex.query_nearby(get_tree(), center, radius):
+		if not item is Unit:
+			continue
+		var unit := item as Unit
+		if not is_instance_valid(unit) or unit._is_dying or unit.hp <= 0:
+			continue
+		if unit.garrisoned_building != null:
+			continue
+		if unit.is_overlapping_world_solid():
+			unit.eject_from_world_solids(center)
 
 
 func _notify_building_ready() -> void:
