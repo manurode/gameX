@@ -48,7 +48,7 @@ horizontal_alignment = 1
 [node name="CurfewSlot" type="VBoxContainer" parent="MarginContainer/HBoxContainer/LeftColumn" unique_id=1823159235]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/separation = 0
+theme_override_constants/separation = 4
 
 [node name="Separator1" type="VSeparator" parent="MarginContainer/HBoxContainer" unique_id=2018404421]
 layout_mode = 2

@@ -48,6 +48,33 @@ func clear_selection() -> void:
 	_clear_selection()
 
 
+func select_units(units: Array, add_to_selection: bool = false) -> void:
+	if not add_to_selection:
+		_clear_selection(false)
+	else:
+		_deselect_building(false)
+		_deselect_resource(false)
+
+	for item in units:
+		if not is_instance_valid(item) or not (item is Unit):
+			continue
+		var unit := item as Unit
+		if unit.team_id != Team.PLAYER or unit._is_dying or unit.hp <= 0:
+			continue
+		if unit.garrisoned_building != null:
+			continue
+		if add_to_selection and unit.is_selected:
+			continue
+		unit.select()
+		if not selected_units.has(unit):
+			selected_units.append(unit)
+
+	_notify_selection_changed()
+	if not add_to_selection:
+		building_selection_changed.emit(null)
+		resource_selection_changed.emit(null)
+
+
 func get_cursor_action_at(screen_point: Vector2) -> StringName:
 	if not _is_construction_allowed() and _is_over_hub_build_slot(screen_point):
 		return CURSOR_BUILD_FORBIDDEN

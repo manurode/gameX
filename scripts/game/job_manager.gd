@@ -464,6 +464,23 @@ func _assign_villager_to_building(villager: Unit, building: Building) -> void:
 	_assign_villager_to_resource(villager, building, node)
 
 
+func is_idle_civilian(unit: Unit) -> bool:
+	return _is_eligible_idle_civilian(unit)
+
+
+func get_idle_civilians(team_id: int = Team.PLAYER) -> Array[Unit]:
+	var idle: Array[Unit] = []
+	for node in get_tree().get_nodes_in_group("units"):
+		if not node is Unit:
+			continue
+		var unit := node as Unit
+		if unit.team_id != team_id:
+			continue
+		if _is_eligible_idle_civilian(unit):
+			idle.append(unit)
+	return idle
+
+
 func _is_eligible_idle_civilian(unit: Unit) -> bool:
 	if not unit.is_civilian or unit.is_busy() or unit._is_dying or unit.hp <= 0:
 		return false

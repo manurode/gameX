@@ -71,6 +71,9 @@ var _curfew_manager: CurfewManager
 var _run_boon_manager: RunBoonManager
 var _market_manager: MarketManager
 var _curfew_button: Button
+var _idle_villagers_button: Button
+var _idle_villagers_timer := 0.0
+var _idle_villagers_count := -1
 var _resource_labels: Dictionary = {}
 var _build_slots: Dictionary = {}
 var _population_label: Label
@@ -111,8 +114,10 @@ func setup(
 	_market_manager = market_manager
 	_build_resource_rows()
 	_build_command_grid()
+	_build_idle_villagers_button()
 	_build_curfew_button()
 	_ensure_selection_ui()
+	_refresh_idle_villagers_button()
 	if _resource_manager != null:
 		_resource_manager.resources_changed.connect(_on_resources_changed)
 		_on_resources_changed(_resource_manager.wood, _resource_manager.gold, _resource_manager.food)
@@ -521,6 +526,28 @@ func _build_command_grid() -> void:
 		_build_slots[type_id] = slot
 
 
+func _build_idle_villagers_button() -> void:
+	if _curfew_slot == null:
+		return
+	_idle_villagers_button = Button.new()
+	_idle_villagers_button.text = "Aldeanos ociosos: 0"
+	_idle_villagers_button.tooltip_text = (
+		"Aldeanos ociosos\n"
+		+ "Selecciona a todos los aldeanos que no están haciendo ninguna tarea.\n"
+		+ "Útil para mandarlos a recoger, construir o moverse."
+	)
+	_idle_villagers_button.focus_mode = Control.FOCUS_NONE
+	_idle_villagers_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_idle_villagers_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_idle_villagers_button.custom_minimum_size = Vector2(0, 34)
+	_idle_villagers_button.clip_text = true
+	_idle_villagers_button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_idle_villagers_button.add_theme_font_size_override("font_size", 13)
+	_style_dialog_button(_idle_villagers_button)
+	_idle_villagers_button.pressed.connect(_on_idle_villagers_button_pressed)
+	_curfew_slot.add_child(_idle_villagers_button)
+
+
 func _build_curfew_button() -> void:
 	if _curfew_slot == null:
 		return
@@ -543,6 +570,45 @@ func _build_curfew_button() -> void:
 	_curfew_button.pressed.connect(_on_curfew_button_pressed)
 	_curfew_slot.add_child(_curfew_button)
 
+
+func _on_idle_villagers_button_pressed() -> void:
+	var job_manager := get_tree().get_first_node_in_group("job_manager")
+	if not job_manager is JobManager:
+		return
+	var idle := (job_manager as JobManager).get_idle_civilians()
+	_idle_villagers_count = idle.size()
+	_refresh_idle_villagers_button_visual()
+	if idle.is_empty():
+		return
+	if _selection_manager != null and _selection_manager.has_method("select_units"):
+		_selection_manager.select_units(idle)
+
+
+func _refresh_idle_villagers_button() -> void:
+	if _idle_villagers_button == null:
+		return
+	var count := 0
+	var job_manager := get_tree().get_first_node_in_group("job_manager")
+	if job_manager is JobManager:
+		count = (job_manager as JobManager).get_idle_civilians().size()
+	if count == _idle_villagers_count:
+		return
+	_idle_villagers_count = count
+	_refresh_idle_villagers_button_visual()
+
+
+func _refresh_idle_villagers_button_visual() -> void:
+	if _idle_villagers_button == null:
+		return
+	var count := maxi(_idle_villagers_count, 0)
+	_idle_villagers_button.text = "Aldeanos ociosos: %d" % count
+	_idle_villagers_button.disabled = count <= 0
+	if count > 0:
+		_idle_villagers_button.add_theme_color_override("font_color", COL_GOLD)
+	else:
+		_idle_villagers_button.add_theme_color_override("font_color", COL_CREAM)
+
+
 func _on_curfew_button_pressed() -> void:
 	if _curfew_manager != null:
 		_curfew_manager.toggle()
@@ -550,6 +616,7 @@ func _on_curfew_button_pressed() -> void:
 
 func _on_curfew_changed(_active: bool) -> void:
 	_refresh_curfew_button()
+	_refresh_idle_villagers_button()
 
 
 func _refresh_curfew_button() -> void:
@@ -815,6 +882,10 @@ func _process(delta: float) -> void:
 	if _food_ui_timer <= 0.0 and _population_manager != null:
 		_food_ui_timer = 0.35
 		_on_food_upkeep_changed(_population_manager.get_food_upkeep_per_second())
+	_idle_villagers_timer -= delta
+	if _idle_villagers_timer <= 0.0:
+		_idle_villagers_timer = 0.4
+		_refresh_idle_villagers_button()
 	if _production_feedback_timer > 0.0:
 		_production_feedback_timer -= delta
 		if _production_feedback_timer <= 0.0:
