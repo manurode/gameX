@@ -331,6 +331,7 @@ func _spawn_villager(building: Building) -> void:
 	var villager: Unit = VILLAGER_SCENE.instantiate()
 	_units_container.add_child(villager)
 	villager.global_position = spawn_pos
+	villager.reset_physics_interpolation()
 	if _ground_layer != null:
 		villager.set_ground_layer(_ground_layer)
 	villager.reset_navigation()

@@ -182,6 +182,8 @@ func _ready() -> void:
 		apply_cycle_visuals(day_night.get_night_light_factor(), true)
 	await get_tree().physics_frame
 	_setup_navigation_agent()
+	# Spawn placement is a teleport — avoid one-frame smear once interpolation is on.
+	reset_physics_interpolation()
 
 
 func _setup_occlusion_silhouette() -> void:
@@ -926,7 +928,7 @@ func on_entered_garrison(building: Building) -> void:
 	_unit_state = UnitState.IDLE
 	_is_attack_animating = false
 	velocity = Vector2.ZERO
-	global_position = building.global_position
+	_teleport_to(building.global_position)
 	navigation_agent.target_position = global_position
 	animated_sprite.visible = false
 	shadow_sprite.visible = false
@@ -944,7 +946,7 @@ func on_entered_garrison(building: Building) -> void:
 func on_exited_garrison(exit_position: Vector2) -> void:
 	garrisoned_building = null
 	garrison_approach_target = null
-	global_position = exit_position
+	_teleport_to(exit_position)
 	navigation_agent.target_position = exit_position
 	animated_sprite.visible = true
 	shadow_sprite.visible = true
@@ -1508,11 +1510,14 @@ func _move_along_path(preferred_direction: Vector2, target: Vector2, delta: floa
 
 	var moved := global_position.distance_to(before)
 	var progress := dist_before - global_position.distance_to(target)
+	# Keep the walk strip playing whenever we intended to move. Gating walk on
+	# "_did_move_well" restarted the strip from idle on brief blocks / side-steps,
+	# which reads as trompicones especially on high-FPS displays.
+	var step := global_position - before
+	_play_walk_animation(step if step.length_squared() > 0.0001 else preferred_direction)
+
 	if _did_move_well(moved, progress, speed, delta):
 		_reset_stuck_tracking(target)
-		# Face along actual displacement so sprite matches on-screen motion.
-		var step := global_position - before
-		_play_walk_animation(step if step.length_squared() > 0.0001 else preferred_direction)
 		return true
 
 	return false
@@ -1556,8 +1561,9 @@ func _follow_navigation_toward(target: Vector2, desired_distance: float, delta: 
 ## Returns true when repaths are exhausted and the unit should abandon this navigation goal.
 func _handle_navigation_stuck(stuck_target: Vector2, repath_target: Vector2, delta: float) -> bool:
 	if not _is_stuck_moving(delta, stuck_target):
+		# Brief block: hold still but keep the current walk/idle pose. Flipping to
+		# idle here every failed frame restarts the walk cycle (visible stutter).
 		velocity = Vector2.ZERO
-		_play_idle()
 		return false
 
 	if _nav_repath_attempts < STUCK_REPATH_MAX:
@@ -1576,6 +1582,13 @@ func _handle_navigation_stuck(stuck_target: Vector2, repath_target: Vector2, del
 	velocity = Vector2.ZERO
 	_play_idle()
 	return true
+
+
+## Instant reposition (garrison, eject, recruit spawn). Resets interpolation so the
+## sprite does not smear from the old point for a frame on high-refresh monitors.
+func _teleport_to(world_pos: Vector2) -> void:
+	global_position = world_pos
+	reset_physics_interpolation()
 
 
 ## True when the unit body overlaps world solids (layer 1: terrain / buildings / walls).
@@ -1597,7 +1610,7 @@ func eject_from_world_solids(hint_away_from: Vector2 = Vector2.INF) -> bool:
 	var safe := _find_clear_position_near(global_position, hint_away_from)
 	if safe == Vector2.INF:
 		return false
-	global_position = safe
+	_teleport_to(safe)
 	velocity = Vector2.ZERO
 	_reset_navigation_recovery()
 	return true
@@ -2100,7 +2113,7 @@ func _process_recruitment(delta: float) -> void:
 	if not squad_id.is_empty():
 		set_meta("squad_id", squad_id)
 	var spawn_positions := spawn_building.get_exit_positions(maxi(1, squad_size))
-	global_position = spawn_positions[0]
+	_teleport_to(spawn_positions[0])
 	reset_navigation()
 	var world := get_tree().get_first_node_in_group("game_world")
 	if world != null and world.has_method("spawn_squad_members"):

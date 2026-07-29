@@ -400,6 +400,7 @@ func _spawn_starter_military(
 		unit.global_position = ground_layer.map_to_local(
 			center + base_offset + Vector2i(col, row)
 		)
+		unit.reset_physics_interpolation()
 		UnitDatabase.apply_definition_to_unit(unit, type_id)
 		unit.set_ground_layer(ground_layer)
 		unit.reset_navigation()
@@ -425,6 +426,7 @@ func _spawn_bonus_military(
 		var unit: Unit = scene.instantiate()
 		units.add_child(unit)
 		unit.global_position = ground_layer.map_to_local(center + base_offset + Vector2i(i, 0))
+		unit.reset_physics_interpolation()
 		UnitDatabase.apply_definition_to_unit(unit, type_id)
 		unit.set_ground_layer(ground_layer)
 		unit.reset_navigation()
@@ -478,6 +480,7 @@ func spawn_squad_members(
 		else:
 			var angle := TAU * float(i) / float(maxi(1, extra_count))
 			member.global_position = leader.global_position + Vector2(cos(angle), sin(angle)) * spacing
+		member.reset_physics_interpolation()
 		UnitDatabase.apply_definition_to_unit(member, unit_type_id)
 		member.set_ground_layer(ground_layer)
 		member.reset_navigation()
@@ -494,6 +497,7 @@ func _spawn_villager(ground: TinyTilesMap, cell: Vector2i, index: int) -> void:
 	var villager: Unit = VILLAGER_SCENE.instantiate()
 	units.add_child(villager)
 	villager.global_position = ground.map_to_local(cell) + Vector2(index * 12.0, 0.0)
+	villager.reset_physics_interpolation()
 	villager.set_ground_layer(ground)
 	villager.reset_navigation()
 	population_manager.register_unit(villager)

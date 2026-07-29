@@ -230,6 +230,7 @@ func _spawn_enemies(count: int, def: Dictionary) -> void:
 		var enemy: EnemyUnit = ENEMY_SCENE.instantiate()
 		_units_container.add_child(enemy)
 		enemy.global_position = spawn_points[i]
+		enemy.reset_physics_interpolation()
 		enemy.set_ground_layer(_ground)
 		enemy.reset_navigation()
 		enemy.configure_kind(_pick_kind(def))

@@ -158,6 +158,7 @@ func _try_spawn_unit(world_pos: Vector2, type_id: String = "") -> void:
 	var unit: Unit = scene.instantiate()
 	_units_container.add_child(unit)
 	unit.global_position = world_pos
+	unit.reset_physics_interpolation()
 	UnitDatabase.apply_definition_to_unit(unit, spawn_type)
 	var enemy_kinds := ["enemy", "ember", "mire", "hexwing"]
 	if spawn_type in enemy_kinds and unit is EnemyUnit:
