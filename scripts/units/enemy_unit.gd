@@ -456,6 +456,11 @@ func _find_breach_barrier_toward(goal: Vector2) -> Building:
 		return null
 
 	var metrics := _query_goal_path_metrics(goal)
+	if bool(metrics.get("unknown", false)):
+		# Path metrics were not affordable this frame. Hold the current plan and
+		# decide on the next scan rather than committing on missing information.
+		return attack_target_building if currently_breaching else null
+
 	if not _is_detour_acceptable(metrics, goal):
 		# No usable path around — open / keep a breach.
 		if local_barrier != null:

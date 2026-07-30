@@ -8,7 +8,31 @@ const SEGMENT_SAMPLE_STEP := 8.0
 const CLOSEST_POINT_SEARCH_LIMIT := 48
 const DYNAMIC_REBUILD_RADIUS := 128.0
 const PATHS_PER_FRAME := 12
+## Hard ceiling on queue work per frame. A saturated queue (whole army repathing
+## after a nav change) must never blow the frame; leftovers roll to the next one.
+const PATH_QUEUE_BUDGET_USEC := 3000
+## Same idea for nav rebuilds: a wall run dirties thousands of grid points, which
+## used to land on one frame as a visible hitch.
+const REBUILD_BUDGET_USEC := 3000
 const PATH_CACHE_LIMIT := 512
+## Breach decisions ("can I walk around this muralla?") are cluster-scale
+## questions, so every enemy in the same neighbourhood heading for the same goal
+## shares one answer. Without this each enemy ran its own synchronous A* every
+## scan tick, which is what made a walled night cost several times a bare one.
+const METRICS_CELL_SPAN := 4
+const METRICS_CACHE_TTL_MSEC := 500
+## The async path queue is budgeted, but breach metrics were not: when a muralla
+## fell, the version bump dropped every cached path and the whole horde ran a
+## cold synchronous A* on its next scan, stalling frames for seconds. Cap the
+## synchronous work per physics frame and let latecomers reuse their last answer.
+const METRICS_SYNC_BUDGET_USEC := 1500
+## A* only pays for itself when a route exists. Asking AStarGrid2D for a path into
+## a sealed town makes it expand every open cell on the map (~16ms here) before
+## reporting failure, and a walled night asks exactly that, constantly. Labelling
+## connected regions turns that answer into two array reads.
+const COMPONENT_NONE := -1
+const COMPONENT_UNVISITED := -2
+const COMPONENT_BUILD_BUDGET_USEC := 2000
 
 var _ground_layer: TinyTilesMap
 var _sector_regions: Dictionary = {}
@@ -22,11 +46,27 @@ var _path_grid_origin := Vector2.ZERO
 var _path_grid_size := Vector2i.ZERO
 var _navigation_version := 0
 var _path_cache: Dictionary = {}
+var _metrics_cache: Dictionary = {}
+var _metrics_budget_frame := -1
+var _metrics_budget_started := 0
+var _components := PackedInt32Array()
+var _components_ready := false
+var _component_scratch := PackedInt32Array()
+var _component_queue := PackedInt32Array()
+var _component_queue_head := 0
+var _component_queue_tail := 0
+var _component_build_active := false
+var _component_build_scan := 0
+var _component_next_label := 0
 var _path_queue: Array[Dictionary] = []
 var _path_queue_keys: Dictionary = {}
 var _path_queue_head := 0
 var _blocker_bounds_cache: Array = []
 var _blocker_bounds_version := -1
+var _rebuild_active := false
+var _pending_sectors: Array = []
+var _pending_points: Array = []
+var _pending_points_changed := false
 
 
 func setup_from_ground(ground_layer: TinyTilesMap) -> void:
@@ -38,6 +78,8 @@ func setup_from_ground(ground_layer: TinyTilesMap) -> void:
 
 
 func _process(_delta: float) -> void:
+	_process_pending_rebuild()
+	_process_component_build()
 	_process_path_queue()
 
 
@@ -48,6 +90,7 @@ func rebuild_navigation(obstacles: Array = [], buildings: Array = []) -> void:
 	for sector_key in _sector_regions:
 		_rebuild_sector(sector_key)
 	_dirty_sectors.clear()
+	_reset_pending_rebuild()
 	_rebuild_path_grid()
 
 
@@ -98,6 +141,7 @@ func _create_sector_regions() -> void:
 	_sector_regions.clear()
 	_dirty_sectors.clear()
 	_dirty_path_grid_points.clear()
+	_reset_pending_rebuild()
 
 	var map_size := _ground_layer.get_map_size()
 	var sector_count := Vector2i(
@@ -224,12 +268,54 @@ func _ensure_rebuild_timer() -> void:
 	add_child(_rebuild_timer)
 
 
+## Debounce elapsed: promote the dirty sets into work queues that `_process`
+## drains under a frame budget. Doing it all here made a wall run hitch.
 func _rebuild_dirty_sectors() -> void:
-	var sectors := _dirty_sectors.keys()
+	for sector in _dirty_sectors:
+		if not _pending_sectors.has(sector):
+			_pending_sectors.append(sector)
 	_dirty_sectors.clear()
-	for sector in sectors:
+	_pending_points.append_array(_dirty_path_grid_points.keys())
+	_dirty_path_grid_points.clear()
+	_rebuild_active = true
+
+
+## A full rebuild supersedes any queued incremental work.
+func _reset_pending_rebuild() -> void:
+	_pending_sectors.clear()
+	_pending_points.clear()
+	_pending_points_changed = false
+	_rebuild_active = false
+
+
+func _process_pending_rebuild() -> void:
+	if not _rebuild_active:
+		return
+	var started := Time.get_ticks_usec()
+
+	while not _pending_sectors.is_empty():
+		var sector: Vector2i = _pending_sectors.pop_back()
 		_rebuild_sector(sector)
-	_rebuild_dirty_path_grid()
+		if Time.get_ticks_usec() - started >= REBUILD_BUDGET_USEC:
+			return
+
+	if _path_grid_size == Vector2i.ZERO:
+		_pending_points.clear()
+	while not _pending_points.is_empty():
+		var point_id: Vector2i = _pending_points.pop_back()
+		var solid := not _is_world_point_walkable(_grid_to_world(point_id))
+		if _path_grid.is_point_solid(point_id) != solid:
+			_path_grid.set_point_solid(point_id, solid)
+			_pending_points_changed = true
+		if Time.get_ticks_usec() - started >= REBUILD_BUDGET_USEC:
+			return
+
+	_rebuild_active = false
+	# Bumping the version drops every cached path, so the whole army repaths at
+	# once. Publish only when the update is complete and a cell actually flipped.
+	if _pending_points_changed:
+		_pending_points_changed = false
+		_bump_navigation_version()
 
 
 func _mark_path_grid_dirty(world_position: Vector2) -> void:
@@ -246,21 +332,6 @@ func _mark_path_grid_dirty(world_position: Vector2) -> void:
 			_dirty_path_grid_points[Vector2i(x, y)] = true
 
 
-func _rebuild_dirty_path_grid() -> void:
-	if _dirty_path_grid_points.is_empty() or _path_grid_size == Vector2i.ZERO:
-		return
-
-	var dirty_points := _dirty_path_grid_points.keys()
-	_dirty_path_grid_points.clear()
-	for dirty_point in dirty_points:
-		var point_id: Vector2i = dirty_point
-		_path_grid.set_point_solid(
-			point_id,
-			not _is_world_point_walkable(_grid_to_world(point_id))
-		)
-	_bump_navigation_version()
-
-
 func get_navigation_path(from_position: Vector2, target_position: Vector2) -> PackedVector2Array:
 	var cache_key := _make_path_cache_key(from_position, target_position)
 	if _path_cache.has(cache_key):
@@ -275,6 +346,148 @@ func get_navigation_path(from_position: Vector2, target_position: Vector2) -> Pa
 ## `reachable` means the path end lands near the requested target (not merely
 ## the closest walkable cell outside a wall ring).
 func query_path_metrics(from_position: Vector2, target_position: Vector2) -> Dictionary:
+	var metrics_key := _make_metrics_cache_key(from_position, target_position)
+	var now := Time.get_ticks_msec()
+	var entry: Dictionary = _metrics_cache.get(metrics_key, {})
+	if (
+		not entry.is_empty()
+		and int(entry["version"]) == _navigation_version
+		and now - int(entry["stamp"]) < METRICS_CACHE_TTL_MSEC
+	):
+		return entry["metrics"]
+
+	if not _claim_metrics_budget():
+		# This frame already spent its pathfinding time. Reuse the previous answer
+		# when we have one; otherwise warm the async queue and tell the caller the
+		# metrics are not ready, so it keeps its current plan one more scan.
+		if not entry.is_empty():
+			return entry["metrics"]
+		queue_navigation_path(from_position, target_position)
+		return {
+			"reachable": false,
+			"length": INF,
+			"end": from_position,
+			"path": PackedVector2Array(),
+			"unknown": true,
+		}
+
+	var metrics := _build_path_metrics(from_position, target_position)
+	if _metrics_cache.size() > PATH_CACHE_LIMIT:
+		_metrics_cache.clear()
+	_metrics_cache[metrics_key] = {
+		"stamp": now,
+		"version": _navigation_version,
+		"metrics": metrics,
+	}
+	return metrics
+
+
+## Restart region labelling. The previously published labels stay queryable while
+## the new pass runs: they can only be stale for the few frames after a wall
+## changed, and a stale answer costs an unnecessary A* at worst.
+func _invalidate_components() -> void:
+	var total := _path_grid_size.x * _path_grid_size.y
+	if total <= 0:
+		_components_ready = false
+		_component_build_active = false
+		return
+
+	_component_scratch.resize(total)
+	_component_scratch.fill(COMPONENT_UNVISITED)
+	if _component_queue.size() != total:
+		_component_queue.resize(total)
+	_component_queue_head = 0
+	_component_queue_tail = 0
+	_component_build_scan = 0
+	_component_next_label = 0
+	_component_build_active = true
+
+
+## 8-connected flood fill. A* may move diagonally only when both orthogonals are
+## free, so its reachability is a subset of this: regions that come out distinct
+## are guaranteed unreachable, which is the only direction we may not get wrong.
+func _process_component_build() -> void:
+	if not _component_build_active:
+		return
+
+	var started := Time.get_ticks_usec()
+	var width := _path_grid_size.x
+	var height := _path_grid_size.y
+	var total := width * height
+
+	while true:
+		while _component_queue_head < _component_queue_tail:
+			var index := _component_queue[_component_queue_head]
+			_component_queue_head += 1
+			var label := _component_scratch[index]
+			var cx := index % width
+			var cy := index / width
+			for oy in range(maxi(cy - 1, 0), mini(cy + 2, height)):
+				for ox in range(maxi(cx - 1, 0), mini(cx + 2, width)):
+					var neighbour := oy * width + ox
+					if _component_scratch[neighbour] != COMPONENT_UNVISITED:
+						continue
+					if _path_grid.is_point_solid(Vector2i(ox, oy)):
+						_component_scratch[neighbour] = COMPONENT_NONE
+						continue
+					_component_scratch[neighbour] = label
+					_component_queue[_component_queue_tail] = neighbour
+					_component_queue_tail += 1
+			if Time.get_ticks_usec() - started >= COMPONENT_BUILD_BUDGET_USEC:
+				return
+
+		# Current region drained; seed the next one.
+		_component_queue_head = 0
+		_component_queue_tail = 0
+		while _component_build_scan < total:
+			if _component_scratch[_component_build_scan] == COMPONENT_UNVISITED:
+				break
+			_component_build_scan += 1
+		if _component_build_scan >= total:
+			break
+
+		var seed_index := _component_build_scan
+		var seed_id := Vector2i(seed_index % width, seed_index / width)
+		if _path_grid.is_point_solid(seed_id):
+			# Solid cells the fill never touched (open water, deep interiors) are
+			# retired one per pass, so this branch needs the budget check too.
+			_component_scratch[seed_index] = COMPONENT_NONE
+			if Time.get_ticks_usec() - started >= COMPONENT_BUILD_BUDGET_USEC:
+				return
+			continue
+		_component_scratch[seed_index] = _component_next_label
+		_component_queue[_component_queue_tail] = seed_index
+		_component_queue_tail += 1
+		_component_next_label += 1
+
+		if Time.get_ticks_usec() - started >= COMPONENT_BUILD_BUDGET_USEC:
+			return
+
+	_components = _component_scratch.duplicate()
+	_components_ready = true
+	_component_build_active = false
+
+
+func _component_at(point_id: Vector2i) -> int:
+	if not _components_ready:
+		return COMPONENT_NONE
+	var index := point_id.y * _path_grid_size.x + point_id.x
+	if index < 0 or index >= _components.size():
+		return COMPONENT_NONE
+	return _components[index]
+
+
+## True while the current physics frame may still afford a synchronous path.
+func _claim_metrics_budget() -> bool:
+	var frame := Engine.get_physics_frames()
+	if frame != _metrics_budget_frame:
+		_metrics_budget_frame = frame
+		_metrics_budget_started = Time.get_ticks_usec()
+		return true
+	return Time.get_ticks_usec() - _metrics_budget_started < METRICS_SYNC_BUDGET_USEC
+
+
+func _build_path_metrics(from_position: Vector2, target_position: Vector2) -> Dictionary:
 	var cache_key := _make_path_cache_key(from_position, target_position)
 	var path: PackedVector2Array
 	if _path_cache.has(cache_key):
@@ -333,6 +546,7 @@ func queue_navigation_paths(requests: Array) -> void:
 
 func _process_path_queue() -> void:
 	var processed := 0
+	var started := Time.get_ticks_usec()
 	while _path_queue_head < _path_queue.size() and processed < PATHS_PER_FRAME:
 		var request: Dictionary = _path_queue[_path_queue_head]
 		_path_queue_head += 1
@@ -348,6 +562,8 @@ func _process_path_queue() -> void:
 		if _path_cache.size() > PATH_CACHE_LIMIT:
 			_evict_path_cache()
 		processed += 1
+		if Time.get_ticks_usec() - started >= PATH_QUEUE_BUDGET_USEC:
+			break
 
 	if _path_queue_head > 64 and _path_queue_head * 2 > _path_queue.size():
 		_path_queue = _path_queue.slice(_path_queue_head)
@@ -369,6 +585,12 @@ func _compute_navigation_path(from_position: Vector2, target_position: Vector2) 
 	var start_id := _find_closest_walkable_id(_world_to_grid(from_position))
 	var target_id := _find_closest_walkable_id(_world_to_grid(target_position))
 	if start_id == Vector2i(-1, -1) or target_id == Vector2i(-1, -1):
+		return PackedVector2Array()
+
+	# Distinct regions can never be joined by a path, so skip the A* entirely.
+	var start_component := _component_at(start_id)
+	var target_component := _component_at(target_id)
+	if start_component >= 0 and target_component >= 0 and start_component != target_component:
 		return PackedVector2Array()
 
 	var id_path := _path_grid.get_id_path(start_id, target_id, false)
@@ -402,9 +624,27 @@ func _make_path_cache_key(from_position: Vector2, target_position: Vector2) -> S
 	]
 
 
+## Same idea as the path key but on a deliberately coarse grid, so a pack of
+## enemies converging on one goal resolves to a single cached answer. The nav
+## version is stored alongside instead of baked in, so a stale entry survives a
+## rebuild and can still answer while the frame budget is exhausted.
+func _make_metrics_cache_key(from_position: Vector2, target_position: Vector2) -> String:
+	var start_id := _world_to_grid(from_position)
+	var target_id := _world_to_grid(target_position)
+	return "%d_%d_%d_%d" % [
+		start_id.x / METRICS_CELL_SPAN,
+		start_id.y / METRICS_CELL_SPAN,
+		target_id.x / METRICS_CELL_SPAN,
+		target_id.y / METRICS_CELL_SPAN,
+	]
+
+
 func _bump_navigation_version() -> void:
 	_navigation_version += 1
+	_invalidate_components()
 	_path_cache.clear()
+	# _metrics_cache is deliberately kept: its entries carry their own version and
+	# a stale one is a far better answer than stalling the frame on a cold A*.
 	_path_queue.clear()
 	_path_queue_keys.clear()
 	_path_queue_head = 0
@@ -440,6 +680,8 @@ func _rebuild_path_grid() -> void:
 		ceili(bounds.size.y / PATH_CELL_SIZE.y) + 1
 	)
 
+	# Labels from a previous grid size must never be read against the new one.
+	_components_ready = false
 	_path_grid = AStarGrid2D.new()
 	_path_grid.region = Rect2i(Vector2i.ZERO, _path_grid_size)
 	_path_grid.offset = _path_grid_origin
@@ -520,24 +762,44 @@ func _ensure_blocker_bounds_cache() -> void:
 		):
 			continue
 		for outline in (obstacle as TerrainObstacle).get_nav_block_outlines():
-			if outline.size() < 3:
-				continue
-			_blocker_bounds_cache.append({
-				"outline": outline,
-				"rect": _outline_bounds(outline).grow(AGENT_CLEARANCE),
-			})
+			_cache_blocker(outline)
 	for building in _buildings:
 		if not is_instance_valid(building) or not (building is Building):
 			continue
 		var active_building := building as Building
 		if not active_building.blocks_navigation:
 			continue
-		var outline := active_building.get_nav_block_outline()
-		if outline.size() < 3:
+		_cache_blocker(active_building.get_nav_block_outline())
+
+
+## Bake the agent clearance into the outline once per navigation version. The
+## per-point alternative (point-in-polygon plus a distance test against every
+## edge) ran ~50 edge tests per path-grid point and dominated build hitches.
+func _cache_blocker(outline: PackedVector2Array) -> void:
+	if outline.size() < 3:
+		return
+	# Offsetting deflates a clockwise ring, so normalize the winding first.
+	var source := outline
+	if Geometry2D.is_polygon_clockwise(source):
+		source = source.duplicate()
+		source.reverse()
+
+	var grown_any := false
+	for grown in Geometry2D.offset_polygon(source, AGENT_CLEARANCE, Geometry2D.JOIN_ROUND):
+		if grown.size() < 3 or Geometry2D.is_polygon_clockwise(grown):
+			# Clockwise rings are holes; an outward offset should not make any.
 			continue
+		grown_any = true
 		_blocker_bounds_cache.append({
-			"outline": outline,
-			"rect": _outline_bounds(outline).grow(AGENT_CLEARANCE),
+			"outline": grown,
+			"rect": _outline_bounds(grown),
+		})
+
+	if not grown_any:
+		# Degenerate outline: keep blocking the raw shape rather than nothing.
+		_blocker_bounds_cache.append({
+			"outline": source,
+			"rect": _outline_bounds(source).grow(AGENT_CLEARANCE),
 		})
 
 
@@ -561,50 +823,68 @@ func _is_world_point_walkable(world_position: Vector2) -> bool:
 		var rect: Rect2 = blocker["rect"]
 		if not rect.has_point(world_position):
 			continue
-		if _is_point_blocked_by_outline(world_position, blocker["outline"]):
+		# Outlines are pre-grown by AGENT_CLEARANCE, so containment is the whole test.
+		if Geometry2D.is_point_in_polygon(world_position, blocker["outline"]):
 			return false
 
 	return true
 
 
-func _is_point_blocked_by_outline(point: Vector2, outline: PackedVector2Array) -> bool:
-	if outline.size() < 3:
-		return false
-	if Geometry2D.is_point_in_polygon(point, outline):
-		return true
-
-	for i in outline.size():
-		var segment_start := outline[i]
-		var segment_end := outline[(i + 1) % outline.size()]
-		var closest := Geometry2D.get_closest_point_to_segment(point, segment_start, segment_end)
-		if point.distance_squared_to(closest) <= AGENT_CLEARANCE * AGENT_CLEARANCE:
-			return true
-	return false
-
-
+## Greedy string-pull: keep the furthest waypoint each anchor can see directly.
+## Visibility along a grid A* route is monotonic, so probe with a doubling step
+## and binary-search the boundary. Testing every candidate from the far end
+## instead made this O(n^2) segment walks, which dominated night-wave frames.
 func _smooth_path(raw_path: PackedVector2Array) -> PackedVector2Array:
 	if raw_path.size() <= 2:
 		return raw_path
 
+	var last_index := raw_path.size() - 1
 	var result := PackedVector2Array([raw_path[0]])
 	var anchor_index := 0
-	while anchor_index < raw_path.size() - 1:
-		var furthest_visible := anchor_index + 1
-		for candidate_index in range(raw_path.size() - 1, anchor_index, -1):
-			if _has_clear_segment(raw_path[anchor_index], raw_path[candidate_index]):
-				furthest_visible = candidate_index
-				break
-		result.append(raw_path[furthest_visible])
-		anchor_index = furthest_visible
+	while anchor_index < last_index:
+		var anchor := raw_path[anchor_index]
+		# Straight shot to the goal: the common case for short / open routes.
+		if _has_clear_segment(anchor, raw_path[last_index]):
+			result.append(raw_path[last_index])
+			break
+
+		# Advance while visible, doubling the stride. Never probes last_index,
+		# so `high` below always stays a known-blocked bound.
+		var visible := anchor_index + 1
+		var stride := 1
+		while (
+			visible + stride < last_index
+			and _has_clear_segment(anchor, raw_path[visible + stride])
+		):
+			visible += stride
+			stride *= 2
+
+		var low := visible
+		var high := mini(last_index, visible + stride)
+		while low + 1 < high:
+			var mid := low + (high - low) / 2
+			if _has_clear_segment(anchor, raw_path[mid]):
+				low = mid
+			else:
+				high = mid
+
+		result.append(raw_path[low])
+		anchor_index = low
 	return result
 
 
 func _has_clear_segment(from_position: Vector2, to_position: Vector2) -> bool:
 	var distance := from_position.distance_to(to_position)
 	var sample_count := maxi(1, ceili(distance / SEGMENT_SAMPLE_STEP))
+	# Sample step is finer than the grid cell, so consecutive samples usually
+	# land in the same cell — skip the repeats instead of re-querying.
+	var last_id := Vector2i(-0x40000000, -0x40000000)
 	for i in range(1, sample_count + 1):
 		var point := from_position.lerp(to_position, float(i) / float(sample_count))
 		var grid_id := _world_to_grid(point)
+		if grid_id == last_id:
+			continue
+		last_id = grid_id
 		if not _is_grid_id_valid(grid_id) or _path_grid.is_point_solid(grid_id):
 			return false
 	return true

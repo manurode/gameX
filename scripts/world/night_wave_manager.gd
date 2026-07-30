@@ -16,11 +16,19 @@ const EDGE_MARGIN := 48.0
 const FOG_EDGE_MARGIN := 140.0
 const CONTINUOUS_SPAWN_INTERVAL := 4.5
 const CARDINAL_DIRECTIONS := ["Norte", "Este", "Sur", "Oeste"]
+## Instantiating a full late-night wave in one frame is a visible hitch. Enemies
+## walk in from the map edge, so spreading the spawn over a few frames is free.
+const SPAWN_BATCH_PER_FRAME := 8
+## Cold sprite-sheet loads make the first few enemies of a kind far pricier than
+## the rest, so cap by time as well as by count.
+const SPAWN_BATCH_BUDGET_USEC := 2000
 
 var _day_night: DayNightManager
 var _units_container: Node2D
 var _ground: TinyTilesMap
 var _spawned: Array[EnemyUnit] = []
+var _spawn_queue: Array[Dictionary] = []
+var _spawn_queue_head: int = 0
 var _attack_direction: String = "Oeste"
 var _secondary_direction: String = ""
 var _next_attack_direction: String = "Oeste"
@@ -72,6 +80,7 @@ func debug_clear_wave() -> void:
 
 
 func _process(delta: float) -> void:
+	_drain_spawn_queue()
 	if _continuous_remaining <= 0 or _day_night == null or not _day_night.is_night():
 		return
 	_continuous_timer -= delta
@@ -220,24 +229,63 @@ func _spawn_wave() -> void:
 			"fog": def.get("fog", false),
 		})
 
-	wave_started.emit(_spawned.size() + _continuous_remaining, int(_current_modifier))
+	wave_started.emit(
+		_spawned.size() + _pending_spawn_count() + _continuous_remaining,
+		int(_current_modifier)
+	)
 
 
 func _spawn_enemies(count: int, def: Dictionary) -> void:
 	var spawn_points := _get_edge_spawn_points(count, bool(def.get("fog", false)))
 	var night_stat_mult := BalanceConfig.get_enemy_night_stat_mult(_day_night.cycle_number)
 	for i in spawn_points.size():
-		var enemy: EnemyUnit = ENEMY_SCENE.instantiate()
-		_units_container.add_child(enemy)
-		enemy.global_position = spawn_points[i]
-		enemy.reset_physics_interpolation()
-		enemy.set_ground_layer(_ground)
-		enemy.reset_navigation()
-		enemy.configure_kind(_pick_kind(def))
-		_apply_night_stat_scaling(enemy, night_stat_mult)
-		if _day_night.is_night():
-			enemy.apply_cycle_visuals(1.0, true)
-		_spawned.append(enemy)
+		_spawn_queue.append({
+			"position": spawn_points[i],
+			"kind": _pick_kind(def),
+			"stat_mult": night_stat_mult,
+		})
+
+
+func _pending_spawn_count() -> int:
+	return _spawn_queue.size() - _spawn_queue_head
+
+
+func _clear_spawn_queue() -> void:
+	_spawn_queue.clear()
+	_spawn_queue_head = 0
+
+
+func _drain_spawn_queue() -> void:
+	var pending := _pending_spawn_count()
+	if pending <= 0:
+		if not _spawn_queue.is_empty():
+			_clear_spawn_queue()
+		return
+	if _units_container == null or not is_instance_valid(_units_container):
+		_clear_spawn_queue()
+		return
+
+	var started := Time.get_ticks_usec()
+	for _i in mini(SPAWN_BATCH_PER_FRAME, pending):
+		var request: Dictionary = _spawn_queue[_spawn_queue_head]
+		_spawn_queue_head += 1
+		_spawn_one(request)
+		if Time.get_ticks_usec() - started >= SPAWN_BATCH_BUDGET_USEC:
+			break
+
+
+func _spawn_one(request: Dictionary) -> void:
+	var enemy: EnemyUnit = ENEMY_SCENE.instantiate()
+	_units_container.add_child(enemy)
+	enemy.global_position = request["position"]
+	enemy.reset_physics_interpolation()
+	enemy.set_ground_layer(_ground)
+	enemy.reset_navigation()
+	enemy.configure_kind(str(request["kind"]))
+	_apply_night_stat_scaling(enemy, float(request["stat_mult"]))
+	if _day_night.is_night():
+		enemy.apply_cycle_visuals(1.0, true)
+	_spawned.append(enemy)
 
 
 func _apply_night_stat_scaling(enemy: EnemyUnit, mult: float) -> void:
@@ -275,6 +323,7 @@ func _get_wave_size() -> int:
 
 
 func _despawn_all() -> void:
+	_clear_spawn_queue()
 	for enemy in _spawned:
 		if is_instance_valid(enemy):
 			enemy.queue_free()
