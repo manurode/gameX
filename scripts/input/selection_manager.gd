@@ -113,6 +113,15 @@ func get_cursor_action_at(screen_point: Vector2) -> StringName:
 			"food":
 				return CURSOR_GATHER_FOOD
 
+	if resource_node != null and _can_set_rally_gather_on(resource_node):
+		match resource_node.get_resource_key():
+			"wood":
+				return CURSOR_GATHER_WOOD
+			"gold":
+				return CURSOR_GATHER_GOLD
+			"food":
+				return CURSOR_GATHER_FOOD
+
 	if building != null and _can_attack_building(building):
 		return CURSOR_ATTACK
 	return CURSOR_DEFAULT
@@ -153,6 +162,10 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 	if event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
 		var world_point := _screen_to_world(event.position)
 		if _try_garrison_building_command(world_point):
+			get_viewport().set_input_as_handled()
+			return
+
+		if _try_set_building_rally(world_point):
 			get_viewport().set_input_as_handled()
 			return
 
@@ -294,6 +307,42 @@ func _try_gather_resource_command(world_point: Vector2) -> bool:
 		return false
 
 	return (job_manager as JobManager).assign_villagers_to_resource(gatherers, resource_node)
+
+
+func _try_set_building_rally(world_point: Vector2) -> bool:
+	if not selected_units.is_empty():
+		return false
+	if selected_building == null or not is_instance_valid(selected_building):
+		return false
+	if not selected_building.can_set_rally():
+		return false
+
+	# Right-click the producer itself to clear the rally route.
+	if (
+		selected_building.contains_command_point(world_point)
+		or selected_building.contains_world_point(world_point)
+	):
+		selected_building.clear_rally()
+		return true
+
+	if selected_building.can_rally_gather():
+		var resource_node := _pick_resource_node_at(world_point)
+		if resource_node != null and resource_node.has_resources():
+			selected_building.set_rally_gather(resource_node)
+			return true
+
+	selected_building.set_rally_move(world_point)
+	return true
+
+
+func _can_set_rally_gather_on(resource_node: ResourceNode) -> bool:
+	if resource_node == null or not resource_node.has_resources():
+		return false
+	if not selected_units.is_empty():
+		return false
+	if selected_building == null or not is_instance_valid(selected_building):
+		return false
+	return selected_building.can_rally_gather()
 
 
 func _pick_resource_node_at(world_point: Vector2) -> ResourceNode:

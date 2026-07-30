@@ -340,5 +340,7 @@ func _spawn_villager(building: Building) -> void:
 	var world := get_tree().get_first_node_in_group("game_world")
 	if world != null and world.has_method("register_player_unit"):
 		world.register_player_unit(villager)
+	if is_instance_valid(building):
+		building.apply_rally_to_unit(villager)
 	if _job_manager != null:
 		_job_manager.on_villager_spawned(villager)

@@ -455,11 +455,12 @@ func spawn_squad_members(
 	extra_count: int,
 	squad_id: String,
 	spawn_positions: Array = []
-) -> void:
+) -> Array:
+	var spawned: Array = []
 	var scene := UnitDatabase.get_scene(unit_type_id)
 	if scene == null:
 		population_manager.release_reserved_population(extra_count)
-		return
+		return spawned
 	var spacing := Unit.PERSONAL_SPACE_RADIUS * 2.0
 	for i in extra_count:
 		var member: Unit = scene.instantiate()
@@ -479,7 +480,9 @@ func spawn_squad_members(
 		register_player_unit(member)
 		if day_night_manager != null:
 			member.apply_cycle_visuals(day_night_manager.get_night_light_factor(), true)
+		spawned.append(member)
 	population_manager.release_reserved_population(extra_count)
+	return spawned
 
 
 func _spawn_villager(ground: TinyTilesMap, cell: Vector2i, index: int) -> void:

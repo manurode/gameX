@@ -51,6 +51,10 @@ var blocks_navigation: bool = true
 var pick_half_size := Vector2(55.0, 50.0)
 var sprite_offset := Vector2(0.0, -40.0)
 var is_selected: bool = false
+## Rally destination for newly produced units (move, or gather when resource set).
+var has_rally_point: bool = false
+var rally_position := Vector2.ZERO
+var rally_resource: ResourceNode = null
 ## When true, a completed gate stays shut even if allies are nearby.
 var gate_locked: bool = false
 
@@ -87,6 +91,7 @@ var _anchor_position := Vector2.ZERO
 var _depth_ready: bool = false
 var _sort_dy: float = 0.0
 static var _shared_building_shadow_texture: Texture2D
+var _rally_marker: BuildingRallyMarker
 
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var damage_overlay: Sprite2D = $DamageOverlay
@@ -106,6 +111,7 @@ func _ready() -> void:
 	_setup_selection_indicator()
 	_setup_ground_shadow()
 	_setup_night_light()
+	_setup_rally_marker()
 	selection_indicator.visible = false
 	set_process(true)
 	var day_night := get_tree().get_first_node_in_group("day_night_manager") as DayNightManager
@@ -149,6 +155,8 @@ func _process(delta: float) -> void:
 		_process_automatic_defense(delta)
 	elif is_garrison_occupied():
 		_process_garrison_combat(delta)
+	if is_selected and has_rally_point:
+		_refresh_rally_visual()
 
 
 func configure(type_id: String, state: BuildingState = BuildingState.ACTIVE, progress: float = 1.0) -> void:
@@ -1372,6 +1380,7 @@ func select() -> void:
 	is_selected = true
 	if selection_indicator != null:
 		selection_indicator.visible = true
+	_refresh_rally_visual()
 	_notify_health_bar()
 
 
@@ -1379,7 +1388,95 @@ func deselect() -> void:
 	is_selected = false
 	if selection_indicator != null:
 		selection_indicator.visible = false
+	_refresh_rally_visual()
 	_notify_health_bar()
+
+
+func can_set_rally() -> bool:
+	return (
+		team_id == Team.PLAYER
+		and building_state == BuildingState.ACTIVE
+		and not get_production_items().is_empty()
+	)
+
+
+func can_rally_gather() -> bool:
+	if not can_set_rally():
+		return false
+	for item_id in get_production_items():
+		var def := EquipmentDatabase.get_definition(item_id)
+		if def.get("transforms_to", "").is_empty():
+			return true
+	return false
+
+
+func set_rally_move(world_position: Vector2) -> void:
+	if not can_set_rally():
+		return
+	has_rally_point = true
+	rally_position = world_position
+	rally_resource = null
+	_refresh_rally_visual()
+
+
+func set_rally_gather(resource: ResourceNode) -> void:
+	if not can_rally_gather() or not is_instance_valid(resource):
+		return
+	has_rally_point = true
+	rally_resource = resource
+	rally_position = resource.get_interaction_center()
+	_refresh_rally_visual()
+
+
+func clear_rally() -> void:
+	has_rally_point = false
+	rally_resource = null
+	rally_position = Vector2.ZERO
+	_refresh_rally_visual()
+
+
+func get_rally_display_position() -> Vector2:
+	if is_instance_valid(rally_resource) and rally_resource.has_resources():
+		return rally_resource.get_interaction_center()
+	return rally_position
+
+
+## Sends newly produced units to the rally (gather when possible, else move and idle).
+func apply_rally_to_units(units: Array) -> void:
+	if not has_rally_point:
+		return
+	var valid: Array[Unit] = []
+	for item in units:
+		if is_instance_valid(item) and item is Unit:
+			valid.append(item as Unit)
+	if valid.is_empty():
+		return
+
+	var resource := rally_resource if is_instance_valid(rally_resource) else null
+	if resource != null and resource.has_resources():
+		var gatherers: Array = []
+		for unit in valid:
+			if unit.is_civilian and unit.can_gather:
+				gatherers.append(unit)
+		if not gatherers.is_empty():
+			var job_manager := get_tree().get_first_node_in_group("job_manager")
+			if job_manager is JobManager:
+				(job_manager as JobManager).assign_villagers_to_resource(gatherers, resource)
+
+	var movers: Array[Unit] = []
+	for unit in valid:
+		# Gather success leaves them busy; failed / military / depleted → walk to the zone.
+		if not unit.is_busy():
+			movers.append(unit)
+	if movers.is_empty():
+		return
+	Unit.assign_move_destinations(movers, get_rally_display_position())
+
+
+func apply_rally_to_unit(unit: Unit) -> void:
+	if unit == null:
+		return
+	apply_rally_to_units([unit])
 
 
 func get_garrison_space() -> int:
@@ -1678,6 +1775,30 @@ func get_production_items() -> Array[String]:
 	return result
 
 
+func _setup_rally_marker() -> void:
+	if _rally_marker != null:
+		return
+	_rally_marker = BuildingRallyMarker.new()
+	_rally_marker.name = "RallyMarker"
+	_rally_marker.z_index = 8
+	_rally_marker.y_sort_enabled = false
+	_rally_marker.visible = false
+	_rally_marker.top_level = true
+	add_child(_rally_marker)
+	_refresh_rally_visual()
+
+
+func _refresh_rally_visual() -> void:
+	if _rally_marker == null:
+		return
+	if not is_selected or not has_rally_point or building_state == BuildingState.DESTROYED:
+		_rally_marker.visible = false
+		_rally_marker.clear_route()
+		return
+	_rally_marker.visible = true
+	_rally_marker.set_route(get_base_center(), get_rally_display_position())
+
+
 func _complete_construction() -> void:
 	building_state = BuildingState.ACTIVE
 	hp = max_hp
@@ -1853,6 +1974,7 @@ func _outline_to_world(local_outline: PackedVector2Array) -> PackedVector2Array:
 
 func _destroy() -> void:
 	building_state = BuildingState.DESTROYED
+	clear_rally()
 	_active_attackers = 0
 	apply_cycle_visuals(0.0, true)
 	var job_manager := get_tree().get_first_node_in_group("job_manager")

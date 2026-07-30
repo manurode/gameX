@@ -570,7 +570,42 @@ func _setup_navigation_agent() -> void:
 	navigation_agent.max_speed = move_speed
 	navigation_agent.avoidance_enabled = false
 	_stuck_check_position = global_position
-	reset_navigation()
+	# _ready awaits one physics frame before this runs. Spawn-time orders (rally
+	# move / gather) may already be set — do not wipe them back to IDLE.
+	if is_busy():
+		_reassert_navigation_target()
+	else:
+		reset_navigation()
+
+
+## Re-apply the current order's nav target once the agent is on the navigation map.
+func _reassert_navigation_target() -> void:
+	match _unit_state:
+		UnitState.MOVING:
+			navigation_agent.target_desired_distance = PERSONAL_SPACE_RADIUS * 0.85
+			navigation_agent.target_position = _move_destination
+		UnitState.GATHERING:
+			navigation_agent.target_desired_distance = 4.0
+			if gather_target != null and is_instance_valid(gather_target):
+				navigation_agent.target_position = gather_target.get_work_position(global_position)
+		UnitState.DEPOSITING:
+			navigation_agent.target_desired_distance = 4.0
+			if gather_building != null and is_instance_valid(gather_building):
+				navigation_agent.target_position = gather_building.get_approach_point(global_position)
+		UnitState.CONSTRUCTING:
+			if construction_target != null and is_instance_valid(construction_target):
+				navigation_agent.target_position = construction_target.get_approach_point(global_position)
+		UnitState.REPAIRING:
+			if repair_target != null and is_instance_valid(repair_target):
+				navigation_agent.target_position = repair_target.get_approach_point(global_position)
+		UnitState.GARRISON_APPROACH:
+			if garrison_approach_target != null and is_instance_valid(garrison_approach_target):
+				navigation_agent.target_position = garrison_approach_target.get_approach_point(global_position)
+		UnitState.RECRUITING:
+			if recruitment_building != null and is_instance_valid(recruitment_building):
+				navigation_agent.target_position = recruitment_building.get_approach_point(global_position)
+		_:
+			pass
 
 
 func reset_navigation() -> void:
@@ -2115,9 +2150,10 @@ func _process_recruitment(delta: float) -> void:
 	var spawn_positions := spawn_building.get_exit_positions(maxi(1, squad_size))
 	_teleport_to(spawn_positions[0])
 	reset_navigation()
+	var squad_units: Array = [self]
 	var world := get_tree().get_first_node_in_group("game_world")
 	if world != null and world.has_method("spawn_squad_members"):
-		world.call(
+		var members: Array = world.call(
 			"spawn_squad_members",
 			self,
 			target_type,
@@ -2125,7 +2161,11 @@ func _process_recruitment(delta: float) -> void:
 			squad_id,
 			spawn_positions.slice(1)
 		)
+		if members is Array:
+			squad_units.append_array(members)
 	_clear_recruitment_fields()
+	if is_instance_valid(spawn_building):
+		spawn_building.apply_rally_to_units(squad_units)
 
 
 func _clear_recruitment_fields() -> void:
