@@ -93,8 +93,8 @@ const DEFINITIONS := {
 		"fog": false,
 		"eclipse": false,
 		"composition": [
-			{"kind": "normal", "weight": 0.75},
-			{"kind": "elite", "weight": 0.25},
+			{"kind": "normal", "weight": 0.90},
+			{"kind": "elite", "weight": 0.10},
 		],
 	},
 	Id.ECLIPSE: {
