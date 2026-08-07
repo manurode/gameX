@@ -23,15 +23,16 @@ DEATH_FRAMES = 6
 
 # Monster kinds get flashy dissolve deaths; humanoids get a readable fall.
 STYLES: dict[str, str] = {
-    "knight": "fall",
-    "archer": "fall",
-    "mage": "fall",
-    "villager": "fall",
-    "builder": "fall",
-    "enemy": "shatter",
-    "ember": "evaporate",
-    "mire": "crumble",
-    "hexwing": "spectral",
+	"knight": "fall",
+	"archer": "fall",
+	"mage": "fall",
+	"villager": "fall",
+	"builder": "fall",
+	"enemy": "shatter",
+	"ember": "evaporate",
+	"mire": "crumble",
+	"hexwing": "spectral",
+	"alba": "fall",
 }
 
 

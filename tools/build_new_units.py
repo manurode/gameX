@@ -49,7 +49,7 @@ REFS = ROOT / "tools/anim_refs"
 POSE_DIR = ROOT / "tools/ai_poses"
 CURSOR_ASSETS = Path(r"C:\Users\Manu\.cursor\projects\c-Repos-gameX\assets")
 
-UNITS = ("mage", "ember", "mire", "hexwing")
+UNITS = ("mage", "ember", "mire", "hexwing", "alba")
 
 
 def _find_src(name: str) -> Path | None:
@@ -195,7 +195,7 @@ def match_all_sheets_to_smallest_idle(unit: str) -> None:
     if not candidates:
         return
     _name, ref_h, ref_px, foot_y = min(candidates, key=lambda t: (t[1], t[2]))
-    print(f"  normalize scale → {_name} h={ref_h} px={ref_px}")
+    print(f"  normalize scale -> {_name} h={ref_h} px={ref_px}")
     for path in sorted(unit_dir.glob(f"chr_{unit}_*.png")):
         im = Image.open(path).convert("RGBA")
         count = max(1, im.width // FRAME)
@@ -303,10 +303,12 @@ def build_unit(unit: str, knight_h: int, knight_foot: int) -> None:
 
 
 def main() -> int:
+    selected = [a for a in sys.argv[1:] if not a.startswith("-")]
+    units = tuple(selected) if selected else UNITS
     knight_h, knight_foot = load_knight_metrics()
     print(f"Knight reference: body_h={knight_h} foot_y={knight_foot}")
     missing: list[str] = []
-    for unit in UNITS:
+    for unit in units:
         try:
             build_unit(unit, knight_h, knight_foot)
         except FileNotFoundError as e:

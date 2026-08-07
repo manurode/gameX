@@ -191,6 +191,40 @@ const DEFINITIONS: Dictionary = {
 		"death_up_sheet": "res://assets/tilesets/mediterranean/Characters/hexwing/chr_hexwing_death_back.png",
 		"death_down_sheet": "res://assets/tilesets/mediterranean/Characters/hexwing/chr_hexwing_death.png",
 	},
+	"alba": {
+		"name": "Alba",
+		"scene": "res://scenes/units/unit_alba.tscn",
+		"preview": "res://assets/tilesets/mediterranean/Characters/alba/chr_alba_idle.png",
+		"move_speed": 92.0,
+		"max_hp": 260,
+		"can_attack": true,
+		"can_build": false,
+		"can_gather": false,
+		"is_civilian": false,
+		"is_hero": true,
+		"combat_style": Unit.CombatStyle.MELEE,
+		"attack_damage": 22,
+		"attack_cooldown": 1.05,
+		"melee_range": 56.0,
+		"hero_power_id": "fulgor",
+		"hero_power_cooldown": 17.0,
+		"hero_power_radius": 140.0,
+		"hero_power_damage": 28,
+		"hero_power_slow_mult": 0.65,
+		"hero_power_slow_duration": 2.5,
+		"idle_sheet": "res://assets/tilesets/mediterranean/Characters/alba/chr_alba_idle.png",
+		"idle_up_sheet": "res://assets/tilesets/mediterranean/Characters/alba/chr_alba_idle_back.png",
+		"idle_side_sheet": "res://assets/tilesets/mediterranean/Characters/alba/chr_alba_idle_side.png",
+		"walk_up_sheet": "res://assets/tilesets/mediterranean/Characters/alba/chr_alba_run_upward.png",
+		"walk_down_sheet": "res://assets/tilesets/mediterranean/Characters/alba/chr_alba_run_downward.png",
+		"walk_side_sheet": "res://assets/tilesets/mediterranean/Characters/alba/chr_alba_run_side.png",
+		"attack_up_sheet": "res://assets/tilesets/mediterranean/Characters/alba/chr_alba_attack_back.png",
+		"attack_down_sheet": "res://assets/tilesets/mediterranean/Characters/alba/chr_alba_attack.png",
+		"attack_side_sheet": "res://assets/tilesets/mediterranean/Characters/alba/chr_alba_attack_side.png",
+		"death_up_sheet": "res://assets/tilesets/mediterranean/Characters/alba/chr_alba_death_back.png",
+		"death_down_sheet": "res://assets/tilesets/mediterranean/Characters/alba/chr_alba_death.png",
+		"invert_up_flip": true,
+	},
 }
 
 const ENEMY_KIND_NAMES: Dictionary = {
@@ -219,9 +253,9 @@ const SPAWN_HOTKEYS: Dictionary = {
 	KEY_F4: "enemy",
 	KEY_F5: "mage",
 	KEY_F6: "ember",
-	KEY_F7: "mire",
 	# F8 closes the game in the Godot editor; use F9 for Hexala.
 	KEY_F9: "hexwing",
+	KEY_F7: "alba",
 }
 
 
@@ -237,7 +271,10 @@ static func get_unit_display_name(unit: Unit) -> String:
 	if unit is EnemyUnit:
 		return get_enemy_kind_name((unit as EnemyUnit).enemy_kind)
 	var def := get_definition(unit.unit_type_id)
-	return def.get("name", unit.unit_type_id)
+	var base_name: String = def.get("name", unit.unit_type_id)
+	if unit.is_hero or def.get("is_hero", false):
+		return "%s · Héroe" % base_name
+	return base_name
 
 
 static func get_icon_type_id_for_unit(unit: Unit) -> String:
@@ -313,6 +350,13 @@ static func apply_definition_to_unit(unit: Unit, type_id: String) -> void:
 		unit.chain_damage += MetaProgression.get_mage_chain_damage_bonus()
 		unit.chain_max_targets += MetaProgression.get_mage_chain_target_bonus()
 	unit.invert_up_flip = def.get("invert_up_flip", false)
+	unit.is_hero = def.get("is_hero", false)
+	unit.hero_power_id = def.get("hero_power_id", "")
+	unit.hero_power_cooldown = def.get("hero_power_cooldown", unit.hero_power_cooldown)
+	unit.hero_power_radius = def.get("hero_power_radius", unit.hero_power_radius)
+	unit.hero_power_damage = def.get("hero_power_damage", unit.hero_power_damage)
+	unit.hero_power_slow_mult = def.get("hero_power_slow_mult", unit.hero_power_slow_mult)
+	unit.hero_power_slow_duration = def.get("hero_power_slow_duration", unit.hero_power_slow_duration)
 
 	apply_sheets_to_unit(unit, type_id)
 

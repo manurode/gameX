@@ -1204,6 +1204,12 @@ func _format_unit_group_meta(units: Array) -> String:
 			parts.append(" · ".join(roles))
 		else:
 			parts.append("Sin combate")
+	if sample.is_hero and not sample.hero_power_id.is_empty():
+		var cd := sample.get_hero_power_cooldown_remaining()
+		if cd > 0.05:
+			parts.append("Fulgor %.0fs (R)" % ceilf(cd))
+		else:
+			parts.append("Fulgor listo (R)")
 	return "\n".join(parts)
 
 

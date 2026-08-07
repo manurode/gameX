@@ -49,6 +49,11 @@ const FORMATION_SLOT_SPACING := 22.0
 const NIGHT_LIGHT_COLOR := Color(1.0, 0.78, 0.48)
 const NIGHT_LIGHT_ENERGY := 1.15
 const NIGHT_LIGHT_SCALE := 1.55
+const HERO_GLOW_COLOR := Color(1.0, 0.9, 0.55)
+const HERO_GLOW_ENERGY := 0.55
+const HERO_GLOW_SCALE := 1.15
+const HERO_GLOW_NIGHT_BONUS := 0.35
+const HERO_SPRITE_MODULATE := Color(1.08, 1.04, 0.92, 1.0)
 
 static var _shared_shadow_texture: Texture2D
 static var _shared_dust_texture: Texture2D
@@ -98,6 +103,13 @@ static var _formation_offset_cache: Dictionary = {}
 @export var chain_max_targets: int = 0
 ## When true, ranged attacks spawn a fireball instead of an arrow.
 @export var uses_fireball: bool = false
+@export var is_hero: bool = false
+@export var hero_power_id: String = ""
+@export var hero_power_cooldown: float = 17.0
+@export var hero_power_radius: float = 140.0
+@export var hero_power_damage: int = 28
+@export var hero_power_slow_mult: float = 0.65
+@export var hero_power_slow_duration: float = 2.5
 @export var team_id: int = Team.PLAYER
 
 var hp: int
@@ -148,6 +160,12 @@ var _last_separation_nudge := Vector2.ZERO
 var _last_stack_push := Vector2.ZERO
 var _night_light: PointLight2D
 var _night_light_tween: Tween
+var _hero_glow: PointLight2D
+var _hero_power_cooldown_remaining: float = 0.0
+var _status_slow_mult: float = 1.0
+var _status_slow_timer: float = 0.0
+var _hero_glow_pulse_t: float = 0.0
+var _hero_glow_night_factor: float = 0.0
 
 @onready var animated_sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var navigation_agent: NavigationAgent2D = $NavigationAgent2D
@@ -173,8 +191,11 @@ func _ready() -> void:
 	_setup_selection_indicator()
 	_setup_occlusion_silhouette()
 	_setup_night_light()
+	_setup_hero_glow()
 	animated_sprite.offset = sprite_offset
 	animated_sprite.scale = Vector2(VISUAL_SCALE, VISUAL_SCALE)
+	if is_hero and animated_sprite != null:
+		animated_sprite.modulate = HERO_SPRITE_MODULATE
 	animated_sprite.frame_changed.connect(_on_animation_frame_changed)
 	animated_sprite.animation_finished.connect(_on_animation_finished)
 	var day_night := get_tree().get_first_node_in_group("day_night_manager") as DayNightManager
@@ -218,6 +239,7 @@ func apply_cycle_visuals(light_factor: float = 0.0, instant: bool = false) -> vo
 	if shadow_sprite != null:
 		shadow_sprite.modulate = Color(1, 1, 1, lerpf(1.0, 0.65, clamped_factor))
 	_update_night_light(clamped_factor, instant)
+	_update_hero_glow(clamped_factor)
 
 
 func _setup_night_light() -> void:
@@ -239,6 +261,26 @@ func _setup_night_light() -> void:
 	_night_light.z_index = -2
 	_night_light.y_sort_enabled = false
 	add_child(_night_light)
+
+
+func _setup_hero_glow() -> void:
+	if not is_hero or is_enemy():
+		return
+	if _hero_glow != null:
+		return
+	_hero_glow = PointLight2D.new()
+	_hero_glow.name = "HeroGlow"
+	_hero_glow.texture = DayNightManager.get_shared_light_texture()
+	_hero_glow.blend_mode = PointLight2D.BLEND_MODE_MIX
+	_hero_glow.shadow_enabled = false
+	_hero_glow.energy = HERO_GLOW_ENERGY
+	_hero_glow.enabled = true
+	_hero_glow.texture_scale = HERO_GLOW_SCALE
+	_hero_glow.color = HERO_GLOW_COLOR
+	_hero_glow.position = Vector2(0.0, -20.0)
+	_hero_glow.z_index = -1
+	_hero_glow.y_sort_enabled = false
+	add_child(_hero_glow)
 
 
 func _update_night_light(light_factor: float, instant: bool = false) -> void:
@@ -282,6 +324,76 @@ func is_night_light_active() -> bool:
 		and _night_light.enabled
 		and _night_light.energy > 0.05
 	)
+
+
+func _update_hero_glow(light_factor: float = -1.0) -> void:
+	if _hero_glow == null:
+		return
+	if light_factor >= 0.0:
+		_hero_glow_night_factor = clampf(light_factor, 0.0, 1.0)
+	var alive := not _is_dying and hp > 0 and garrisoned_building == null
+	_hero_glow.enabled = alive
+	if not alive:
+		_hero_glow.energy = 0.0
+		return
+	var night_boost := HERO_GLOW_NIGHT_BONUS * _hero_glow_night_factor
+	var pulse := 1.0 + 0.08 * sin(_hero_glow_pulse_t * 2.4)
+	_hero_glow.energy = (HERO_GLOW_ENERGY + night_boost) * pulse
+
+
+func can_use_hero_power() -> bool:
+	return (
+		is_hero
+		and not hero_power_id.is_empty()
+		and not _is_dying
+		and hp > 0
+		and garrisoned_building == null
+		and _hero_power_cooldown_remaining <= 0.0
+	)
+
+
+func get_hero_power_cooldown_remaining() -> float:
+	return maxf(0.0, _hero_power_cooldown_remaining)
+
+
+func try_use_hero_power() -> bool:
+	if not can_use_hero_power():
+		return false
+	match hero_power_id:
+		"fulgor":
+			_cast_fulgor()
+		_:
+			return false
+	_hero_power_cooldown_remaining = maxf(0.1, hero_power_cooldown)
+	return true
+
+
+func _cast_fulgor() -> void:
+	var origin := get_sprite_center()
+	var world := get_tree().get_first_node_in_group("game_world")
+	var parent: Node = world if world != null else get_parent()
+	CombatEffects.spawn_light_pulse(parent, origin, hero_power_radius)
+	var radius_sq := hero_power_radius * hero_power_radius
+	for node in get_tree().get_nodes_in_group("units"):
+		if not node is Unit:
+			continue
+		var other := node as Unit
+		if other == self or other._is_dying or other.hp <= 0:
+			continue
+		if not is_hostile_to(other):
+			continue
+		if origin.distance_squared_to(other.global_position) > radius_sq:
+			continue
+		other.take_damage(hero_power_damage, self)
+		other.apply_status_slow(hero_power_slow_mult, hero_power_slow_duration)
+
+
+func apply_status_slow(multiplier: float, duration: float) -> void:
+	if _is_dying or hp <= 0:
+		return
+	_status_slow_mult = minf(_status_slow_mult, clampf(multiplier, 0.15, 1.0))
+	_status_slow_timer = maxf(_status_slow_timer, maxf(0.05, duration))
+	_move_speed_mult_timer = 0.0
 
 
 func get_night_light_origin() -> Vector2:
@@ -400,6 +512,9 @@ func _play_directional_animation(action: StringName, direction: Vector2) -> void
 
 func rebuild_visuals() -> void:
 	_setup_sprite_frames()
+	_setup_hero_glow()
+	if is_hero and animated_sprite != null:
+		animated_sprite.modulate = HERO_SPRITE_MODULATE
 	health_changed.emit(hp, max_hp)
 
 
@@ -1204,6 +1319,7 @@ func _die() -> void:
 	if _occlusion_silhouette != null:
 		_occlusion_silhouette.set_active(false)
 	_update_night_light(0.0, true)
+	_update_hero_glow(0.0)
 
 	_play_death_sequence()
 
@@ -1276,6 +1392,16 @@ func _remove_from_selection() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	_hero_power_cooldown_remaining = maxf(0.0, _hero_power_cooldown_remaining - delta)
+	if _status_slow_timer > 0.0:
+		_status_slow_timer = maxf(0.0, _status_slow_timer - delta)
+		if _status_slow_timer <= 0.0:
+			_status_slow_mult = 1.0
+			_move_speed_mult_timer = 0.0
+	if is_hero and _hero_glow != null:
+		_hero_glow_pulse_t += delta
+		_update_hero_glow()
+
 	if _is_dying or hp <= 0:
 		return
 
@@ -2350,6 +2476,8 @@ func _get_effective_move_speed() -> float:
 				multiplier = minf(multiplier, node.get_slow_multiplier_at(global_position))
 		if _ground_layer != null and _ground_layer.is_water_at(global_position):
 			multiplier = minf(multiplier, 0.65)
+		if _status_slow_timer > 0.0:
+			multiplier = minf(multiplier, _status_slow_mult)
 		_cached_move_speed_mult = multiplier
 	return move_speed * _cached_move_speed_mult
 

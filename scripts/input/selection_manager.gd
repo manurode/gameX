@@ -156,6 +156,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif key_event.keycode == KEY_Q:
 			_expand_selection_to_squads()
 			get_viewport().set_input_as_handled()
+		elif key_event.keycode == KEY_R:
+			if _try_use_selected_hero_powers():
+				get_viewport().set_input_as_handled()
 
 
 func _handle_mouse_button(event: InputEventMouseButton) -> void:
@@ -431,6 +434,26 @@ func _expand_selection_to_squads() -> void:
 			unit.select()
 			selected_units.append(unit)
 	_notify_selection_changed()
+
+
+func _try_use_selected_hero_powers() -> bool:
+	var used := false
+	var on_cooldown := false
+	var has_hero := false
+	for unit in selected_units:
+		if not is_instance_valid(unit) or not unit.is_hero:
+			continue
+		has_hero = true
+		if unit.try_use_hero_power():
+			used = true
+		elif unit.get_hero_power_cooldown_remaining() > 0.0:
+			on_cooldown = true
+	if used:
+		return true
+	if has_hero and on_cooldown:
+		_show_feedback_banner("Fulgor recargando…", 1.6)
+		return true
+	return false
 
 
 func _attack_selected_units(target: Unit) -> void:
