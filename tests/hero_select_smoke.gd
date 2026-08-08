@@ -29,8 +29,17 @@ func _run() -> void:
 	assert(HeroDatabase.resolve_hero_id("missing") == HeroDatabase.DEFAULT_HERO_ID)
 
 	assert(MetaProgression.is_hero_power_unlocked("alba", "fulgor"))
-	assert(not MetaProgression.is_hero_power_unlocked("alba", "aurora") or MetaProgression.wins >= 1)
+	var alba_wins := MetaProgression.get_hero_wins("alba")
+	assert(MetaProgression.is_hero_power_unlocked("alba", "aurora") == (alba_wins >= 1))
+	assert(MetaProgression.is_hero_power_unlocked("alba", "solsticio") == (alba_wins >= 2))
+	# Global campaign wins must not unlock powers for a hero without their own wins.
+	if alba_wins == 0:
+		assert(not MetaProgression.is_hero_power_unlocked("alba", "aurora"))
+		assert(not MetaProgression.is_hero_power_unlocked("alba", "solsticio"))
 	assert(not str(GameSettings.selected_hero_id).is_empty())
+	var portrait := HeroDatabase.get_portrait("alba")
+	assert(portrait != null)
+	assert(str(HeroDatabase.get_definition("alba").get("portrait", "")).ends_with("alba_profile.png"))
 
 	print("hero_select_smoke OK")
 	var report := FileAccess.open("user://hero_select_smoke_ok.txt", FileAccess.WRITE)

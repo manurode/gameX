@@ -54,6 +54,10 @@ func _test_meta_rewards() -> void:
 	var before: int = meta.fragments
 	var before_best: int = meta.best_nights
 	var before_wins: int = meta.wins
+	var before_hero_wins: Dictionary = meta.hero_wins.duplicate()
+	var before_power_unlocks: Dictionary = meta.hero_power_unlocks.duplicate(true)
+	var hero_id: String = str(meta.selected_hero_id)
+	var before_hero_count: int = meta.get_hero_wins(hero_id)
 	var frag_mult: float = GameSettings.get_fragment_reward_mult()
 	var earned: int = meta.award_run_rewards(3, false)
 	var expected_partial: int = maxi(
@@ -68,11 +72,14 @@ func _test_meta_rewards() -> void:
 	)
 	assert(victory_earn == expected_victory)
 	assert(meta.wins == before_wins + 1)
+	assert(meta.get_hero_wins(hero_id) == before_hero_count + 1)
 	assert(meta.best_nights == maxi(before_best, BalanceConfig.WIN_NIGHTS))
 	# Restore to avoid polluting the user's save during tests.
 	meta.fragments = before
 	meta.best_nights = before_best
 	meta.wins = before_wins
+	meta.hero_wins = before_hero_wins
+	meta.hero_power_unlocks = before_power_unlocks
 	meta.save()
 
 

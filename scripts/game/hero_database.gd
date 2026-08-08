@@ -15,6 +15,7 @@ const HEROES: Dictionary = {
 		"role": "Melee · Luz",
 		"blurb": "Líder del asentamiento. Tanque de luz que abre hueco en las oleadas con Fulgor.",
 		"accent": Color(1.0, 0.9, 0.55, 1.0),
+		"portrait": "res://assets/ui/heroes/alba_profile.png",
 		"powers": [
 			{
 				"id": "fulgor",
@@ -103,6 +104,12 @@ static func get_card_stats(hero_id: String) -> Dictionary:
 
 
 static func get_portrait(hero_id: String) -> Texture2D:
+	var def := get_definition(hero_id)
+	var portrait_path := str(def.get("portrait", ""))
+	if not portrait_path.is_empty() and ResourceLoader.exists(portrait_path):
+		var tex := load(portrait_path) as Texture2D
+		if tex != null:
+			return tex
 	return UnitDatabase.get_unit_icon(get_unit_type_id(hero_id))
 
 

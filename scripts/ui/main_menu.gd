@@ -719,7 +719,7 @@ func _build_hero_select_screen() -> void:
 	vbox.add_child(title)
 
 	var hint := Label.new()
-	hint.text = "Lidera el asentamiento. Sube de nivel en partida; desbloquea poderes al completar campañas."
+	hint.text = "Solo el primer poder está disponible. Completa una campaña con ese héroe para desbloquear los demás."
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.add_theme_font_size_override("font_size", 12)
@@ -729,7 +729,7 @@ func _build_hero_select_screen() -> void:
 	vbox.add_child(_make_gold_rule(0.0))
 
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(0, 420)
+	scroll.custom_minimum_size = Vector2(0, 470)
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
@@ -786,37 +786,37 @@ func _make_hero_card(hero_id: String) -> PanelContainer:
 	var accent: Color = def.get("accent", COL_GOLD)
 
 	var card := PanelContainer.new()
-	card.custom_minimum_size = Vector2(280, 400)
+	card.custom_minimum_size = Vector2(300, 460)
 	card.mouse_filter = Control.MOUSE_FILTER_STOP
 	card.gui_input.connect(_on_hero_card_input.bind(hero_id))
 	card.set_meta("hero_id", hero_id)
 
 	var margin := MarginContainer.new()
 	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	margin.add_theme_constant_override("margin_left", 16)
-	margin.add_theme_constant_override("margin_right", 16)
-	margin.add_theme_constant_override("margin_top", 16)
-	margin.add_theme_constant_override("margin_bottom", 16)
+	margin.add_theme_constant_override("margin_left", 14)
+	margin.add_theme_constant_override("margin_right", 14)
+	margin.add_theme_constant_override("margin_top", 14)
+	margin.add_theme_constant_override("margin_bottom", 14)
 	card.add_child(margin)
 
 	var vbox := VBoxContainer.new()
 	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vbox.add_theme_constant_override("separation", 10)
+	vbox.add_theme_constant_override("separation", 8)
 	margin.add_child(vbox)
 
 	var portrait_wrap := CenterContainer.new()
 	portrait_wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	portrait_wrap.custom_minimum_size = Vector2(0, 110)
+	portrait_wrap.custom_minimum_size = Vector2(0, 128)
 	vbox.add_child(portrait_wrap)
 
 	var portrait_frame := PanelContainer.new()
 	portrait_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	portrait_frame.custom_minimum_size = Vector2(96, 96)
+	portrait_frame.custom_minimum_size = Vector2(118, 118)
 	var frame_style := StyleBoxFlat.new()
-	frame_style.bg_color = Color(0.07, 0.06, 0.04, 0.95)
+	frame_style.bg_color = Color(0.05, 0.04, 0.03, 0.98)
 	frame_style.border_color = accent
 	frame_style.set_border_width_all(2)
-	frame_style.set_corner_radius_all(8)
+	frame_style.set_corner_radius_all(10)
 	portrait_frame.add_theme_stylebox_override("panel", frame_style)
 	portrait_wrap.add_child(portrait_frame)
 
@@ -824,15 +824,15 @@ func _make_hero_card(hero_id: String) -> PanelContainer:
 	portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	portrait.texture = HeroDatabase.get_portrait(hero_id)
 	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	portrait.custom_minimum_size = Vector2(80, 80)
-	portrait.modulate = Color(1.08, 1.04, 0.92, 1.0)
+	portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	portrait.custom_minimum_size = Vector2(102, 102)
+	portrait.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	var portrait_pad := MarginContainer.new()
 	portrait_pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	portrait_pad.add_theme_constant_override("margin_left", 8)
-	portrait_pad.add_theme_constant_override("margin_right", 8)
-	portrait_pad.add_theme_constant_override("margin_top", 8)
-	portrait_pad.add_theme_constant_override("margin_bottom", 8)
+	portrait_pad.add_theme_constant_override("margin_left", 6)
+	portrait_pad.add_theme_constant_override("margin_right", 6)
+	portrait_pad.add_theme_constant_override("margin_top", 6)
+	portrait_pad.add_theme_constant_override("margin_bottom", 6)
 	portrait_frame.add_child(portrait_pad)
 	portrait_pad.add_child(portrait)
 
@@ -888,36 +888,17 @@ func _make_hero_card(hero_id: String) -> PanelContainer:
 	powers_title.add_theme_color_override("font_color", Color(0.75, 0.68, 0.48, 1.0))
 	vbox.add_child(powers_title)
 
+	var powers_row := HBoxContainer.new()
+	powers_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	powers_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	powers_row.add_theme_constant_override("separation", 6)
+	powers_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vbox.add_child(powers_row)
+
 	for power in HeroDatabase.get_powers(hero_id):
 		var power_id := str(power.get("id", ""))
 		var unlocked := MetaProgression.is_hero_power_unlocked(hero_id, power_id)
-		var line := Label.new()
-		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var key := str(power.get("key", "R"))
-		var power_name := str(power.get("name", power_id))
-		if unlocked:
-			line.text = "· %s (%s)" % [power_name, key]
-			line.add_theme_color_override("font_color", COL_GOLD_SOFT)
-		else:
-			var wins_needed := HeroDatabase.get_power_wins_required(power)
-			line.text = "Bloq. %s · %d victoria%s" % [
-				power_name,
-				wins_needed,
-				"" if wins_needed == 1 else "s",
-			]
-			line.add_theme_color_override("font_color", Color(0.55, 0.5, 0.42, 1.0))
-		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		line.add_theme_font_size_override("font_size", 11)
-		vbox.add_child(line)
-
-		if unlocked:
-			var desc := Label.new()
-			desc.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			desc.text = str(power.get("description", ""))
-			desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			desc.add_theme_font_size_override("font_size", 10)
-			desc.add_theme_color_override("font_color", Color(0.7, 0.66, 0.55, 1.0))
-			vbox.add_child(desc)
+		powers_row.add_child(_make_power_cromo(power, unlocked, accent))
 
 	var pick := _make_secondary_button("Elegir", Vector2(0, 36))
 	pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -926,6 +907,109 @@ func _make_hero_card(hero_id: String) -> PanelContainer:
 	card.set_meta("pick_button", pick)
 
 	return card
+
+
+func _make_power_cromo(power: Dictionary, unlocked: bool, accent: Color) -> PanelContainer:
+	var cromo := PanelContainer.new()
+	cromo.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	cromo.custom_minimum_size = Vector2(84, 118)
+	cromo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+	var style := StyleBoxFlat.new()
+	if unlocked:
+		style.bg_color = Color(0.18, 0.14, 0.07, 0.97)
+		style.border_color = accent
+		style.set_border_width_all(2)
+		style.shadow_color = Color(accent.r, accent.g, accent.b, 0.28)
+		style.shadow_size = 6
+		style.shadow_offset = Vector2(0, 1)
+	else:
+		style.bg_color = Color(0.08, 0.07, 0.06, 0.92)
+		style.border_color = Color(0.28, 0.24, 0.18, 1.0)
+		style.set_border_width_all(1)
+	style.set_corner_radius_all(8)
+	style.content_margin_left = 6
+	style.content_margin_right = 6
+	style.content_margin_top = 7
+	style.content_margin_bottom = 7
+	cromo.add_theme_stylebox_override("panel", style)
+
+	var vbox := VBoxContainer.new()
+	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.add_theme_constant_override("separation", 3)
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	cromo.add_child(vbox)
+
+	var badge := Label.new()
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	badge.add_theme_font_size_override("font_size", 9)
+	if unlocked:
+		badge.text = "DISPONIBLE"
+		badge.add_theme_color_override("font_color", accent)
+	else:
+		badge.text = "BLOQUEADO"
+		badge.add_theme_color_override("font_color", Color(0.5, 0.45, 0.38, 1.0))
+	vbox.add_child(badge)
+
+	var name_lbl := Label.new()
+	name_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	name_lbl.text = str(power.get("name", "")).to_upper()
+	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	name_lbl.add_theme_font_size_override("font_size", 12)
+	name_lbl.add_theme_color_override(
+		"font_color",
+		COL_GOLD if unlocked else Color(0.48, 0.44, 0.38, 1.0)
+	)
+	vbox.add_child(name_lbl)
+
+	var key_chip := PanelContainer.new()
+	key_chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	key_chip.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	var key_style := StyleBoxFlat.new()
+	key_style.bg_color = Color(0.12, 0.1, 0.06, 0.95) if unlocked else Color(0.1, 0.09, 0.08, 0.9)
+	key_style.border_color = accent if unlocked else Color(0.32, 0.28, 0.22, 1.0)
+	key_style.set_border_width_all(1)
+	key_style.set_corner_radius_all(4)
+	key_style.content_margin_left = 6
+	key_style.content_margin_right = 6
+	key_style.content_margin_top = 2
+	key_style.content_margin_bottom = 2
+	key_chip.add_theme_stylebox_override("panel", key_style)
+	var key_lbl := Label.new()
+	key_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	key_lbl.text = str(power.get("key", "R"))
+	key_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	key_lbl.add_theme_font_size_override("font_size", 10)
+	key_lbl.add_theme_color_override(
+		"font_color",
+		COL_GOLD_SOFT if unlocked else Color(0.45, 0.42, 0.36, 1.0)
+	)
+	key_chip.add_child(key_lbl)
+	vbox.add_child(key_chip)
+
+	var body := Label.new()
+	body.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.add_theme_font_size_override("font_size", 9)
+	if unlocked:
+		body.text = str(power.get("description", ""))
+		body.add_theme_color_override("font_color", Color(0.78, 0.72, 0.58, 1.0))
+	else:
+		var wins_needed := HeroDatabase.get_power_wins_required(power)
+		body.text = "Gana %d campaña%s\ncon este héroe" % [
+			wins_needed,
+			"" if wins_needed == 1 else "s",
+		]
+		body.add_theme_color_override("font_color", Color(0.42, 0.38, 0.32, 1.0))
+	vbox.add_child(body)
+
+	if not unlocked:
+		cromo.modulate = Color(0.72, 0.7, 0.66, 1.0)
+
+	return cromo
 
 
 func _make_stat_chip(label_text: String, value_text: String) -> PanelContainer:

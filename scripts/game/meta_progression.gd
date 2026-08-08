@@ -151,7 +151,7 @@ const UNLOCKS := {
 ## Active slot index, or -1 when none is selected.
 var active_slot: int = -1
 ## Slot metadata mirrors: { occupied, name, fragments, unlocked, best_nights, wins, difficulty,
-## selected_hero_id, hero_power_unlocks }
+## selected_hero_id, hero_wins, hero_power_unlocks }
 var _slots: Array[Dictionary] = []
 
 var fragments: int = 0
@@ -160,12 +160,14 @@ var unlocked: Dictionary = {}
 var enabled: Dictionary = {}
 ## Best nights survived in a single run.
 var best_nights: int = 0
-## Times the player completed a full WIN_NIGHTS run.
+## Times the player completed a full WIN_NIGHTS run (any hero).
 var wins: int = 0
 var save_name: String = ""
 ## Last hero chosen on this slot (HeroDatabase id).
 var selected_hero_id: String = HeroDatabase.DEFAULT_HERO_ID
-## Extra powers unlocked per hero: { hero_id: { power_id: true } }.
+## Campaign wins with each hero: { hero_id: int }.
+var hero_wins: Dictionary = {}
+## Extra powers unlocked per hero: { hero_id: { power_id: true } }. Derived from hero_wins.
 var hero_power_unlocks: Dictionary = {}
 
 
@@ -191,6 +193,7 @@ func _make_empty_slot_data() -> Dictionary:
 		"wins": 0,
 		"difficulty": int(GameSettingsData.Difficulty.BEGINNER),
 		"selected_hero_id": HeroDatabase.DEFAULT_HERO_ID,
+		"hero_wins": {},
 		"hero_power_unlocks": {},
 	}
 
@@ -225,6 +228,7 @@ func load_all_slots() -> void:
 				"selected_hero_id": HeroDatabase.resolve_hero_id(
 					str(cfg.get_value(section, "selected_hero_id", HeroDatabase.DEFAULT_HERO_ID))
 				),
+				"hero_wins": _hero_wins_from_save(cfg.get_value(section, "hero_wins", {})),
 				"hero_power_unlocks": _hero_power_unlocks_from_save(
 					cfg.get_value(section, "hero_power_unlocks", {})
 				),
@@ -267,9 +271,18 @@ func _migrate_legacy_save() -> void:
 		"wins": int(cfg.get_value("meta", "wins", 0)),
 		"difficulty": int(GameSettingsData.Difficulty.BEGINNER),
 		"selected_hero_id": HeroDatabase.DEFAULT_HERO_ID,
+		"hero_wins": {},
 		"hero_power_unlocks": {},
 	}
 	_persist_all_slots()
+
+
+func _hero_wins_from_save(raw: Variant) -> Dictionary:
+	var result := {}
+	if raw is Dictionary:
+		for hero_id in (raw as Dictionary).keys():
+			result[str(hero_id)] = maxi(0, int((raw as Dictionary)[hero_id]))
+	return result
 
 
 func _hero_power_unlocks_from_save(raw: Variant) -> Dictionary:
@@ -345,6 +358,11 @@ func _persist_all_slots() -> void:
 			"selected_hero_id",
 			HeroDatabase.resolve_hero_id(str(data.get("selected_hero_id", HeroDatabase.DEFAULT_HERO_ID)))
 		)
+		var wins_save: Dictionary = data.get("hero_wins", {})
+		var wins_out := {}
+		for hero_id in wins_save.keys():
+			wins_out[str(hero_id)] = maxi(0, int(wins_save[hero_id]))
+		cfg.set_value(section, "hero_wins", wins_out)
 		var power_unlocks: Dictionary = data.get("hero_power_unlocks", {})
 		var power_save := {}
 		for hero_id in power_unlocks.keys():
@@ -372,6 +390,7 @@ func _clear_active_runtime() -> void:
 	best_nights = 0
 	wins = 0
 	selected_hero_id = HeroDatabase.DEFAULT_HERO_ID
+	hero_wins.clear()
 	hero_power_unlocks.clear()
 	GameSettings.difficulty = GameSettingsData.Difficulty.BEGINNER
 	GameSettings.selected_hero_id = HeroDatabase.DEFAULT_HERO_ID
@@ -441,6 +460,7 @@ func create_slot(slot_index: int, name: String) -> bool:
 		"wins": 0,
 		"difficulty": int(GameSettingsData.Difficulty.BEGINNER),
 		"selected_hero_id": HeroDatabase.DEFAULT_HERO_ID,
+		"hero_wins": {},
 		"hero_power_unlocks": {},
 	}
 	_persist_all_slots()
@@ -476,6 +496,7 @@ func _apply_slot_to_runtime(slot_index: int) -> void:
 	selected_hero_id = HeroDatabase.resolve_hero_id(
 		str(data.get("selected_hero_id", HeroDatabase.DEFAULT_HERO_ID))
 	)
+	hero_wins = _hero_wins_from_save(data.get("hero_wins", {}))
 	hero_power_unlocks = (data.get("hero_power_unlocks", {}) as Dictionary).duplicate(true)
 	_sync_hero_power_unlocks_from_wins()
 	var diff := _clamp_difficulty(int(data.get("difficulty", GameSettingsData.Difficulty.BEGINNER)))
@@ -498,18 +519,18 @@ func set_selected_hero(hero_id: String) -> bool:
 	return true
 
 
+func get_hero_wins(hero_id: String) -> int:
+	var hero_key := HeroDatabase.resolve_hero_id(hero_id)
+	return maxi(0, int(hero_wins.get(hero_key, 0)))
+
+
 func is_hero_power_unlocked(hero_id: String, power_id: String) -> bool:
 	var power := HeroDatabase.get_power(hero_id, power_id)
 	if power.is_empty():
 		return false
 	if HeroDatabase.is_power_unlocked_by_default(power):
 		return true
-	var hero_key := HeroDatabase.resolve_hero_id(hero_id)
-	var unlocked_for_hero: Dictionary = hero_power_unlocks.get(hero_key, {})
-	if bool(unlocked_for_hero.get(power_id, false)):
-		return true
-	# Wins also gate powers even before the flag is persisted (legacy slots).
-	return wins >= HeroDatabase.get_power_wins_required(power)
+	return get_hero_wins(hero_id) >= HeroDatabase.get_power_wins_required(power)
 
 
 func get_unlocked_hero_power_ids(hero_id: String) -> Array[String]:
@@ -534,18 +555,26 @@ func get_primary_hero_power_id(hero_id: String) -> String:
 
 
 func _sync_hero_power_unlocks_from_wins() -> void:
+	## Rebuild unlock flags from per-hero campaign wins (not global slot wins).
+	var rebuilt := {}
 	for hero_id in HeroDatabase.get_all_hero_ids():
 		var hero_key := str(hero_id)
-		if not hero_power_unlocks.has(hero_key):
-			hero_power_unlocks[hero_key] = {}
-		var bucket: Dictionary = hero_power_unlocks[hero_key]
+		var bucket := {}
+		var hero_win_count := get_hero_wins(hero_key)
 		for power in HeroDatabase.get_powers(hero_key):
 			var power_id := str(power.get("id", ""))
-			if power_id.is_empty() or HeroDatabase.is_power_unlocked_by_default(power):
+			if power_id.is_empty():
 				continue
-			if wins >= HeroDatabase.get_power_wins_required(power):
+			if HeroDatabase.is_power_unlocked_by_default(power):
 				bucket[power_id] = true
-		hero_power_unlocks[hero_key] = bucket
+				continue
+			if hero_win_count >= HeroDatabase.get_power_wins_required(power):
+				bucket[power_id] = true
+		rebuilt[hero_key] = bucket
+	hero_power_unlocks = rebuilt
+	if has_active_slot():
+		_slots[active_slot]["hero_wins"] = hero_wins.duplicate()
+		_slots[active_slot]["hero_power_unlocks"] = hero_power_unlocks.duplicate(true)
 
 
 ## Kept for compatibility; reloads all slots from disk.
@@ -573,6 +602,7 @@ func save() -> void:
 		"wins": wins,
 		"difficulty": slot_diff,
 		"selected_hero_id": HeroDatabase.resolve_hero_id(selected_hero_id),
+		"hero_wins": hero_wins.duplicate(),
 		"hero_power_unlocks": hero_power_unlocks.duplicate(true),
 	}
 	_persist_all_slots()
@@ -624,6 +654,8 @@ func award_run_rewards(nights_survived: int, victory: bool) -> int:
 	best_nights = maxi(best_nights, nights)
 	if victory:
 		wins += 1
+		var hero_key := HeroDatabase.resolve_hero_id(selected_hero_id)
+		hero_wins[hero_key] = get_hero_wins(hero_key) + 1
 		_sync_hero_power_unlocks_from_wins()
 	var reward := BalanceConfig.meta_fragments_for_nights(nights)
 	if reward <= 0:
