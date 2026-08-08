@@ -1,0 +1,7 @@
+[gd_scene format=3 uid="uid://cwindgale01"]
+
+[ext_resource type="Script" path="res://scripts/combat/wind_gale_vfx.gd" id="1_vfx"]
+
+[node name="WindGaleVfx" type="Node2D"]
+y_sort_enabled = false
+script = ExtResource("1_vfx")

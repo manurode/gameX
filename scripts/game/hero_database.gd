@@ -21,7 +21,7 @@ const HEROES: Dictionary = {
 				"id": "fulgor",
 				"name": "Fulgor",
 				"key": "R",
-				"description": "Pulso de luz: 28 daño en área y ralentiza un 35% durante 2.5s.",
+				"description": "Ráfaga de viento: 28 daño en área y ralentiza un 35% durante 2.5s.",
 				"unlock": "start",
 			},
 			{

@@ -264,23 +264,11 @@ func _setup_night_light() -> void:
 
 
 func _setup_hero_glow() -> void:
-	if not is_hero or is_enemy():
-		return
+	# Disabled: MIX PointLight2D reads as a dark circular blotch on daylight grass.
 	if _hero_glow != null:
-		return
-	_hero_glow = PointLight2D.new()
-	_hero_glow.name = "HeroGlow"
-	_hero_glow.texture = DayNightManager.get_shared_light_texture()
-	_hero_glow.blend_mode = PointLight2D.BLEND_MODE_MIX
-	_hero_glow.shadow_enabled = false
-	_hero_glow.energy = HERO_GLOW_ENERGY
-	_hero_glow.enabled = true
-	_hero_glow.texture_scale = HERO_GLOW_SCALE
-	_hero_glow.color = HERO_GLOW_COLOR
-	_hero_glow.position = Vector2(0.0, -20.0)
-	_hero_glow.z_index = -1
-	_hero_glow.y_sort_enabled = false
-	add_child(_hero_glow)
+		_hero_glow.enabled = false
+		_hero_glow.queue_free()
+		_hero_glow = null
 
 
 func _update_night_light(light_factor: float, instant: bool = false) -> void:
@@ -369,10 +357,11 @@ func try_use_hero_power() -> bool:
 
 
 func _cast_fulgor() -> void:
-	var origin := get_sprite_center()
+	var origin := global_position
 	var world := get_tree().get_first_node_in_group("game_world")
 	var parent: Node = world if world != null else get_parent()
-	CombatEffects.spawn_light_pulse(parent, origin, hero_power_radius)
+	# Gale sits on the ground so the hollow ring expands around the hero's feet.
+	CombatEffects.spawn_wind_gale(parent, origin, hero_power_radius)
 	var radius_sq := hero_power_radius * hero_power_radius
 	for node in get_tree().get_nodes_in_group("units"):
 		if not node is Unit:

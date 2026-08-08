@@ -8,7 +8,7 @@ const VFX_SCENE: PackedScene = preload("res://scenes/combat/animated_vfx.tscn")
 const BUILDING_DESTRUCTION_SCENE: PackedScene = preload(
 	"res://scenes/combat/building_destruction_vfx.tscn"
 )
-const LIGHT_PULSE_SCRIPT: GDScript = preload("res://scripts/combat/light_pulse_vfx.gd")
+const WIND_GALE_SCENE: PackedScene = preload("res://scenes/combat/wind_gale_vfx.tscn")
 const FRAME_SIZE := 80
 
 static var _frames_cache: Dictionary = {}
@@ -26,20 +26,29 @@ static func spawn_death_burst(parent: Node, world_position: Vector2) -> void:
 	_spawn_vfx(parent, world_position, 0, 4, 9.0, 26)
 
 
+static func spawn_wind_gale(
+	parent: Node,
+	world_position: Vector2,
+	radius: float
+) -> void:
+	if parent == null:
+		return
+	var gale: Node2D = WIND_GALE_SCENE.instantiate() as Node2D
+	gale.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+	parent.add_child(gale)
+	gale.global_position = world_position
+	gale.reset_physics_interpolation()
+	gale.call("play", radius)
+
+
+## Kept for callers that still use the old name; Fulgor now uses the wind gale.
 static func spawn_light_pulse(
 	parent: Node,
 	world_position: Vector2,
 	radius: float,
-	color: Color = Color(1.0, 0.92, 0.55, 0.85)
+	_color: Color = Color(1.0, 0.92, 0.55, 0.85)
 ) -> void:
-	if parent == null:
-		return
-	var pulse: Node2D = LIGHT_PULSE_SCRIPT.new() as Node2D
-	pulse.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
-	parent.add_child(pulse)
-	pulse.global_position = world_position
-	pulse.reset_physics_interpolation()
-	pulse.call("play", radius, color)
+	spawn_wind_gale(parent, world_position, radius)
 
 
 static func spawn_building_destruction(parent: Node, building: Building) -> void:

@@ -43,7 +43,8 @@ func _run() -> void:
 		assert(not path.is_empty(), "missing sheet key %s" % key)
 		assert(ResourceLoader.exists(path), "missing sheet file %s" % path)
 
-	assert(ResourceLoader.exists("res://scripts/combat/light_pulse_vfx.gd"))
+	assert(ResourceLoader.exists("res://scripts/combat/wind_gale_vfx.gd"))
+	assert(ResourceLoader.exists("res://scenes/combat/wind_gale_vfx.tscn"))
 	assert(ResourceLoader.exists("res://tools/ai_poses/alba_front_base.png") or true)
 
 	var hero: Unit = scene.instantiate()
@@ -59,7 +60,7 @@ func _run() -> void:
 	assert(hero.can_use_hero_power())
 	assert(hero.animated_sprite != null and hero.animated_sprite.sprite_frames != null)
 	assert(hero.animated_sprite.sprite_frames.has_animation(&"idle"))
-	assert(hero.get_node_or_null("HeroGlow") != null)
+	assert(hero.get_node_or_null("HeroGlow") == null)
 	assert(UnitDatabase.get_unit_display_name(hero).contains("Héroe"))
 
 	# Local enemy stub for Fulgor without loading enemy scene dependencies.
