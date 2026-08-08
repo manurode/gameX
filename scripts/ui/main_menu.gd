@@ -3,7 +3,7 @@ extends Control
 const GAME_SCENE := "res://scenes/main.tscn"
 const MENU_BG := preload("res://assets/ui/menu_nightfall_bg.png")
 
-enum Screen { TITLE, SAVE_SLOTS, SETUP, UPGRADES }
+enum Screen { TITLE, SAVE_SLOTS, SETUP, HERO_SELECT, UPGRADES }
 
 # Palette aligned with in-game wood / gold UI
 const COL_PANEL := Color(0.09, 0.07, 0.055, 0.94)
@@ -23,6 +23,7 @@ var _screen: Screen = Screen.TITLE
 var _title_screen: Control
 var _slots_screen: Control
 var _setup_screen: Control
+var _hero_select_screen: Control
 var _upgrades_screen: Control
 var _title_label: Label
 var _cta_label: Label
@@ -33,6 +34,10 @@ var _slots_list: VBoxContainer
 var _shop_list: VBoxContainer
 var _setup_unlocks_section: VBoxContainer
 var _setup_unlocks_list: VBoxContainer
+var _hero_cards_row: HBoxContainer
+var _hero_confirm_button: Button
+var _hero_card_panels: Dictionary = {}
+var _pending_hero_id: String = HeroDatabase.DEFAULT_HERO_ID
 var _difficulty_button: Button
 var _difficulty_hint: Label
 var _difficulty_modal: Control
@@ -50,6 +55,7 @@ func _ready() -> void:
 	_build_title_screen()
 	_build_slots_screen()
 	_build_setup_screen()
+	_build_hero_select_screen()
 	_build_upgrades_screen()
 	_show_screen(Screen.TITLE)
 
@@ -673,6 +679,331 @@ func _build_setup_screen() -> void:
 	_refresh_setup_header()
 
 
+# ---------------------------------------------------------------------------
+# Hero select
+# ---------------------------------------------------------------------------
+
+func _build_hero_select_screen() -> void:
+	_hero_select_screen = Control.new()
+	_hero_select_screen.name = "HeroSelectScreen"
+	_hero_select_screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_hero_select_screen.visible = false
+	add_child(_hero_select_screen)
+
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_hero_select_screen.add_child(center)
+
+	var panel := _make_panel(Vector2(780, 0))
+	center.add_child(panel)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 26)
+	margin.add_theme_constant_override("margin_right", 26)
+	margin.add_theme_constant_override("margin_top", 22)
+	margin.add_theme_constant_override("margin_bottom", 22)
+	panel.add_child(margin)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 14)
+	margin.add_child(vbox)
+
+	var title := Label.new()
+	title.text = "Elige tu héroe"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 26)
+	title.add_theme_color_override("font_color", COL_GOLD)
+	title.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.65))
+	title.add_theme_constant_override("shadow_offset_x", 1)
+	title.add_theme_constant_override("shadow_offset_y", 2)
+	vbox.add_child(title)
+
+	var hint := Label.new()
+	hint.text = "Lidera el asentamiento. Sube de nivel en partida; desbloquea poderes al completar campañas."
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.add_theme_font_size_override("font_size", 12)
+	hint.add_theme_color_override("font_color", COL_MUTED)
+	vbox.add_child(hint)
+
+	vbox.add_child(_make_gold_rule(0.0))
+
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(0, 420)
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	vbox.add_child(scroll)
+
+	var cards_center := CenterContainer.new()
+	cards_center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cards_center.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.add_child(cards_center)
+
+	_hero_cards_row = HBoxContainer.new()
+	_hero_cards_row.add_theme_constant_override("separation", 18)
+	_hero_cards_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	cards_center.add_child(_hero_cards_row)
+
+	var actions := HBoxContainer.new()
+	actions.add_theme_constant_override("separation", 12)
+	vbox.add_child(actions)
+
+	var back := _make_secondary_button("← Volver", Vector2(140, 48))
+	back.pressed.connect(_on_back_to_setup)
+	actions.add_child(back)
+
+	_hero_confirm_button = _make_primary_button("Confirmar", Vector2(0, 48))
+	_hero_confirm_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_hero_confirm_button.pressed.connect(_on_confirm_hero_pressed)
+	actions.add_child(_hero_confirm_button)
+
+
+func _refresh_hero_select() -> void:
+	if _hero_cards_row == null:
+		return
+	for child in _hero_cards_row.get_children():
+		child.queue_free()
+	_hero_card_panels.clear()
+
+	_pending_hero_id = HeroDatabase.resolve_hero_id(
+		MetaProgression.selected_hero_id if MetaProgression.has_active_slot()
+		else GameSettings.selected_hero_id
+	)
+
+	for hero_id in HeroDatabase.get_all_hero_ids():
+		var card := _make_hero_card(hero_id)
+		_hero_cards_row.add_child(card)
+		_hero_card_panels[hero_id] = card
+
+	_apply_hero_card_selection()
+	_refresh_hero_confirm_label()
+
+
+func _make_hero_card(hero_id: String) -> PanelContainer:
+	var def := HeroDatabase.get_definition(hero_id)
+	var stats := HeroDatabase.get_card_stats(hero_id)
+	var accent: Color = def.get("accent", COL_GOLD)
+
+	var card := PanelContainer.new()
+	card.custom_minimum_size = Vector2(280, 400)
+	card.mouse_filter = Control.MOUSE_FILTER_STOP
+	card.gui_input.connect(_on_hero_card_input.bind(hero_id))
+	card.set_meta("hero_id", hero_id)
+
+	var margin := MarginContainer.new()
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	margin.add_theme_constant_override("margin_left", 16)
+	margin.add_theme_constant_override("margin_right", 16)
+	margin.add_theme_constant_override("margin_top", 16)
+	margin.add_theme_constant_override("margin_bottom", 16)
+	card.add_child(margin)
+
+	var vbox := VBoxContainer.new()
+	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.add_theme_constant_override("separation", 10)
+	margin.add_child(vbox)
+
+	var portrait_wrap := CenterContainer.new()
+	portrait_wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	portrait_wrap.custom_minimum_size = Vector2(0, 110)
+	vbox.add_child(portrait_wrap)
+
+	var portrait_frame := PanelContainer.new()
+	portrait_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	portrait_frame.custom_minimum_size = Vector2(96, 96)
+	var frame_style := StyleBoxFlat.new()
+	frame_style.bg_color = Color(0.07, 0.06, 0.04, 0.95)
+	frame_style.border_color = accent
+	frame_style.set_border_width_all(2)
+	frame_style.set_corner_radius_all(8)
+	portrait_frame.add_theme_stylebox_override("panel", frame_style)
+	portrait_wrap.add_child(portrait_frame)
+
+	var portrait := TextureRect.new()
+	portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	portrait.texture = HeroDatabase.get_portrait(hero_id)
+	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	portrait.custom_minimum_size = Vector2(80, 80)
+	portrait.modulate = Color(1.08, 1.04, 0.92, 1.0)
+	var portrait_pad := MarginContainer.new()
+	portrait_pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	portrait_pad.add_theme_constant_override("margin_left", 8)
+	portrait_pad.add_theme_constant_override("margin_right", 8)
+	portrait_pad.add_theme_constant_override("margin_top", 8)
+	portrait_pad.add_theme_constant_override("margin_bottom", 8)
+	portrait_frame.add_child(portrait_pad)
+	portrait_pad.add_child(portrait)
+
+	var name_lbl := Label.new()
+	name_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	name_lbl.text = str(def.get("name", hero_id))
+	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_lbl.add_theme_font_size_override("font_size", 22)
+	name_lbl.add_theme_color_override("font_color", accent)
+	vbox.add_child(name_lbl)
+
+	var title_lbl := Label.new()
+	title_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	title_lbl.text = str(def.get("title", ""))
+	title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title_lbl.add_theme_font_size_override("font_size", 12)
+	title_lbl.add_theme_color_override("font_color", COL_GOLD_SOFT)
+	vbox.add_child(title_lbl)
+
+	var role_lbl := Label.new()
+	role_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	role_lbl.text = str(def.get("role", "")).to_upper()
+	role_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	role_lbl.add_theme_font_size_override("font_size", 11)
+	role_lbl.add_theme_color_override("font_color", COL_MUTED)
+	vbox.add_child(role_lbl)
+
+	var stats_row := HBoxContainer.new()
+	stats_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stats_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	stats_row.add_theme_constant_override("separation", 8)
+	vbox.add_child(stats_row)
+	stats_row.add_child(_make_stat_chip("HP", str(stats.get("max_hp", 0))))
+	stats_row.add_child(_make_stat_chip("ATK", str(stats.get("attack_damage", 0))))
+	stats_row.add_child(_make_stat_chip("VEL", "%.0f" % float(stats.get("move_speed", 0.0))))
+
+	var blurb := Label.new()
+	blurb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	blurb.text = str(def.get("blurb", ""))
+	blurb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	blurb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	blurb.add_theme_font_size_override("font_size", 11)
+	blurb.add_theme_color_override("font_color", COL_CREAM)
+	vbox.add_child(blurb)
+
+	vbox.add_child(_make_gold_rule(0.0))
+
+	var powers_title := Label.new()
+	powers_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	powers_title.text = "PODERES"
+	powers_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	powers_title.add_theme_font_size_override("font_size", 11)
+	powers_title.add_theme_color_override("font_color", Color(0.75, 0.68, 0.48, 1.0))
+	vbox.add_child(powers_title)
+
+	for power in HeroDatabase.get_powers(hero_id):
+		var power_id := str(power.get("id", ""))
+		var unlocked := MetaProgression.is_hero_power_unlocked(hero_id, power_id)
+		var line := Label.new()
+		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var key := str(power.get("key", "R"))
+		var power_name := str(power.get("name", power_id))
+		if unlocked:
+			line.text = "· %s (%s)" % [power_name, key]
+			line.add_theme_color_override("font_color", COL_GOLD_SOFT)
+		else:
+			var wins_needed := HeroDatabase.get_power_wins_required(power)
+			line.text = "Bloq. %s · %d victoria%s" % [
+				power_name,
+				wins_needed,
+				"" if wins_needed == 1 else "s",
+			]
+			line.add_theme_color_override("font_color", Color(0.55, 0.5, 0.42, 1.0))
+		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		line.add_theme_font_size_override("font_size", 11)
+		vbox.add_child(line)
+
+		if unlocked:
+			var desc := Label.new()
+			desc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			desc.text = str(power.get("description", ""))
+			desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			desc.add_theme_font_size_override("font_size", 10)
+			desc.add_theme_color_override("font_color", Color(0.7, 0.66, 0.55, 1.0))
+			vbox.add_child(desc)
+
+	var pick := _make_secondary_button("Elegir", Vector2(0, 36))
+	pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pick.pressed.connect(_on_hero_chosen.bind(hero_id))
+	vbox.add_child(pick)
+	card.set_meta("pick_button", pick)
+
+	return card
+
+
+func _make_stat_chip(label_text: String, value_text: String) -> PanelContainer:
+	var chip := PanelContainer.new()
+	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.16, 0.12, 0.07, 0.95)
+	style.border_color = COL_BORDER_DIM
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(6)
+	style.set_content_margin_all(6)
+	chip.add_theme_stylebox_override("panel", style)
+
+	var lbl := Label.new()
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lbl.text = "%s %s" % [label_text, value_text]
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.add_theme_font_size_override("font_size", 12)
+	lbl.add_theme_color_override("font_color", COL_CREAM)
+	chip.add_child(lbl)
+	return chip
+
+
+func _on_hero_card_input(event: InputEvent, hero_id: String) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_on_hero_chosen(hero_id)
+
+
+func _on_hero_chosen(hero_id: String) -> void:
+	_pending_hero_id = HeroDatabase.resolve_hero_id(hero_id)
+	_apply_hero_card_selection()
+	_refresh_hero_confirm_label()
+
+
+func _apply_hero_card_selection() -> void:
+	for hero_id in _hero_card_panels.keys():
+		var card: PanelContainer = _hero_card_panels[hero_id]
+		var selected: bool = str(hero_id) == _pending_hero_id
+		var style := StyleBoxFlat.new()
+		style.bg_color = Color(0.14, 0.11, 0.07, 0.96) if selected else COL_PANEL_INNER
+		style.border_color = COL_BORDER if selected else COL_BORDER_DIM
+		style.set_border_width_all(3 if selected else 1)
+		style.set_corner_radius_all(10)
+		if selected:
+			style.shadow_color = Color(0.85, 0.7, 0.3, 0.35)
+			style.shadow_size = 10
+			style.shadow_offset = Vector2(0, 2)
+		card.add_theme_stylebox_override("panel", style)
+		var pick: Button = card.get_meta("pick_button")
+		if pick != null:
+			pick.text = "Elegido" if selected else "Elegir"
+			pick.disabled = selected
+			_style_button(pick, selected, selected)
+			pick.add_theme_font_size_override("font_size", 13)
+			if selected:
+				pick.add_theme_color_override("font_color", COL_GOLD)
+				pick.add_theme_color_override("font_disabled_color", COL_GOLD)
+			else:
+				pick.add_theme_color_override("font_color", COL_CREAM)
+
+
+func _refresh_hero_confirm_label() -> void:
+	if _hero_confirm_button == null:
+		return
+	var name := HeroDatabase.get_display_name(_pending_hero_id)
+	_hero_confirm_button.text = "Empezar con %s" % name
+
+
+func _on_confirm_hero_pressed() -> void:
+	if not MetaProgression.has_active_slot():
+		_show_screen(Screen.SAVE_SLOTS)
+		return
+	MetaProgression.set_selected_hero(_pending_hero_id)
+	MetaProgression.save_slot_difficulty(GameSettings.difficulty)
+	GameSettings.map_size_preset = GameSettings.MapSizePreset.MEDIUM
+	get_tree().change_scene_to_file(GAME_SCENE)
+
+
 func _build_difficulty_modal() -> void:
 	_difficulty_modal = Control.new()
 	_difficulty_modal.name = "DifficultyModal"
@@ -941,6 +1272,7 @@ func _show_screen(screen: Screen) -> void:
 	_title_screen.visible = screen == Screen.TITLE
 	_slots_screen.visible = screen == Screen.SAVE_SLOTS
 	_setup_screen.visible = screen == Screen.SETUP
+	_hero_select_screen.visible = screen == Screen.HERO_SELECT
 	_upgrades_screen.visible = screen == Screen.UPGRADES
 	if screen == Screen.SAVE_SLOTS:
 		_naming_slot = -1
@@ -951,6 +1283,8 @@ func _show_screen(screen: Screen) -> void:
 		_refresh_difficulty_button()
 		_difficulty_hint.text = ""
 		_hide_difficulty_modal()
+	if screen == Screen.HERO_SELECT:
+		_refresh_hero_select()
 	if screen == Screen.UPGRADES:
 		_refresh_shop()
 
@@ -994,9 +1328,7 @@ func _on_start_pressed() -> void:
 	if not MetaProgression.has_active_slot():
 		_show_screen(Screen.SAVE_SLOTS)
 		return
-	MetaProgression.save_slot_difficulty(GameSettings.difficulty)
-	GameSettings.map_size_preset = GameSettings.MapSizePreset.MEDIUM
-	get_tree().change_scene_to_file(GAME_SCENE)
+	_show_screen(Screen.HERO_SELECT)
 
 
 # ---------------------------------------------------------------------------

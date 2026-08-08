@@ -15,6 +15,8 @@ var map_size_preset: MapSizePreset = MapSizePreset.MEDIUM
 ## Default is BEGINNER until the player starts a run on another setting (persisted).
 ## Combat baseline matches ADVANCED; BEGINNER eases waves, EXPERT doubles them.
 var difficulty: Difficulty = Difficulty.BEGINNER
+## Hero chosen on the menu for the next run (see HeroDatabase).
+var selected_hero_id: String = "alba"
 
 
 func _ready() -> void:

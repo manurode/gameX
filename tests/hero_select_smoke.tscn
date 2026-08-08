@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://rc7gwn1aijlw"]
+
+[ext_resource type="Script" path="res://tests/hero_select_smoke.gd" id="1_script"]
+
+[node name="HeroSelectSmoke" type="Node"]
+script = ExtResource("1_script")

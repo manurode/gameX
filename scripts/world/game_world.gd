@@ -70,6 +70,7 @@ func on_ground_ready(ground: TinyTilesMap) -> void:
 	_apply_meta_start_buildings()
 	population_manager.recalculate_cap_from_buildings()
 	_apply_meta_start_army()
+	_spawn_selected_hero()
 	rebuild_navigation()
 
 	build_manager.setup(ground, buildings, resource_manager, selection_manager, job_manager)
@@ -129,6 +130,37 @@ func _apply_meta_start_army() -> void:
 	_spawn_starter_military(KNIGHT_SCENE, "knight", MetaProgression.get_starter_knight_count(), Vector2i(-2, 2))
 	_spawn_starter_military(ARCHER_SCENE, "archer", MetaProgression.get_starter_archer_count(), Vector2i(2, 2))
 	_spawn_starter_military(MAGE_SCENE, "mage", MetaProgression.get_starter_mage_count(), Vector2i(0, 3))
+
+
+func _spawn_selected_hero() -> void:
+	if ground_layer == null or _town_center == null:
+		return
+	var hero_id := HeroDatabase.resolve_hero_id(GameSettings.selected_hero_id)
+	var unit_type_id := HeroDatabase.get_unit_type_id(hero_id)
+	var scene := UnitDatabase.get_scene(unit_type_id)
+	if scene == null:
+		push_warning("GameWorld: missing hero scene for %s" % hero_id)
+		return
+	# Always make room so meta armies never block the chosen leader.
+	population_manager.grant_boon_population(1)
+	var center := ground_layer.get_town_center_cell()
+	var hero: Unit = scene.instantiate()
+	units.add_child(hero)
+	hero.global_position = ground_layer.map_to_local(center + Vector2i(0, 2))
+	hero.reset_physics_interpolation()
+	UnitDatabase.apply_definition_to_unit(hero, unit_type_id)
+	hero.set_meta("hero_id", hero_id)
+	hero.set_meta("unlocked_hero_powers", MetaProgression.get_unlocked_hero_power_ids(hero_id))
+	var primary_power := MetaProgression.get_primary_hero_power_id(hero_id)
+	if not primary_power.is_empty():
+		hero.hero_power_id = primary_power
+	hero.set_ground_layer(ground_layer)
+	hero.reset_navigation()
+	hero.set_meta("meta_supplied", true)
+	population_manager.register_unit(hero)
+	register_player_unit(hero)
+	if day_night_manager != null:
+		hero.apply_cycle_visuals(day_night_manager.get_night_light_factor(), true)
 
 
 func _spawn_starting_settlement(ground: TinyTilesMap) -> void:
